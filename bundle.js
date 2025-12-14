@@ -717,18 +717,6 @@ function initScrollAnimations() {
 
   // --- 2. IL TRIGGER CHE ANIMA (MOVIMENTO) ---
   // Qui puoi decidere liberamente quando far partire l'animazione
-  // Il CSS già definisce lo stato iniziale con transform: translate(calc(100vw - 25px), 0)
-  // GSAP sovrascriverà il CSS con le proprietà inline
-  const startX = window.innerWidth - 25; // Calcola 100vw - 25px
-  
-  // Imposta lo stato iniziale (sovrascrive il CSS)
-  // Non usare clearProps per mantenere le proprietà inline anche dopo l'animazione
-  gsap.set(words, { 
-    x: startX, 
-    opacity: 0,
-    clearProps: "none"
-  });
-  
   const animationTween = gsap.to(words, {
     x: 0,
     opacity: 1,
@@ -745,56 +733,17 @@ function initScrollAnimations() {
       end: 'bottom bottom',
       
       scrub: true,
-      onEnter: () => {
-        // Quando entri nella zona di animazione, assicurati che le words siano nello stato iniziale
-        gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
-      },
-      onLeaveBack: () => {
-        // Quando esci dalla zona di animazione (scrollando indietro), mantieni lo stato iniziale
-        gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
-      },
-      onEnterBack: () => {
-        // Quando rientri nella zona di animazione, mantieni lo stato corrente
-      },
-      onLeave: () => {
-        // Quando esci dalla zona di animazione (scrollando avanti), mantieni lo stato finale
-        gsap.set(words, { x: 0, opacity: 1, clearProps: "none" });
-      },
       // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
     }
   });
-  
+
   // Store the ScrollTrigger instance from the animation
   if (animationTween && animationTween.scrollTrigger) {
     scrollTriggerInstances.push(animationTween.scrollTrigger);
   }
-  
-  // Listener per resize per ricalcolare startX
-  const resizeHandler = () => {
-    const newStartX = window.innerWidth - 25;
-    gsap.set(words, { x: newStartX });
-    if (typeof ScrollTrigger !== 'undefined') {
-      ScrollTrigger.refresh();
-    }
-  };
-  window.addEventListener('resize', resizeHandler);
-  
-  // Salva il resize handler per la pulizia
-  if (!window._scrollAnimationsResizeHandlers) {
-    window._scrollAnimationsResizeHandlers = [];
-  }
-  window._scrollAnimationsResizeHandlers.push(resizeHandler);
 }
 
 function destroyScrollAnimations() {
-  // Remove resize handlers
-  if (window._scrollAnimationsResizeHandlers) {
-    window._scrollAnimationsResizeHandlers.forEach(handler => {
-      window.removeEventListener('resize', handler);
-    });
-    window._scrollAnimationsResizeHandlers = [];
-  }
-  
   // Kill all stored ScrollTrigger instances
   scrollTriggerInstances.forEach(instance => {
     try {

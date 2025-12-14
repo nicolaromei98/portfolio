@@ -23,8 +23,6 @@
   let lenisInstance = null;
   let sketchInstance = null;
   let pixelateInstances = [];
-  let currentNamespace = null;
-  let currentCleanup = null;
   let isTransitioning = false; // Flag to prevent double initialization
 
   // ============================================================================
@@ -691,97 +689,56 @@ function wrapWordsInSpan(element) {
 }
 
 function initScrollAnimations() {
-  // Register ScrollTrigger plugin
-  if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
-    gsap.registerPlugin(ScrollTrigger);
-  } else {
+  // ScrollTrigger is already registered globally
+  if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
     return;
   }
 
-  // Wait a bit to ensure DOM is completely ready (especially after Barba transitions)
-  setTimeout(() => {
-    const paragraph = document.querySelector(".mwg_effect005 .paragraph");
-    if (paragraph) {
-      wrapWordsInSpan(paragraph);
-    }
+  const paragraph = document.querySelector(".mwg_effect005 .paragraph");
+  if (paragraph) {
+    wrapWordsInSpan(paragraph);
+  }
 
-    const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
-    const container = document.querySelector(".mwg_effect005 .container");
-    const words = document.querySelectorAll(".mwg_effect005 .word");
+  const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
+  const container = document.querySelector(".mwg_effect005 .container");
+  const words = document.querySelectorAll(".mwg_effect005 .word");
 
-    if (!pinHeight || !container || !words.length) {
-      return;
-    }
+  if (!pinHeight || !container || !words.length) {
+    return;
+  }
 
-    // --- 1. IL TRIGGER CHE BLOCCA (PIN) ---
-    // Questo deve rimanere 'top top' per non lasciare spazi vuoti sopra
-    ScrollTrigger.create({
+  // --- 1. IL TRIGGER CHE BLOCCA (PIN) ---
+  // Questo deve rimanere 'top top' per non lasciare spazi vuoti sopra
+  ScrollTrigger.create({
+    trigger: pinHeight,
+    start: 'top top',     // Blocca in cima
+    end: 'bottom bottom', // Sblocca alla fine
+    pin: container,       // Cosa bloccare
+    scrub: true,
+    // markers: true // Attivali per debuggare il PIN
+  });
+
+  // --- 2. IL TRIGGER CHE ANIMA (MOVIMENTO) ---
+  // Qui puoi decidere liberamente quando far partire l'animazione
+  gsap.to(words, {
+    x: 0,
+    opacity: 1,
+    stagger: 0.02,
+    ease: 'power4.inOut',
+    scrollTrigger: {
       trigger: pinHeight,
-      start: 'top top',     // Blocca in cima
-      end: 'bottom bottom', // Sblocca alla fine
-      pin: container,       // Cosa bloccare
+      
+      // ORA PUOI MODIFICARE QUESTO SENZA ROMPERE IL LAYOUT!
+      // Esempio: Inizia quando l'elemento è ancora sotto (top 80% dello schermo)
+      start: 'top 70%',
+      
+      // Finisce quando il pin finisce (o prima, come preferisci)
+      end: 'bottom bottom',
+      
       scrub: true,
-      // markers: true // Attivali per debuggare il PIN
-    });
-
-    // --- 2. IL TRIGGER CHE ANIMA (MOVIMENTO) ---
-    // Qui puoi decidere liberamente quando far partire l'animazione
-    // Usa fromTo per definire esplicitamente lo stato iniziale e finale
-    // Lo stato iniziale corrisponde al CSS: transform: translate(calc(100vw - 25px), 0); opacity: 0;
-    const startX = window.innerWidth - 25; // Corrisponde a calc(100vw - 25px)
-    
-    // Imposta lo stato iniziale esplicitamente (sovrascrive il CSS)
-    gsap.set(words, {
-      x: startX,
-      opacity: 0,
-      clearProps: "none"
-    });
-    
-    gsap.fromTo(words, {
-      x: startX,
-      opacity: 0
-    }, {
-      x: 0,
-      opacity: 1,
-      stagger: 0.02,
-      ease: 'power4.inOut',
-      scrollTrigger: {
-        trigger: pinHeight,
-        
-        // ORA PUOI MODIFICARE QUESTO SENZA ROMPERE IL LAYOUT!
-        // Esempio: Inizia quando l'elemento è ancora sotto (top 80% dello schermo)
-        start: 'top 70%',
-        
-        // Finisce quando il pin finisce (o prima, come preferisci)
-        end: 'bottom bottom',
-        
-        scrub: true,
-        // Mantieni le proprietà inline anche dopo l'animazione
-        onUpdate: (self) => {
-          // Quando l'animazione raggiunge il 100%, forza le proprietà inline a rimanere
-          if (self.progress >= 1) {
-            gsap.set(words, { x: 0, opacity: 1, clearProps: "none" });
-          } else if (self.progress <= 0) {
-            gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
-          }
-        },
-        onLeave: () => {
-          // Quando esci dalla zona di scroll (scrollando avanti), mantieni lo stato finale
-          gsap.set(words, { x: 0, opacity: 1, clearProps: "none" });
-        },
-        onLeaveBack: () => {
-          // Quando esci dalla zona di scroll (scrollando indietro), mantieni lo stato iniziale
-          gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
-        },
-        // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
-      }
-    });
-
-    // Refresh ScrollTrigger after creating triggers
-    if (typeof ScrollTrigger !== 'undefined') {
-      ScrollTrigger.refresh();
+      // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
     }
-  }, 100);
+  });
 }
 
 function destroyScrollAnimations() {
@@ -995,55 +952,8 @@ function destroyProjectTemplateAnimations() {
   destroyLenisSmoothScroll();
 }
 
-function initPageAnimations(namespace) {
-  // Always clean up previous animations, even if namespace is the same
-  // This ensures animations are properly reinitialized when navigating between pages with the same namespace
-  if (currentCleanup) {
-    currentCleanup();
-    currentCleanup = null;
-    currentNamespace = null;
-  }
-
-  // Initialize animations based on namespace
-  if (namespace === "project-template") {
-    // Use requestAnimationFrame to ensure DOM is ready, then add a delay
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        // Force ScrollTrigger refresh before initializing
-        if (typeof ScrollTrigger !== 'undefined') {
-          ScrollTrigger.refresh();
-        }
-        
-        // Initialize animations
-        initProjectTemplateAnimations();
-        
-        // Force ScrollTrigger refresh after initializing with multiple attempts
-        if (typeof ScrollTrigger !== 'undefined') {
-          setTimeout(() => {
-            ScrollTrigger.refresh();
-          }, 100);
-          setTimeout(() => {
-            ScrollTrigger.refresh();
-          }, 300);
-        }
-        
-        currentCleanup = destroyProjectTemplateAnimations;
-        currentNamespace = namespace;
-      }, 300);
-    });
-  } else {
-    currentNamespace = namespace;
-    currentCleanup = null;
-  }
-}
-
-function destroyAllAnimations() {
-  if (currentCleanup) {
-    currentCleanup();
-    currentCleanup = null;
-    currentNamespace = null;
-  }
-}
+// REMOVED: initPageAnimations() - Not used, conflicts with Barba views
+// REMOVED: destroyAllAnimations() - Conflicts with destroyProjectTemplateAnimations()
 
 function setupBarbaTransitions() {
   // Initialize Barba with Views (recommended way)
@@ -1105,8 +1015,7 @@ function setupBarbaTransitions() {
         beforeLeave(data) {
           // Set flag to indicate we're transitioning
           isTransitioning = true;
-          // Destroy animations from current page
-          destroyAllAnimations();
+          // Animations are destroyed by the view's beforeEnter/afterLeave hooks
         }
       },
     ],
@@ -1114,19 +1023,19 @@ function setupBarbaTransitions() {
       {
         namespace: 'project-template',
         beforeEnter() {
-          // Destroy all animations before entering
+          // Destroy all animations before entering new page
           destroyProjectTemplateAnimations();
         },
         afterEnter() {
           // Reset transition flag
           isTransitioning = false;
           
-          // Wait longer to ensure all resets are complete before initializing animations
+          // Wait for all resets to complete before initializing animations
           // This prevents the visual "jump" that looks like animation restarting
           setTimeout(() => {
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
-                // Initialize all animations
+                // Initialize all animations (ONLY ONCE here)
                 initProjectTemplateAnimations();
                 
                 // Refresh ScrollTrigger after animations are initialized
@@ -1137,9 +1046,10 @@ function setupBarbaTransitions() {
                 }
               });
             });
-          }, 200); // Wait 200ms to ensure all resets are done
+          }, 200);
         },
         afterLeave() {
+          // Clean up when leaving the namespace
           destroyProjectTemplateAnimations();
         }
       }
@@ -1153,16 +1063,21 @@ document.addEventListener("DOMContentLoaded", () => {
   setupBarbaTransitions();
   
   // Initialize page-specific animations for initial page load
-  // This only runs on the first page load, not during Barba transitions
+  // Only if this is the initial page load (not a Barba transition)
+  // The view's afterEnter hook will handle initialization during transitions
   const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
-  if (namespace === 'project-template' && !isTransitioning) {
-    // This is the initial page load, initialize animations
+  if (namespace === 'project-template') {
+    // Check if Barba has already initialized (if not, this is the first page load)
+    // Barba views handle initialization during transitions, so we only need this for initial load
     setTimeout(() => {
-      initProjectTemplateAnimations();
-      if (typeof ScrollTrigger !== 'undefined') {
-        ScrollTrigger.refresh();
+      // Only initialize if we're not in a transition
+      if (!isTransitioning) {
+        initProjectTemplateAnimations();
+        if (typeof ScrollTrigger !== 'undefined') {
+          ScrollTrigger.refresh();
+        }
       }
-    }, 300);
+    }, 400); // Slightly longer delay to ensure Barba is set up
   }
 });
 

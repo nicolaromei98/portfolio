@@ -673,118 +673,6 @@ function destroyLenisSmoothScroll() {
   }
 }
 
-function wrapWordsInSpan(element) {
-  const text = element.textContent;
-  element.innerHTML = text
-    .split(' ')
-    .map(word => `<span class="word">${word}</span>`)
-    .join(' ');
-}
-
-function initScrollAnimations() {
-  // Register ScrollTrigger plugin
-  if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
-    gsap.registerPlugin(ScrollTrigger);
-  } else {
-    return;
-  }
-
-  const paragraph = document.querySelector(".mwg_effect005 .paragraph");
-  if (paragraph) {
-    wrapWordsInSpan(paragraph);
-  }
-
-  const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
-  const container = document.querySelector(".mwg_effect005 .container");
-  const words = document.querySelectorAll(".mwg_effect005 .word");
-
-  if (!pinHeight || !container || !words.length) {
-    return;
-  }
-
-  // --- 1. IL TRIGGER CHE BLOCCA (PIN) ---
-  // Questo deve rimanere 'top top' per non lasciare spazi vuoti sopra
-  ScrollTrigger.create({
-    trigger: pinHeight,
-    start: 'top top',     // Blocca in cima
-    end: 'bottom bottom', // Sblocca alla fine
-    pin: container,       // Cosa bloccare
-    scrub: true,
-    // markers: true // Attivali per debuggare il PIN
-  });
-
-  // --- 2. IL TRIGGER CHE ANIMA (MOVIMENTO) ---
-  // Qui puoi decidere liberamente quando far partire l'animazione
-  // Usa fromTo per definire esplicitamente lo stato iniziale e finale
-  // Questo previene che GSAP rimuova le proprietà inline quando esci dalla zona di scroll
-  const startX = window.innerWidth - 25; // Corrisponde a calc(100vw - 25px) del CSS
-  
-  // Imposta lo stato iniziale esplicitamente (sovrascrive il CSS)
-  gsap.set(words, { 
-    x: startX, 
-    opacity: 0,
-    clearProps: "none"
-  });
-  
-  const animationTween = gsap.fromTo(words, {
-    x: startX,
-    opacity: 0
-  }, {
-    x: 0,
-    opacity: 1,
-    stagger: 0.02,
-    ease: 'power4.inOut',
-    scrollTrigger: {
-      trigger: pinHeight,
-      
-      // ORA PUOI MODIFICARE QUESTO SENZA ROMPERE IL LAYOUT!
-      // Esempio: Inizia quando l'elemento è ancora sotto (top 80% dello schermo)
-      start: 'top 70%',
-      
-      // Finisce quando il pin finisce (o prima, come preferisci)
-      end: 'bottom bottom',
-      
-      scrub: true,
-      // Assicurati che le proprietà inline rimangano anche dopo l'animazione
-      onUpdate: (self) => {
-        // Quando l'animazione raggiunge il 100%, forza le proprietà inline a rimanere
-        if (self.progress >= 1) {
-          gsap.set(words, { x: 0, opacity: 1, clearProps: "none" });
-        } else if (self.progress <= 0) {
-          gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
-        }
-      },
-      onLeave: () => {
-        // Quando esci dalla zona di scroll (scrollando avanti), mantieni lo stato finale
-        gsap.set(words, { x: 0, opacity: 1, clearProps: "none" });
-      },
-      onLeaveBack: () => {
-        // Quando esci dalla zona di scroll (scrollando indietro), mantieni lo stato iniziale
-        gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
-      },
-      // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
-    }
-  });
-}
-
-function destroyScrollAnimations() {
-  // Kill all ScrollTriggers related to mwg_effect005
-  if (typeof ScrollTrigger !== 'undefined') {
-    ScrollTrigger.getAll().forEach(trigger => {
-      try {
-        if (trigger.vars && trigger.vars.trigger) {
-          const triggerEl = trigger.vars.trigger;
-          if (triggerEl && triggerEl.closest && triggerEl.closest('.mwg_effect005')) {
-            trigger.kill();
-          }
-        }
-      } catch (e) {
-        // If trigger is already destroyed, continue
-      }
-    });
-    ScrollTrigger.refresh();
-  }
-}
 
 function initGlobalParallax() {
   // Destroy existing parallax context
@@ -889,9 +777,6 @@ function initProjectTemplateAnimations() {
   // Initialize global parallax
   initGlobalParallax();
 
-  // Initialize scroll animations (words effect)
-  initScrollAnimations();
-
   // Initialize pixelate effect
   initPixelateImageRenderEffect();
 
@@ -967,9 +852,6 @@ function destroyProjectTemplateAnimations() {
 
   // Destroy pixelate effects
   destroyPixelateImageRenderEffect();
-
-  // Destroy scroll animations (words effect)
-  destroyScrollAnimations();
 
   // Destroy parallax
   destroyGlobalParallax();
@@ -1055,14 +937,22 @@ function setupBarbaTransitions() {
           return playMainTransition(data);
         },
         afterEnter(data) {
-          // Reset container position
+          // Reset container position FIRST
           gsap.set(data.next.container, { position: "relative" });
-          
-          // Scroll to top
-          window.scrollTo(0, 0);
           
           // Reset Webflow
           resetWebflow(data);
+          
+          // Unlock page wrapper
+          const pageWrapper = document.querySelector(".page-wrapper");
+          if (pageWrapper) {
+            gsap.set(pageWrapper, { overflow: "" });
+          }
+          
+          // Scroll to top AFTER everything is reset
+          requestAnimationFrame(() => {
+            window.scrollTo(0, 0);
+          });
         },
         beforeLeave(data) {
           // Destroy animations from current page
@@ -1079,27 +969,23 @@ function setupBarbaTransitions() {
         },
         afterEnter() {
           // Wait for DOM to be ready and ensure Webflow is initialized
-          requestAnimationFrame(() => {
-            setTimeout(() => {
-              // Refresh ScrollTrigger before initializing
-              if (typeof ScrollTrigger !== 'undefined') {
+          // Use a longer delay to ensure the transition is completely finished
+          setTimeout(() => {
+            // Refresh ScrollTrigger before initializing
+            if (typeof ScrollTrigger !== 'undefined') {
+              ScrollTrigger.refresh();
+            }
+            
+            // Initialize all animations
+            initProjectTemplateAnimations();
+            
+            // Force ScrollTrigger refresh after initializing
+            if (typeof ScrollTrigger !== 'undefined') {
+              setTimeout(() => {
                 ScrollTrigger.refresh();
-              }
-              
-              // Initialize all animations
-              initProjectTemplateAnimations();
-              
-              // Force ScrollTrigger refresh after initializing with multiple attempts
-              if (typeof ScrollTrigger !== 'undefined') {
-                setTimeout(() => {
-                  ScrollTrigger.refresh();
-                }, 150);
-                setTimeout(() => {
-                  ScrollTrigger.refresh();
-                }, 400);
-              }
-            }, 250);
-          });
+              }, 200);
+            }
+          }, 300);
         },
         afterLeave() {
           destroyProjectTemplateAnimations();
@@ -1115,12 +1001,16 @@ document.addEventListener("DOMContentLoaded", () => {
   setupBarbaTransitions();
   
   // Initialize page-specific animations for initial page load
+  // This only runs on the first page load, not during Barba transitions
   const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
-  if (namespace) {
-    // Add a small delay to ensure everything is ready
+  if (namespace === 'project-template') {
+    // This is the initial page load, initialize animations
     setTimeout(() => {
-      initPageAnimations(namespace);
-    }, 100);
+      initProjectTemplateAnimations();
+      if (typeof ScrollTrigger !== 'undefined') {
+        ScrollTrigger.refresh();
+      }
+    }, 300);
   }
 });
 

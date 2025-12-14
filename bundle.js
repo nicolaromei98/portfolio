@@ -95,14 +95,12 @@ class Sketch {
     this.container = document.getElementById("slider");
     
     if (!this.container) {
-      console.warn('Sketch: slider container not found');
       return;
     }
     
     // Clean up any existing canvas in the container before adding new one
     const existingCanvas = this.container.querySelector('canvas');
     if (existingCanvas) {
-      console.log('🧹 Removing existing canvas from container');
       try {
         this.container.removeChild(existingCanvas);
       } catch (e) {
@@ -128,7 +126,6 @@ class Sketch {
     this.isRunning = false;
     
     this.initiate(() => {
-      console.log(this.textures);
       this.setupResize();
       this.settings();
       this.addObjects();
@@ -317,7 +314,6 @@ class Sketch {
       value: 1,
       ease: Power2[this.easing],
       onComplete: () => {
-        console.log('FINISH');
         this.current = (this.current + 1) % len;
         this.material.uniforms.texture1.value = nextTexture;
         this.material.uniforms.progress.value = 0;
@@ -338,7 +334,6 @@ class Sketch {
       value: 1,
       ease: Power2[this.easing],
       onComplete: () => {
-        console.log('FINISH');
         this.current = prevIndex;
         this.material.uniforms.texture1.value = prevTexture;
         this.material.uniforms.progress.value = 0;
@@ -359,7 +354,6 @@ class Sketch {
   }
 
   destroy() {
-    console.log('🧹 Destroying Sketch instance...');
     this.stop();
     
     // Remove event listeners
@@ -381,10 +375,9 @@ class Sketch {
       try {
         if (this.renderer.domElement.parentNode === this.container) {
           this.container.removeChild(this.renderer.domElement);
-          console.log('✅ Canvas removed from container');
         }
       } catch (e) {
-        console.warn('⚠️ Error removing canvas:', e);
+        // Ignore errors
       }
     }
     
@@ -417,8 +410,6 @@ class Sketch {
       }
       this.scene = null;
     }
-    
-    console.log('✅ Sketch instance destroyed');
   }
 }
 
@@ -432,12 +423,6 @@ function initPixelateImageRenderEffect() {
   let renderColumns = 10;    // Blocchi iniziali
 
   const pixelateElements = document.querySelectorAll('[data-pixelate-render]');
-  console.log('🎨 Pixelate elements found:', pixelateElements.length);
-  
-  if (pixelateElements.length === 0) {
-    console.warn('⚠️ No pixelate elements found ([data-pixelate-render])');
-  }
-  
   pixelateElements.forEach(setupPixelate);
 
   function setupPixelate(root) {
@@ -659,7 +644,6 @@ function initLenisSmoothScroll() {
   destroyLenisSmoothScroll();
 
   if (typeof Lenis === 'undefined') {
-    console.warn('⚠️ Lenis is not loaded');
     return;
   }
 
@@ -680,8 +664,6 @@ function initLenisSmoothScroll() {
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
-
-  console.log('✅ Lenis smooth scroll initialized');
 }
 
 function destroyLenisSmoothScroll() {
@@ -701,44 +683,25 @@ function wrapWordsInSpan(element) {
 }
 
 function initScrollAnimations() {
-  console.log('📜 Initializing scroll animations...');
-  
   // Register ScrollTrigger plugin
   if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
     gsap.registerPlugin(ScrollTrigger);
-    console.log('✅ ScrollTrigger registered');
   } else {
-    console.error('❌ GSAP or ScrollTrigger not loaded!');
     return;
   }
 
   const paragraph = document.querySelector(".mwg_effect005 .paragraph");
   if (paragraph) {
-    console.log('✅ Paragraph found, wrapping words...');
     wrapWordsInSpan(paragraph);
-  } else {
-    console.warn('⚠️ Paragraph (.mwg_effect005 .paragraph) not found');
   }
 
   const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
   const container = document.querySelector(".mwg_effect005 .container");
   const words = document.querySelectorAll(".mwg_effect005 .word");
 
-  console.log('🔍 Elements check:', {
-    pinHeight: !!pinHeight,
-    container: !!container,
-    wordsCount: words.length
-  });
-
   if (!pinHeight || !container || !words.length) {
-    console.error('❌ Scroll animations: Missing required elements!');
-    if (!pinHeight) console.error('  - Missing: .mwg_effect005 .pin-height');
-    if (!container) console.error('  - Missing: .mwg_effect005 .container');
-    if (!words.length) console.error('  - Missing: .mwg_effect005 .word elements');
     return;
   }
-  
-  console.log('✅ All elements found, creating ScrollTriggers...');
 
   // --- 1. IL TRIGGER CHE BLOCCA (PIN) ---
   // Questo deve rimanere 'top top' per non lasciare spazi vuoti sopra
@@ -751,37 +714,36 @@ function initScrollAnimations() {
     // markers: true // Attivali per debuggare il PIN
   });
   scrollTriggerInstances.push(pinInstance);
-  console.log('✅ Pin ScrollTrigger created');
 
   // --- 2. IL TRIGGER CHE ANIMA (MOVIMENTO) ---
   // Qui puoi decidere liberamente quando far partire l'animazione
-  const animationTween = gsap.to(words, {
-    x: 0,
-    opacity: 1,
-    stagger: 0.02,
-    ease: 'power4.inOut',
-    scrollTrigger: {
-      trigger: pinHeight,
-      
-      // ORA PUOI MODIFICARE QUESTO SENZA ROMPERE IL LAYOUT!
-      // Esempio: Inizia quando l'elemento è ancora sotto (top 80% dello schermo)
-      start: 'top 70%',
-      
-      // Finisce quando il pin finisce (o prima, come preferisci)
-      end: 'bottom bottom',
-      
-      scrub: true,
-      // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
+  const animationTween = gsap.fromTo(words, 
+    { x: 50, opacity: 0 }, // Stato iniziale
+    {
+      x: 0,
+      opacity: 1,
+      stagger: 0.02,
+      ease: 'power4.inOut',
+      scrollTrigger: {
+        trigger: pinHeight,
+        
+        // ORA PUOI MODIFICARE QUESTO SENZA ROMPERE IL LAYOUT!
+        // Esempio: Inizia quando l'elemento è ancora sotto (top 80% dello schermo)
+        start: 'top 70%',
+        
+        // Finisce quando il pin finisce (o prima, come preferisci)
+        end: 'bottom bottom',
+        
+        scrub: true,
+        // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
+      }
     }
-  });
+  );
   
   // Store the ScrollTrigger instance from the animation
   if (animationTween && animationTween.scrollTrigger) {
     scrollTriggerInstances.push(animationTween.scrollTrigger);
   }
-  
-  console.log('✅ Words animation ScrollTrigger created');
-  console.log('✅ Scroll animations initialized successfully');
 }
 
 function destroyScrollAnimations() {
@@ -811,6 +773,7 @@ function destroyScrollAnimations() {
         // If trigger is already destroyed, continue
       }
     });
+    ScrollTrigger.refresh();
   }
 }
 
@@ -822,7 +785,6 @@ function initGlobalParallax() {
   }
 
   if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
-    console.warn('⚠️ GSAP or ScrollTrigger not loaded for parallax');
     return;
   }
 
@@ -902,21 +864,16 @@ function initGlobalParallax() {
       };
     }
   );
-
-  console.log('✅ Global parallax initialized');
 }
 
 function destroyGlobalParallax() {
   if (parallaxContext) {
     parallaxContext.revert();
     parallaxContext = null;
-    console.log('🧹 Parallax destroyed');
   }
 }
 
 function initProjectTemplateAnimations() {
-  console.log('🎬 Initializing project-template animations...');
-  
   // Initialize Lenis smooth scroll first
   initLenisSmoothScroll();
 
@@ -927,7 +884,6 @@ function initProjectTemplateAnimations() {
   initScrollAnimations();
 
   // Initialize pixelate effect
-  console.log('🎨 Initializing pixelate effect...');
   initPixelateImageRenderEffect();
 
   // Initialize Three.js Sketch (planetary effect)
@@ -936,7 +892,6 @@ function initProjectTemplateAnimations() {
     // Clean up container before creating new instance
     const existingCanvases = sliderContainer.querySelectorAll('canvas');
     if (existingCanvases.length > 0) {
-      console.log('🧹 Cleaning up', existingCanvases.length, 'existing canvas(es) from slider container');
       existingCanvases.forEach(canvas => {
         try {
           sliderContainer.removeChild(canvas);
@@ -946,7 +901,6 @@ function initProjectTemplateAnimations() {
       });
     }
     
-    console.log('✅ Slider container found, initializing Sketch...');
     sketchInstance = new Sketch({
       debug: false,
       uniforms: {
@@ -992,16 +946,10 @@ function initProjectTemplateAnimations() {
         }
       `
     });
-  } else {
-    console.warn('⚠️ Slider container (#slider) not found');
   }
-  
-  console.log('✅ Project-template animations initialized');
 }
 
 function destroyProjectTemplateAnimations() {
-  console.log('🧹 Destroying project-template animations...');
-  
   // Destroy Sketch instance
   if (sketchInstance) {
     sketchInstance.destroy();
@@ -1022,17 +970,12 @@ function destroyProjectTemplateAnimations() {
   
   // Clear scrollTrigger instances
   scrollTriggerInstances = [];
-  
-  console.log('✅ All animations destroyed');
 }
 
 function initPageAnimations(namespace) {
-  console.log('🎯 initPageAnimations called with namespace:', namespace);
-  
   // Always clean up previous animations, even if namespace is the same
   // This ensures animations are properly reinitialized when navigating between pages with the same namespace
   if (currentCleanup) {
-    console.log('🧹 Cleaning up previous animations...');
     currentCleanup();
     currentCleanup = null;
     currentNamespace = null;
@@ -1040,7 +983,6 @@ function initPageAnimations(namespace) {
 
   // Initialize animations based on namespace
   if (namespace === "project-template") {
-    console.log('🚀 Initializing project-template animations...');
     // Use requestAnimationFrame to ensure DOM is ready, then add a delay
     requestAnimationFrame(() => {
       setTimeout(() => {
@@ -1107,8 +1049,6 @@ function setupBarbaTransitions() {
           return playMainTransition(data);
         },
         afterEnter(data) {
-          console.log('✅ Transition afterEnter - page transition completed');
-          
           // Reset container position
           gsap.set(data.next.container, { position: "relative" });
           
@@ -1120,7 +1060,6 @@ function setupBarbaTransitions() {
         },
         beforeLeave(data) {
           // Destroy animations from current page
-          console.log('🧹 Cleaning up animations before leaving...');
           destroyAllAnimations();
         }
       },
@@ -1129,13 +1068,10 @@ function setupBarbaTransitions() {
       {
         namespace: 'project-template',
         beforeEnter() {
-          console.log('🎯 project-template beforeEnter - cleaning up...');
           // Destroy all animations before entering
           destroyProjectTemplateAnimations();
         },
         afterEnter() {
-          console.log('🎯 project-template afterEnter - initializing animations...');
-          
           // Wait for DOM to be ready and ensure Webflow is initialized
           requestAnimationFrame(() => {
             setTimeout(() => {
@@ -1160,7 +1096,6 @@ function setupBarbaTransitions() {
           });
         },
         afterLeave() {
-          console.log('🧹 project-template afterLeave - destroying animations...');
           destroyProjectTemplateAnimations();
         }
       }
@@ -1170,14 +1105,11 @@ function setupBarbaTransitions() {
 
 // Initialize on DOM ready
 document.addEventListener("DOMContentLoaded", () => {
-  console.log('📦 DOM Content Loaded - Initializing...');
-  
   // Setup Barba.js transitions
   setupBarbaTransitions();
   
   // Initialize page-specific animations for initial page load
   const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
-  console.log('🔍 Initial namespace found:', namespace);
   if (namespace) {
     // Add a small delay to ensure everything is ready
     setTimeout(() => {

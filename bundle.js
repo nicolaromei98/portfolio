@@ -25,6 +25,7 @@
   let pixelateInstances = [];
   let currentNamespace = null;
   let currentCleanup = null;
+  let isTransitioning = false; // Flag to prevent double initialization
 
   // ============================================================================
   // UTILITY FUNCTIONS
@@ -931,30 +932,48 @@ function setupBarbaTransitions() {
             top: 0,
             left: 0,
             width: "100%",
+            zIndex: 1,
           });
           
           // Play transition animation
-          return playMainTransition(data);
+          const tl = playMainTransition(data);
+          
+          // Add reset callback at the end of the timeline
+          tl.call(() => {
+            // Scroll to top FIRST to prevent layout shift
+            window.scrollTo(0, 0);
+            
+            // Wait one frame before resetting position to ensure smooth transition
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                // Reset container position
+                gsap.set(data.next.container, { 
+                  position: "relative",
+                  zIndex: "auto",
+                  clearProps: "top,left,width"
+                });
+                
+                // Reset Webflow
+                resetWebflow(data);
+                
+                // Unlock page wrapper
+                if (pageWrapper) {
+                  gsap.set(pageWrapper, { overflow: "" });
+                }
+              });
+            });
+          }, null, ">"); // Add at the end of the timeline
+          
+          return tl;
         },
         afterEnter(data) {
-          // Reset container position FIRST
-          gsap.set(data.next.container, { position: "relative" });
-          
-          // Reset Webflow
-          resetWebflow(data);
-          
-          // Unlock page wrapper
-          const pageWrapper = document.querySelector(".page-wrapper");
-          if (pageWrapper) {
-            gsap.set(pageWrapper, { overflow: "" });
-          }
-          
-          // Scroll to top AFTER everything is reset
-          requestAnimationFrame(() => {
-            window.scrollTo(0, 0);
-          });
+          // Everything is already reset in the enter hook
+          // Just ensure scroll position is correct
+          window.scrollTo(0, 0);
         },
         beforeLeave(data) {
+          // Set flag to indicate we're transitioning
+          isTransitioning = true;
           // Destroy animations from current page
           destroyAllAnimations();
         }
@@ -968,24 +987,24 @@ function setupBarbaTransitions() {
           destroyProjectTemplateAnimations();
         },
         afterEnter() {
-          // Wait for DOM to be ready and ensure Webflow is initialized
-          // Use a longer delay to ensure the transition is completely finished
-          setTimeout(() => {
-            // Refresh ScrollTrigger before initializing
-            if (typeof ScrollTrigger !== 'undefined') {
-              ScrollTrigger.refresh();
-            }
-            
-            // Initialize all animations
-            initProjectTemplateAnimations();
-            
-            // Force ScrollTrigger refresh after initializing
-            if (typeof ScrollTrigger !== 'undefined') {
-              setTimeout(() => {
-                ScrollTrigger.refresh();
-              }, 200);
-            }
-          }, 300);
+          // Reset transition flag
+          isTransitioning = false;
+          
+          // Wait for DOM to be ready and ensure transition is completely finished
+          // Use requestAnimationFrame to ensure the browser has painted the new page
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              // Initialize all animations
+              initProjectTemplateAnimations();
+              
+              // Refresh ScrollTrigger after a short delay to ensure DOM is ready
+              if (typeof ScrollTrigger !== 'undefined') {
+                setTimeout(() => {
+                  ScrollTrigger.refresh();
+                }, 100);
+              }
+            });
+          });
         },
         afterLeave() {
           destroyProjectTemplateAnimations();
@@ -1003,7 +1022,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Initialize page-specific animations for initial page load
   // This only runs on the first page load, not during Barba transitions
   const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
-  if (namespace === 'project-template') {
+  if (namespace === 'project-template' && !isTransitioning) {
     // This is the initial page load, initialize animations
     setTimeout(() => {
       initProjectTemplateAnimations();

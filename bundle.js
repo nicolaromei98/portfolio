@@ -337,29 +337,20 @@
   }
 
   function initScrollAnimations() {
-    // Kill any existing ScrollTriggers for this section first
-    if (typeof ScrollTrigger !== 'undefined') {
-      ScrollTrigger.getAll().forEach(trigger => {
-        try {
-          if (trigger.vars && trigger.vars.trigger) {
-            const triggerEl = trigger.vars.trigger;
-            if (triggerEl && triggerEl.closest && triggerEl.closest('.mwg_effect005')) {
-              trigger.kill();
-            }
-          }
-        } catch (e) {
-          // Continue if trigger is already destroyed
-        }
-      });
-    }
-
+    // Clean up first
+    destroyScrollAnimations();
+    
     const paragraph = document.querySelector(".mwg_effect005 .paragraph");
     if (paragraph) {
-      // Reset words if they already exist
+      // Remove existing words if any
       const existingWords = paragraph.querySelectorAll('.word');
-      if (existingWords.length === 0) {
-        wrapWordsInSpan(paragraph);
+      if (existingWords.length > 0) {
+        existingWords.forEach(word => {
+          const text = word.textContent;
+          word.outerHTML = text + ' ';
+        });
       }
+      wrapWordsInSpan(paragraph);
     }
 
     const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
@@ -370,7 +361,7 @@
       return;
     }
 
-    // Reset words position and opacity before animating
+    // Reset words position before animating
     gsap.set(words, { x: -50, opacity: 0 });
 
     ScrollTrigger.create({
@@ -393,23 +384,29 @@
         scrub: true,
       }
     });
+
+    // Refresh ScrollTrigger after setup
+    if (typeof ScrollTrigger !== 'undefined') {
+      ScrollTrigger.refresh();
+    }
   }
 
   function destroyScrollAnimations() {
     if (typeof ScrollTrigger !== 'undefined') {
+      // Kill all ScrollTriggers related to mwg_effect005
       ScrollTrigger.getAll().forEach(trigger => {
         try {
-          if (trigger.vars && trigger.vars.trigger) {
-            const triggerEl = trigger.vars.trigger;
-            if (triggerEl && triggerEl.closest && triggerEl.closest('.mwg_effect005')) {
+          const triggerEl = trigger.vars?.trigger || trigger.trigger;
+          if (triggerEl) {
+            const element = typeof triggerEl === 'string' ? document.querySelector(triggerEl) : triggerEl;
+            if (element && (element.closest?.('.mwg_effect005') || element.classList?.contains('mwg_effect005'))) {
               trigger.kill();
             }
           }
         } catch (e) {
-          console.warn('ScrollTrigger cleanup warning:', e);
+          // Continue if trigger is already destroyed
         }
       });
-      ScrollTrigger.refresh();
     }
   }
 
@@ -661,22 +658,20 @@
   let sketchInstance = null;
 
   function initProjectTemplateAnimations() {
-    // Wait a bit more to ensure DOM is fully ready
-    setTimeout(() => {
-      initLenisSmoothScroll();
-      initScrollAnimations();
-      initPixelateImageRenderEffect();
+    // Destroy existing instances first
+    if (sketchInstance) {
+      sketchInstance.destroy();
+      sketchInstance = null;
+    }
+    
+    initLenisSmoothScroll();
+    initScrollAnimations();
+    initPixelateImageRenderEffect();
 
-      const sliderContainer = document.getElementById("slider");
-      if (sliderContainer && typeof THREE !== 'undefined') {
-        // Destroy existing sketch instance if any
-        if (sketchInstance) {
-          sketchInstance.destroy();
-          sketchInstance = null;
-        }
-        
-        sketchInstance = new Sketch({
-          debug: false,
+    const sliderContainer = document.getElementById("slider");
+    if (sliderContainer && typeof THREE !== 'undefined') {
+      sketchInstance = new Sketch({
+        debug: false,
         uniforms: {
           intensity: { value: 1, type: 'f', min: 0., max: 3 }
         },
@@ -715,9 +710,8 @@
             gl_FragColor = mix(t1, t2, progress);
           }
         `
-          });
-      }
-    }, 100);
+      });
+    }
   }
 
   function destroyProjectTemplateAnimations() {
@@ -747,39 +741,26 @@
     }
 
     if (namespace === "project-template") {
-      // Wait for DOM to be fully ready - use multiple checks
-      const initAnimations = () => {
-        // Check if required elements exist
-        const hasSlider = document.getElementById("slider");
-        const hasScrollSection = document.querySelector(".mwg_effect005");
-        
-        // If elements don't exist yet, wait a bit more
-        if (!hasSlider && !hasScrollSection) {
-          setTimeout(initAnimations, 100);
-          return;
-        }
-        
-        // Force ScrollTrigger refresh before initializing
-        if (typeof ScrollTrigger !== 'undefined') {
-          ScrollTrigger.refresh();
-        }
-        
-        initProjectTemplateAnimations();
-        
-        // Force ScrollTrigger refresh after initializing
-        if (typeof ScrollTrigger !== 'undefined') {
-          setTimeout(() => {
-            ScrollTrigger.refresh();
-          }, 200);
-        }
-        
-        currentCleanup = destroyProjectTemplateAnimations;
-        currentNamespace = namespace;
-      };
-      
-      // Start initialization after a delay
+      // Wait for DOM to be ready and ScrollTrigger to be available
       requestAnimationFrame(() => {
-        setTimeout(initAnimations, 200);
+        setTimeout(() => {
+          // Refresh ScrollTrigger before initializing
+          if (typeof ScrollTrigger !== 'undefined') {
+            ScrollTrigger.refresh();
+          }
+          
+          initProjectTemplateAnimations();
+          
+          // Refresh ScrollTrigger after initializing
+          if (typeof ScrollTrigger !== 'undefined') {
+            setTimeout(() => {
+              ScrollTrigger.refresh();
+            }, 100);
+          }
+          
+          currentCleanup = destroyProjectTemplateAnimations;
+          currentNamespace = namespace;
+        }, 150);
       });
     } else {
       currentNamespace = namespace;

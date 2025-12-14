@@ -706,8 +706,12 @@
   let currentCleanup = null;
 
   function initPageAnimations(namespace) {
-    if (currentNamespace && currentNamespace !== namespace && currentCleanup) {
+    // Always clean up previous animations, even if namespace is the same
+    // This ensures animations are properly reinitialized when navigating between pages with the same namespace
+    if (currentCleanup) {
       currentCleanup();
+      currentCleanup = null;
+      currentNamespace = null;
     }
 
     if (namespace === "project-template") {

@@ -13,27 +13,6 @@
   // UTILITY FUNCTIONS
   // ============================================================================
 
-  // Navigation Utilities
-  function updateActiveLink() {
-    const currentPath = window.location.pathname;
-    const links = document.querySelectorAll(".nav_link");
-
-    links.forEach(link => link.classList.remove("w--current"));
-    const activeLink = document.querySelector(`.nav_link[href="${currentPath}"]`);
-    if (activeLink) {
-      activeLink.classList.add("w--current");
-    }
-  }
-
-  function closeMobileMenu() {
-    if (window.matchMedia("(max-width: 991px)").matches) {
-      const menuBtn = document.querySelector(".nav_menu-btn");
-      if (menuBtn) {
-        menuBtn.click();
-      }
-    }
-  }
-
   // Webflow Utilities
   function resetWebflow(data) {
     const parser = new DOMParser();
@@ -753,23 +732,21 @@
 
     barba.hooks.enter(data => {
       gsap.set(document.querySelector(".page-wrapper"), { overflow: "hidden" });
-      gsap.set(".nav_link", { cursor: "progress" });
+      // Update cursor to show loading state on all links
+      gsap.set("a[href]", { cursor: "progress" });
       gsap.set(data.next.container, {
         position: "fixed",
         top: 0,
         left: 0,
         width: "100%",
-        onComplete: () => {
-          closeMobileMenu();
-        },
       });
     });
 
     barba.hooks.after(data => {
       gsap.set(data.next.container, { position: "relative" });
       window.scrollTo(0, 0);
-      gsap.set(".nav_link", { cursor: "pointer" });
-      updateActiveLink();
+      // Reset cursor on all links
+      gsap.set("a[href]", { cursor: "pointer" });
       resetWebflow(data);
       
       const namespace = data.next.container.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
@@ -780,6 +757,23 @@
 
     const barbaConfig = {
       preventRunning: true,
+      // Prevent transitions only for external links, target="_blank", or data-barba="false"
+      prevent: ({ el }) => {
+        // Don't prevent if it's a link with data-barba="false"
+        if (el.hasAttribute('data-barba') && el.getAttribute('data-barba') === 'false') {
+          return true;
+        }
+        // Don't prevent if it's an external link
+        if (el.href && !el.href.includes(window.location.origin)) {
+          return true;
+        }
+        // Don't prevent if it has target="_blank"
+        if (el.target === '_blank') {
+          return true;
+        }
+        // Allow all other internal links
+        return false;
+      },
       transitions: [
         {
           name: "main-transition",

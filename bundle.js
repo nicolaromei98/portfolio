@@ -19,7 +19,6 @@
   }
   
   // Store instances for cleanup
-  let scrollTriggerInstances = [];
   let parallaxContext = null;
   let lenisInstance = null;
   let sketchInstance = null;
@@ -674,129 +673,6 @@ function destroyLenisSmoothScroll() {
   }
 }
 
-function wrapWordsInSpan(element) {
-  const text = element.textContent;
-  element.innerHTML = text
-    .split(' ')
-    .map(word => `<span class="word">${word}</span>`)
-    .join(' ');
-}
-
-function initScrollAnimations() {
-  // Register ScrollTrigger plugin
-  if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
-    gsap.registerPlugin(ScrollTrigger);
-  } else {
-    return;
-  }
-
-  const paragraph = document.querySelector(".mwg_effect005 .paragraph");
-  if (paragraph) {
-    wrapWordsInSpan(paragraph);
-  }
-
-  const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
-  const container = document.querySelector(".mwg_effect005 .container");
-  const words = document.querySelectorAll(".mwg_effect005 .word");
-
-  if (!pinHeight || !container || !words.length) {
-    return;
-  }
-
-  // --- 1. IL TRIGGER CHE BLOCCA (PIN) ---
-  // Questo deve rimanere 'top top' per non lasciare spazi vuoti sopra
-  const pinInstance = ScrollTrigger.create({
-    trigger: pinHeight,
-    start: 'top top',     // Blocca in cima
-    end: 'bottom bottom', // Sblocca alla fine
-    pin: container,       // Cosa bloccare
-    scrub: true,
-    // markers: true // Attivali per debuggare il PIN
-  });
-  scrollTriggerInstances.push(pinInstance);
-
-  // --- 2. IL TRIGGER CHE ANIMA (MOVIMENTO) ---
-  // Qui puoi decidere liberamente quando far partire l'animazione
-  // Usa fromTo per definire esplicitamente lo stato iniziale e finale
-  // Questo previene che GSAP rimuova le proprietà inline quando esci dalla zona di scroll
-  const startX = window.innerWidth - 25; // Corrisponde a calc(100vw - 25px) del CSS
-  
-  const animationTween = gsap.fromTo(words, {
-    x: startX,
-    opacity: 0
-  }, {
-    x: 0,
-    opacity: 1,
-    stagger: 0.02,
-    ease: 'power4.inOut',
-    scrollTrigger: {
-      trigger: pinHeight,
-      
-      // ORA PUOI MODIFICARE QUESTO SENZA ROMPERE IL LAYOUT!
-      // Esempio: Inizia quando l'elemento è ancora sotto (top 80% dello schermo)
-      start: 'top 70%',
-      
-      // Finisce quando il pin finisce (o prima, come preferisci)
-      end: 'bottom bottom',
-      
-      scrub: true,
-      // Assicurati che le proprietà inline rimangano anche dopo l'animazione
-      onUpdate: (self) => {
-        // Quando l'animazione raggiunge il 100%, forza le proprietà inline
-        if (self.progress >= 1) {
-          gsap.set(words, { x: 0, opacity: 1, clearProps: "none" });
-        } else if (self.progress <= 0) {
-          gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
-        }
-      },
-      onLeave: () => {
-        // Quando esci dalla zona di scroll (scrollando avanti), mantieni lo stato finale
-        gsap.set(words, { x: 0, opacity: 1, clearProps: "none" });
-      },
-      onLeaveBack: () => {
-        // Quando esci dalla zona di scroll (scrollando indietro), mantieni lo stato iniziale
-        gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
-      },
-      // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
-    }
-  });
-
-  // Store the ScrollTrigger instance from the animation
-  if (animationTween && animationTween.scrollTrigger) {
-    scrollTriggerInstances.push(animationTween.scrollTrigger);
-  }
-}
-
-function destroyScrollAnimations() {
-  // Kill all stored ScrollTrigger instances
-  scrollTriggerInstances.forEach(instance => {
-    try {
-      if (instance && instance.kill) {
-        instance.kill();
-      }
-    } catch (e) {
-      // Ignore errors
-    }
-  });
-  scrollTriggerInstances = [];
-
-  // Kill all ScrollTriggers related to mwg_effect005
-  if (typeof ScrollTrigger !== 'undefined') {
-    ScrollTrigger.getAll().forEach(trigger => {
-      try {
-        if (trigger.vars && trigger.vars.trigger) {
-          const triggerEl = trigger.vars.trigger;
-          if (triggerEl && triggerEl.closest && triggerEl.closest('.mwg_effect005')) {
-            trigger.kill();
-          }
-        }
-      } catch (e) {
-        // If trigger is already destroyed, continue
-      }
-    });
-    ScrollTrigger.refresh();
-  }
-}
 
 function initGlobalParallax() {
   // Destroy existing parallax context
@@ -901,9 +777,6 @@ function initProjectTemplateAnimations() {
   // Initialize global parallax
   initGlobalParallax();
 
-  // Initialize ScrollTrigger animations
-  initScrollAnimations();
-
   // Initialize pixelate effect
   initPixelateImageRenderEffect();
 
@@ -977,9 +850,6 @@ function destroyProjectTemplateAnimations() {
     sketchInstance = null;
   }
 
-  // Destroy scroll animations
-  destroyScrollAnimations();
-
   // Destroy pixelate effects
   destroyPixelateImageRenderEffect();
 
@@ -988,9 +858,6 @@ function destroyProjectTemplateAnimations() {
 
   // Destroy Lenis
   destroyLenisSmoothScroll();
-  
-  // Clear scrollTrigger instances
-  scrollTriggerInstances = [];
 }
 
 function initPageAnimations(namespace) {

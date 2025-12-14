@@ -337,9 +337,29 @@
   }
 
   function initScrollAnimations() {
+    // Kill any existing ScrollTriggers for this section first
+    if (typeof ScrollTrigger !== 'undefined') {
+      ScrollTrigger.getAll().forEach(trigger => {
+        try {
+          if (trigger.vars && trigger.vars.trigger) {
+            const triggerEl = trigger.vars.trigger;
+            if (triggerEl && triggerEl.closest && triggerEl.closest('.mwg_effect005')) {
+              trigger.kill();
+            }
+          }
+        } catch (e) {
+          // Continue if trigger is already destroyed
+        }
+      });
+    }
+
     const paragraph = document.querySelector(".mwg_effect005 .paragraph");
     if (paragraph) {
-      wrapWordsInSpan(paragraph);
+      // Reset words if they already exist
+      const existingWords = paragraph.querySelectorAll('.word');
+      if (existingWords.length === 0) {
+        wrapWordsInSpan(paragraph);
+      }
     }
 
     const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
@@ -349,6 +369,9 @@
     if (!pinHeight || !container || !words.length) {
       return;
     }
+
+    // Reset words position and opacity before animating
+    gsap.set(words, { x: -50, opacity: 0 });
 
     ScrollTrigger.create({
       trigger: pinHeight,
@@ -715,11 +738,27 @@
     }
 
     if (namespace === "project-template") {
-      setTimeout(() => {
-        initProjectTemplateAnimations();
-        currentCleanup = destroyProjectTemplateAnimations;
-        currentNamespace = namespace;
-      }, 100);
+      // Use requestAnimationFrame to ensure DOM is ready, then add a small delay
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          // Force ScrollTrigger refresh before initializing
+          if (typeof ScrollTrigger !== 'undefined') {
+            ScrollTrigger.refresh();
+          }
+          
+          initProjectTemplateAnimations();
+          
+          // Force ScrollTrigger refresh after initializing
+          if (typeof ScrollTrigger !== 'undefined') {
+            setTimeout(() => {
+              ScrollTrigger.refresh();
+            }, 50);
+          }
+          
+          currentCleanup = destroyProjectTemplateAnimations;
+          currentNamespace = namespace;
+        }, 150);
+      });
     } else {
       currentNamespace = namespace;
       currentCleanup = null;
@@ -766,6 +805,11 @@
       // Reset cursor on all links
       gsap.set("a[href]", { cursor: "pointer" });
       resetWebflow(data);
+      
+      // Refresh ScrollTrigger after page transition
+      if (typeof ScrollTrigger !== 'undefined') {
+        ScrollTrigger.refresh();
+      }
       
       const namespace = data.next.container.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
       if (namespace) {

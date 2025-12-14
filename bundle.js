@@ -740,6 +740,7 @@ function initScrollAnimations() {
       end: 'bottom bottom',
       
       scrub: true,
+      invalidateOnRefresh: true, // Ricalcola quando ScrollTrigger viene refreshato
       // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
     }
   });
@@ -869,6 +870,11 @@ function initProjectTemplateAnimations() {
 
   // Initialize scroll animations (words effect)
   initScrollAnimations();
+
+  // Refresh ScrollTrigger immediately after initializing scroll animations
+  if (typeof ScrollTrigger !== 'undefined') {
+    ScrollTrigger.refresh();
+  }
 
   // Initialize pixelate effect
   initPixelateImageRenderEffect();
@@ -1090,11 +1096,14 @@ function setupBarbaTransitions() {
                 // Initialize all animations
                 initProjectTemplateAnimations();
                 
-                // Refresh ScrollTrigger after animations are initialized
+                // Refresh ScrollTrigger immediately after initializing
                 if (typeof ScrollTrigger !== 'undefined') {
+                  ScrollTrigger.refresh();
+                  
+                  // Additional refresh after a short delay to ensure everything is calculated
                   setTimeout(() => {
                     ScrollTrigger.refresh();
-                  }, 150);
+                  }, 200);
                 }
               });
             });

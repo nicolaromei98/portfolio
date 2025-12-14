@@ -595,6 +595,7 @@
   // ============================================================================
 
   let lenisInstance = null;
+  let lenisTickerFunction = null;
 
   function initLenisSmoothScroll() {
     destroyLenisSmoothScroll();
@@ -604,13 +605,26 @@
     }
     lenisInstance = new Lenis();
     lenisInstance.on('scroll', ScrollTrigger.update);
-    gsap.ticker.add((time) => {
-      lenisInstance.raf(time * 1000);
-    });
+    
+    // Create ticker function with null check
+    lenisTickerFunction = (time) => {
+      if (lenisInstance) {
+        lenisInstance.raf(time * 1000);
+      }
+    };
+    
+    gsap.ticker.add(lenisTickerFunction);
     gsap.ticker.lagSmoothing(0);
   }
 
   function destroyLenisSmoothScroll() {
+    // Remove ticker function first
+    if (lenisTickerFunction) {
+      gsap.ticker.remove(lenisTickerFunction);
+      lenisTickerFunction = null;
+    }
+    
+    // Then destroy Lenis instance
     if (lenisInstance) {
       lenisInstance.destroy();
       lenisInstance = null;

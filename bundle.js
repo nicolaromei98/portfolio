@@ -661,14 +661,22 @@
   let sketchInstance = null;
 
   function initProjectTemplateAnimations() {
-    initLenisSmoothScroll();
-    initScrollAnimations();
-    initPixelateImageRenderEffect();
+    // Wait a bit more to ensure DOM is fully ready
+    setTimeout(() => {
+      initLenisSmoothScroll();
+      initScrollAnimations();
+      initPixelateImageRenderEffect();
 
-    const sliderContainer = document.getElementById("slider");
-    if (sliderContainer && typeof THREE !== 'undefined') {
-      sketchInstance = new Sketch({
-        debug: false,
+      const sliderContainer = document.getElementById("slider");
+      if (sliderContainer && typeof THREE !== 'undefined') {
+        // Destroy existing sketch instance if any
+        if (sketchInstance) {
+          sketchInstance.destroy();
+          sketchInstance = null;
+        }
+        
+        sketchInstance = new Sketch({
+          debug: false,
         uniforms: {
           intensity: { value: 1, type: 'f', min: 0., max: 3 }
         },
@@ -707,8 +715,9 @@
             gl_FragColor = mix(t1, t2, progress);
           }
         `
-      });
-    }
+          });
+      }
+    }, 100);
   }
 
   function destroyProjectTemplateAnimations() {
@@ -738,26 +747,39 @@
     }
 
     if (namespace === "project-template") {
-      // Use requestAnimationFrame to ensure DOM is ready, then add a small delay
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          // Force ScrollTrigger refresh before initializing
-          if (typeof ScrollTrigger !== 'undefined') {
+      // Wait for DOM to be fully ready - use multiple checks
+      const initAnimations = () => {
+        // Check if required elements exist
+        const hasSlider = document.getElementById("slider");
+        const hasScrollSection = document.querySelector(".mwg_effect005");
+        
+        // If elements don't exist yet, wait a bit more
+        if (!hasSlider && !hasScrollSection) {
+          setTimeout(initAnimations, 100);
+          return;
+        }
+        
+        // Force ScrollTrigger refresh before initializing
+        if (typeof ScrollTrigger !== 'undefined') {
+          ScrollTrigger.refresh();
+        }
+        
+        initProjectTemplateAnimations();
+        
+        // Force ScrollTrigger refresh after initializing
+        if (typeof ScrollTrigger !== 'undefined') {
+          setTimeout(() => {
             ScrollTrigger.refresh();
-          }
-          
-          initProjectTemplateAnimations();
-          
-          // Force ScrollTrigger refresh after initializing
-          if (typeof ScrollTrigger !== 'undefined') {
-            setTimeout(() => {
-              ScrollTrigger.refresh();
-            }, 50);
-          }
-          
-          currentCleanup = destroyProjectTemplateAnimations;
-          currentNamespace = namespace;
-        }, 150);
+          }, 200);
+        }
+        
+        currentCleanup = destroyProjectTemplateAnimations;
+        currentNamespace = namespace;
+      };
+      
+      // Start initialization after a delay
+      requestAnimationFrame(() => {
+        setTimeout(initAnimations, 200);
       });
     } else {
       currentNamespace = namespace;

@@ -9,6 +9,28 @@
 (function() {
   'use strict';
 
+  // ============================================================================
+  // GLOBAL VARIABLES
+  // ============================================================================
+  
+  // Register ScrollTrigger plugin immediately
+  if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
+    gsap.registerPlugin(ScrollTrigger);
+  }
+  
+  // Store instances for cleanup
+  let scrollTriggerInstances = [];
+  let parallaxContext = null;
+  let lenisInstance = null;
+  let sketchInstance = null;
+  let pixelateInstances = [];
+  let currentNamespace = null;
+  let currentCleanup = null;
+
+  // ============================================================================
+  // UTILITY FUNCTIONS
+  // ============================================================================
+
 function resetWebflow(data) {
   const parser = new DOMParser();
   const dom = parser.parseFromString(data.next.html, "text/html");
@@ -359,8 +381,6 @@ class Sketch {
 }
 
 
-let pixelateInstances = [];
-
 function initPixelateImageRenderEffect() {
   // Clean up existing instances
   destroyPixelateImageRenderEffect();
@@ -592,8 +612,6 @@ function destroyPixelateImageRenderEffect() {
   pixelateInstances = [];
 }
 
-let lenisInstance = null;
-
 function initLenisSmoothScroll() {
   // Destroy existing instance if any
   destroyLenisSmoothScroll();
@@ -720,21 +738,20 @@ function initScrollAnimations() {
 }
 
 function destroyScrollAnimations() {
-  // Kill all ScrollTriggers related to this section
-  if (typeof ScrollTrigger !== 'undefined') {
-    // Kill instances from scrollTriggerInstances array
-    scrollTriggerInstances.forEach(instance => {
-      try {
-        if (instance && instance.kill) {
-          instance.kill();
-        }
-      } catch (e) {
-        // Ignore errors
+  // Kill all stored ScrollTrigger instances
+  scrollTriggerInstances.forEach(instance => {
+    try {
+      if (instance && instance.kill) {
+        instance.kill();
       }
-    });
-    scrollTriggerInstances = [];
-    
-    // Also kill any remaining ScrollTriggers related to mwg_effect005
+    } catch (e) {
+      // Ignore errors
+    }
+  });
+  scrollTriggerInstances = [];
+
+  // Kill all ScrollTriggers related to mwg_effect005
+  if (typeof ScrollTrigger !== 'undefined') {
     ScrollTrigger.getAll().forEach(trigger => {
       try {
         if (trigger.vars && trigger.vars.trigger) {
@@ -747,28 +764,21 @@ function destroyScrollAnimations() {
         // If trigger is already destroyed, continue
       }
     });
-    // Refresh ScrollTrigger after cleanup
-    ScrollTrigger.refresh();
   }
 }
 
-// Global Parallax Context
-let parallaxContext = null;
-
 function initGlobalParallax() {
-  console.log('🌊 Initializing global parallax...');
-  
-  // Clean up existing parallax context
+  // Destroy existing parallax context
   if (parallaxContext) {
     parallaxContext.revert();
     parallaxContext = null;
   }
-  
-  // Register ScrollTrigger plugin
-  if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
-    gsap.registerPlugin(ScrollTrigger);
+
+  if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
+    console.warn('⚠️ GSAP or ScrollTrigger not loaded for parallax');
+    return;
   }
-  
+
   const mm = gsap.matchMedia();
 
   mm.add(
@@ -782,62 +792,59 @@ function initGlobalParallax() {
       const { isMobile, isMobileLandscape, isTablet } = context.conditions;
 
       parallaxContext = gsap.context(() => {
-        const parallaxElements = document.querySelectorAll('[data-parallax="trigger"]');
-        console.log('🌊 Parallax elements found:', parallaxElements.length);
-        
-        parallaxElements.forEach((trigger) => {
-            // Check if this trigger has to be disabled on smaller breakpoints
-            const disable = trigger.getAttribute("data-parallax-disable");
-            if (
-              (disable === "mobile" && isMobile) ||
-              (disable === "mobileLandscape" && isMobileLandscape) ||
-              (disable === "tablet" && isTablet)
-            ) {
-              return;
+        document.querySelectorAll('[data-parallax="trigger"]').forEach((trigger) => {
+          // Check if this trigger has to be disabled on smaller breakpoints
+          const disable = trigger.getAttribute("data-parallax-disable");
+          if (
+            (disable === "mobile" && isMobile) ||
+            (disable === "mobileLandscape" && isMobileLandscape) ||
+            (disable === "tablet" && isTablet)
+          ) {
+            return;
+          }
+          
+          // Optional: you can target an element inside a trigger if necessary 
+          const target = trigger.querySelector('[data-parallax="target"]') || trigger;
+
+          // Get the direction value to decide between xPercent or yPercent tween
+          const direction = trigger.getAttribute("data-parallax-direction") || "vertical";
+          const prop = direction === "horizontal" ? "xPercent" : "yPercent";
+          
+          // Get the scrub value, our default is 'true' because that feels nice with Lenis
+          const scrubAttr = trigger.getAttribute("data-parallax-scrub");
+          const scrub = scrubAttr ? parseFloat(scrubAttr) : true;
+          
+          // Get the start position in % 
+          const startAttr = trigger.getAttribute("data-parallax-start");
+          const startVal = startAttr !== null ? parseFloat(startAttr) : 20;
+          
+          // Get the end position in %
+          const endAttr = trigger.getAttribute("data-parallax-end");
+          const endVal = endAttr !== null ? parseFloat(endAttr) : -20;
+          
+          // Get the start value of the ScrollTrigger
+          const scrollStartRaw = trigger.getAttribute("data-parallax-scroll-start") || "top bottom";
+          const scrollStart = `clamp(${scrollStartRaw})`;
+          
+          // Get the end value of the ScrollTrigger  
+          const scrollEndRaw = trigger.getAttribute("data-parallax-scroll-end") || "bottom top";
+          const scrollEnd = `clamp(${scrollEndRaw})`;
+
+          gsap.fromTo(
+            target,
+            { [prop]: startVal },
+            {
+              [prop]: endVal,
+              ease: "none",
+              scrollTrigger: {
+                trigger,
+                start: scrollStart,
+                end: scrollEnd,
+                scrub,
+              },
             }
-            
-            // Optional: you can target an element inside a trigger if necessary 
-            const target = trigger.querySelector('[data-parallax="target"]') || trigger;
-
-            // Get the direction value to decide between xPercent or yPercent tween
-            const direction = trigger.getAttribute("data-parallax-direction") || "vertical";
-            const prop = direction === "horizontal" ? "xPercent" : "yPercent";
-            
-            // Get the scrub value, our default is 'true' because that feels nice with Lenis
-            const scrubAttr = trigger.getAttribute("data-parallax-scrub");
-            const scrub = scrubAttr ? parseFloat(scrubAttr) : true;
-            
-            // Get the start position in % 
-            const startAttr = trigger.getAttribute("data-parallax-start");
-            const startVal = startAttr !== null ? parseFloat(startAttr) : 20;
-            
-            // Get the end position in %
-            const endAttr = trigger.getAttribute("data-parallax-end");
-            const endVal = endAttr !== null ? parseFloat(endAttr) : -20;
-            
-            // Get the start value of the ScrollTrigger
-            const scrollStartRaw = trigger.getAttribute("data-parallax-scroll-start") || "top bottom";
-            const scrollStart = `clamp(${scrollStartRaw})`;
-            
-           // Get the end value of the ScrollTrigger  
-            const scrollEndRaw = trigger.getAttribute("data-parallax-scroll-end") || "bottom top";
-            const scrollEnd = `clamp(${scrollEndRaw})`;
-
-            gsap.fromTo(
-              target,
-              { [prop]: startVal },
-              {
-                [prop]: endVal,
-                ease: "none",
-                scrollTrigger: {
-                  trigger,
-                  start: scrollStart,
-                  end: scrollEnd,
-                  scrub,
-                },
-              }
-            );
-          });
+          );
+        });
       });
 
       return () => {
@@ -848,19 +855,17 @@ function initGlobalParallax() {
       };
     }
   );
-  
+
   console.log('✅ Global parallax initialized');
 }
 
 function destroyGlobalParallax() {
   if (parallaxContext) {
-    console.log('🧹 Destroying global parallax...');
     parallaxContext.revert();
     parallaxContext = null;
+    console.log('🧹 Parallax destroyed');
   }
 }
-
-let sketchInstance = null;
 
 function initProjectTemplateAnimations() {
   console.log('🎬 Initializing project-template animations...');
@@ -949,18 +954,17 @@ function destroyProjectTemplateAnimations() {
   // Destroy pixelate effects
   destroyPixelateImageRenderEffect();
 
-  // Destroy global parallax
+  // Destroy parallax
   destroyGlobalParallax();
 
   // Destroy Lenis
   destroyLenisSmoothScroll();
   
+  // Clear scrollTrigger instances
+  scrollTriggerInstances = [];
+  
   console.log('✅ All animations destroyed');
 }
-
-// Store current namespace and cleanup function
-let currentNamespace = null;
-let currentCleanup = null;
 
 function initPageAnimations(namespace) {
   console.log('🎯 initPageAnimations called with namespace:', namespace);
@@ -1016,9 +1020,6 @@ function destroyAllAnimations() {
   }
 }
 
-// Store ScrollTrigger instances for cleanup
-let scrollTriggerInstances = [];
-
 function setupBarbaTransitions() {
   // Initialize Barba with Views (recommended way)
   barba.init({
@@ -1071,18 +1072,6 @@ function setupBarbaTransitions() {
           console.log('🎯 project-template beforeEnter - cleaning up...');
           // Destroy all animations before entering
           destroyProjectTemplateAnimations();
-          
-          // Clean up any remaining ScrollTriggers
-          if (typeof ScrollTrigger !== 'undefined') {
-            ScrollTrigger.getAll().forEach(trigger => {
-              try {
-                trigger.kill();
-              } catch (e) {
-                // Ignore errors
-              }
-            });
-            ScrollTrigger.refresh();
-          }
         },
         afterEnter() {
           console.log('🎯 project-template afterEnter - initializing animations...');
@@ -1090,17 +1079,12 @@ function setupBarbaTransitions() {
           // Wait for DOM to be ready and ensure Webflow is initialized
           requestAnimationFrame(() => {
             setTimeout(() => {
-              // Register ScrollTrigger plugin
-              if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
-                gsap.registerPlugin(ScrollTrigger);
-              }
-              
               // Refresh ScrollTrigger before initializing
               if (typeof ScrollTrigger !== 'undefined') {
                 ScrollTrigger.refresh();
               }
               
-              // Initialize all animations (includes parallax)
+              // Initialize all animations
               initProjectTemplateAnimations();
               
               // Force ScrollTrigger refresh after initializing with multiple attempts
@@ -1111,11 +1095,8 @@ function setupBarbaTransitions() {
                 setTimeout(() => {
                   ScrollTrigger.refresh();
                 }, 400);
-                setTimeout(() => {
-                  ScrollTrigger.refresh();
-                }, 600);
               }
-            }, 300);
+            }, 250);
           });
         },
         afterLeave() {
@@ -1123,23 +1104,7 @@ function setupBarbaTransitions() {
           destroyProjectTemplateAnimations();
         }
       }
-    ],
-    // Global hooks for all pages (including parallax cleanup/reinit)
-    hooks: {
-      afterEnter() {
-        // Reinitialize parallax for all pages after transition
-        console.log('🌊 Reinitializing parallax after transition...');
-        destroyGlobalParallax();
-        setTimeout(() => {
-          initGlobalParallax();
-        }, 100);
-      },
-      beforeLeave() {
-        // Clean up parallax before leaving
-        console.log('🧹 Cleaning up parallax before leaving...');
-        destroyGlobalParallax();
-      }
-    }
+    ]
   });
 }
 
@@ -1147,16 +1112,8 @@ function setupBarbaTransitions() {
 document.addEventListener("DOMContentLoaded", () => {
   console.log('📦 DOM Content Loaded - Initializing...');
   
-  // Register ScrollTrigger plugin
-  if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
-    gsap.registerPlugin(ScrollTrigger);
-  }
-  
   // Setup Barba.js transitions
   setupBarbaTransitions();
-  
-  // Initialize global parallax (works on all pages)
-  initGlobalParallax();
   
   // Initialize page-specific animations for initial page load
   const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
@@ -1165,7 +1122,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Add a small delay to ensure everything is ready
     setTimeout(() => {
       initPageAnimations(namespace);
-    }, 200);
+    }, 100);
   }
 });
 

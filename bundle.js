@@ -49,6 +49,14 @@ function resetWebflow(data) {
 function playMainTransition(data) {
   const tl = gsap.timeline();
 
+  // Set initial state of next page explicitly
+  gsap.set(data.next.container, {
+    y: "100vh",
+    x: "-50vw",
+    rotation: -4,
+    opacity: 1
+  });
+
   // Animate current page out
   tl.to(data.current.container, {
     opacity: 0.5,
@@ -63,12 +71,12 @@ function playMainTransition(data) {
     backgroundColor: "rgba(0, 0, 0, 0.5)",
   }, "0")
   // Animate next page in
-  .from(data.next.container, {
+  .to(data.next.container, {
     duration: 1,
-    y: "100vh",
-    x: "-50vw",
+    y: 0,
+    x: 0,
+    rotation: 0,
     ease: "power4.out",
-    rotation: -4,
   }, "0");
 
   return tl;
@@ -918,7 +926,6 @@ function setupBarbaTransitions() {
     transitions: [
       {
         name: "main-transition",
-        sync: true,
         enter(data) {
           // Lock page wrapper
           const pageWrapper = document.querySelector(".page-wrapper");
@@ -926,7 +933,7 @@ function setupBarbaTransitions() {
             gsap.set(pageWrapper, { overflow: "hidden" });
           }
           
-          // Position next page container
+          // Position next page container as fixed (Barba needs this for transitions)
           gsap.set(data.next.container, {
             position: "fixed",
             top: 0,
@@ -938,38 +945,36 @@ function setupBarbaTransitions() {
           // Play transition animation
           const tl = playMainTransition(data);
           
-          // Add reset callback at the end of the timeline
-          tl.call(() => {
-            // Scroll to top FIRST to prevent layout shift
-            window.scrollTo(0, 0);
-            
-            // Wait one frame before resetting position to ensure smooth transition
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                // Reset container position
-                gsap.set(data.next.container, { 
-                  position: "relative",
-                  zIndex: "auto",
-                  clearProps: "top,left,width"
-                });
-                
-                // Reset Webflow
-                resetWebflow(data);
-                
-                // Unlock page wrapper
-                if (pageWrapper) {
-                  gsap.set(pageWrapper, { overflow: "" });
-                }
-              });
-            });
-          }, null, ">"); // Add at the end of the timeline
-          
           return tl;
         },
         afterEnter(data) {
-          // Everything is already reset in the enter hook
-          // Just ensure scroll position is correct
-          window.scrollTo(0, 0);
+          // Wait a bit to ensure transition animation is completely finished
+          // Use requestAnimationFrame to ensure browser has painted
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              // Scroll to top first
+              window.scrollTo(0, 0);
+              
+              // Reset container position (this must happen after scroll)
+              gsap.set(data.next.container, {
+                position: "relative",
+                zIndex: "auto",
+                clearProps: "top,left,width"
+              });
+              
+              // Unlock page wrapper
+              const pageWrapper = document.querySelector(".page-wrapper");
+              if (pageWrapper) {
+                gsap.set(pageWrapper, { overflow: "" });
+              }
+              
+              // Reset Webflow LAST, after everything is reset
+              // This prevents Webflow re-render from causing visual jump
+              setTimeout(() => {
+                resetWebflow(data);
+              }, 100);
+            });
+          });
         },
         beforeLeave(data) {
           // Set flag to indicate we're transitioning
@@ -990,21 +995,23 @@ function setupBarbaTransitions() {
           // Reset transition flag
           isTransitioning = false;
           
-          // Wait for DOM to be ready and ensure transition is completely finished
-          // Use requestAnimationFrame to ensure the browser has painted the new page
-          requestAnimationFrame(() => {
+          // Wait longer to ensure all resets are complete before initializing animations
+          // This prevents the visual "jump" that looks like animation restarting
+          setTimeout(() => {
             requestAnimationFrame(() => {
-              // Initialize all animations
-              initProjectTemplateAnimations();
-              
-              // Refresh ScrollTrigger after a short delay to ensure DOM is ready
-              if (typeof ScrollTrigger !== 'undefined') {
-                setTimeout(() => {
-                  ScrollTrigger.refresh();
-                }, 100);
-              }
+              requestAnimationFrame(() => {
+                // Initialize all animations
+                initProjectTemplateAnimations();
+                
+                // Refresh ScrollTrigger after animations are initialized
+                if (typeof ScrollTrigger !== 'undefined') {
+                  setTimeout(() => {
+                    ScrollTrigger.refresh();
+                  }, 150);
+                }
+              });
             });
-          });
+          }, 200); // Wait 200ms to ensure all resets are done
         },
         afterLeave() {
           destroyProjectTemplateAnimations();

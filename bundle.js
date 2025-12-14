@@ -369,7 +369,14 @@ function initPixelateImageRenderEffect() {
   let renderSteps = 20;      // Più step per fluidità
   let renderColumns = 10;    // Blocchi iniziali
 
-  document.querySelectorAll('[data-pixelate-render]').forEach(setupPixelate);
+  const pixelateElements = document.querySelectorAll('[data-pixelate-render]');
+  console.log('🎨 Pixelate elements found:', pixelateElements.length);
+  
+  if (pixelateElements.length === 0) {
+    console.warn('⚠️ No pixelate elements found ([data-pixelate-render])');
+  }
+  
+  pixelateElements.forEach(setupPixelate);
 
   function setupPixelate(root) {
     const img = root.querySelector('[data-pixelate-render-img]');
@@ -640,23 +647,44 @@ function wrapWordsInSpan(element) {
 }
 
 function initScrollAnimations() {
+  console.log('📜 Initializing scroll animations...');
+  
   // Register ScrollTrigger plugin
   if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
     gsap.registerPlugin(ScrollTrigger);
+    console.log('✅ ScrollTrigger registered');
+  } else {
+    console.error('❌ GSAP or ScrollTrigger not loaded!');
+    return;
   }
 
   const paragraph = document.querySelector(".mwg_effect005 .paragraph");
   if (paragraph) {
+    console.log('✅ Paragraph found, wrapping words...');
     wrapWordsInSpan(paragraph);
+  } else {
+    console.warn('⚠️ Paragraph (.mwg_effect005 .paragraph) not found');
   }
 
   const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
   const container = document.querySelector(".mwg_effect005 .container");
   const words = document.querySelectorAll(".mwg_effect005 .word");
 
+  console.log('🔍 Elements check:', {
+    pinHeight: !!pinHeight,
+    container: !!container,
+    wordsCount: words.length
+  });
+
   if (!pinHeight || !container || !words.length) {
+    console.error('❌ Scroll animations: Missing required elements!');
+    if (!pinHeight) console.error('  - Missing: .mwg_effect005 .pin-height');
+    if (!container) console.error('  - Missing: .mwg_effect005 .container');
+    if (!words.length) console.error('  - Missing: .mwg_effect005 .word elements');
     return;
   }
+  
+  console.log('✅ All elements found, creating ScrollTriggers...');
 
   // --- 1. IL TRIGGER CHE BLOCCA (PIN) ---
   // Questo deve rimanere 'top top' per non lasciare spazi vuoti sopra
@@ -668,9 +696,11 @@ function initScrollAnimations() {
     scrub: true,
     // markers: true // Attivali per debuggare il PIN
   });
+  console.log('✅ Pin ScrollTrigger created');
 
   // --- 2. IL TRIGGER CHE ANIMA (MOVIMENTO) ---
   // Qui puoi decidere liberamente quando far partire l'animazione
+  gsap.set(words, { x: 50, opacity: 0 }); // Set initial state
   gsap.to(words, {
     x: 0,
     opacity: 1,
@@ -690,6 +720,8 @@ function initScrollAnimations() {
       // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
     }
   });
+  console.log('✅ Words animation ScrollTrigger created');
+  console.log('✅ Scroll animations initialized successfully');
 }
 
 function destroyScrollAnimations() {
@@ -725,6 +757,7 @@ function initProjectTemplateAnimations() {
   initScrollAnimations();
 
   // Initialize pixelate effect
+  console.log('🎨 Initializing pixelate effect...');
   initPixelateImageRenderEffect();
 
   // Initialize Three.js Sketch (planetary effect)

@@ -593,45 +593,39 @@ function destroyPixelateImageRenderEffect() {
 }
 
 let lenisInstance = null;
-let lenisTickerFunction = null;
 
 function initLenisSmoothScroll() {
   // Destroy existing instance if any
   destroyLenisSmoothScroll();
 
   if (typeof Lenis === 'undefined') {
-    console.warn('Lenis is not loaded');
+    console.warn('⚠️ Lenis is not loaded');
     return;
   }
 
   // Initialize a new Lenis instance for smooth scrolling
-  lenisInstance = new Lenis();
+  lenisInstance = new Lenis({
+    lerp: 0.1,
+    smooth: true,
+  });
 
   // Synchronize Lenis scrolling with GSAP's ScrollTrigger plugin
   lenisInstance.on('scroll', ScrollTrigger.update);
 
-  // Create ticker function with null check
-  lenisTickerFunction = (time) => {
+  // Create animation loop (as per Lenis documentation)
+  const loop = (time) => {
     if (lenisInstance) {
-      lenisInstance.raf(time * 1000); // Convert time from seconds to milliseconds
+      lenisInstance.raf(time);
     }
+    requestAnimationFrame(loop);
   };
+  requestAnimationFrame(loop);
 
-  // Add Lenis's requestAnimationFrame (raf) method to GSAP's ticker
-  gsap.ticker.add(lenisTickerFunction);
-
-  // Disable lag smoothing in GSAP to prevent any delay in scroll animations
-  gsap.ticker.lagSmoothing(0);
+  console.log('✅ Lenis smooth scroll initialized');
 }
 
 function destroyLenisSmoothScroll() {
-  // Remove ticker function first
-  if (lenisTickerFunction) {
-    gsap.ticker.remove(lenisTickerFunction);
-    lenisTickerFunction = null;
-  }
-
-  // Then destroy Lenis instance
+  // Destroy Lenis instance
   if (lenisInstance) {
     lenisInstance.destroy();
     lenisInstance = null;
@@ -686,9 +680,20 @@ function initScrollAnimations() {
   
   console.log('✅ All elements found, creating ScrollTriggers...');
 
+  // Set initial state for words
+  gsap.set(words, { x: 50, opacity: 0 });
+  
+  // Create animation timeline
+  const timeline = gsap.to(words, {
+    x: 0,
+    opacity: 1,
+    stagger: 0.02,
+    ease: 'power4.inOut',
+  });
+
   // --- 1. IL TRIGGER CHE BLOCCA (PIN) ---
   // Questo deve rimanere 'top top' per non lasciare spazi vuoti sopra
-  ScrollTrigger.create({
+  const pinInstance = ScrollTrigger.create({
     trigger: pinHeight,
     start: 'top top',     // Blocca in cima
     end: 'bottom bottom', // Sblocca alla fine
@@ -696,30 +701,20 @@ function initScrollAnimations() {
     scrub: true,
     // markers: true // Attivali per debuggare il PIN
   });
+  scrollTriggerInstances.push(pinInstance);
   console.log('✅ Pin ScrollTrigger created');
 
   // --- 2. IL TRIGGER CHE ANIMA (MOVIMENTO) ---
   // Qui puoi decidere liberamente quando far partire l'animazione
-  gsap.set(words, { x: 50, opacity: 0 }); // Set initial state
-  gsap.to(words, {
-    x: 0,
-    opacity: 1,
-    stagger: 0.02,
-    ease: 'power4.inOut',
-    scrollTrigger: {
-      trigger: pinHeight,
-      
-      // ORA PUOI MODIFICARE QUESTO SENZA ROMPERE IL LAYOUT!
-      // Esempio: Inizia quando l'elemento è ancora sotto (top 80% dello schermo)
-      start: 'top 70%',
-      
-      // Finisce quando il pin finisce (o prima, come preferisci)
-      end: 'bottom bottom',
-      
-      scrub: true,
-      // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
-    }
+  const animationInstance = ScrollTrigger.create({
+    animation: timeline,
+    trigger: pinHeight,
+    start: 'top 70%',
+    end: 'bottom bottom',
+    scrub: true,
+    // markers: true // Attivali per debuggare l'ANIMAZIONE
   });
+  scrollTriggerInstances.push(animationInstance);
   console.log('✅ Words animation ScrollTrigger created');
   console.log('✅ Scroll animations initialized successfully');
 }
@@ -891,67 +886,109 @@ function destroyAllAnimations() {
   }
 }
 
-const barbaConfig = {
-  preventRunning: true,
-  transitions: [
-    {
-      name: "main-transition",
-      sync: true,
-      enter: playMainTransition,
-    },
-  ],
-};
-
+// Store ScrollTrigger instances for cleanup
+let scrollTriggerInstances = [];
 
 function setupBarbaTransitions() {
-  // Hook: Before leaving current page
-  barba.hooks.beforeLeave(data => {
-    // Destroy animations from current page
-    destroyAllAnimations();
+  // Initialize Barba with Views (recommended way)
+  barba.init({
+    preventRunning: true,
+    transitions: [
+      {
+        name: "main-transition",
+        sync: true,
+        enter(data) {
+          // Lock page wrapper
+          const pageWrapper = document.querySelector(".page-wrapper");
+          if (pageWrapper) {
+            gsap.set(pageWrapper, { overflow: "hidden" });
+          }
+          
+          // Position next page container
+          gsap.set(data.next.container, {
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+          });
+          
+          // Play transition animation
+          return playMainTransition(data);
+        },
+        afterEnter(data) {
+          console.log('✅ Transition afterEnter - page transition completed');
+          
+          // Reset container position
+          gsap.set(data.next.container, { position: "relative" });
+          
+          // Scroll to top
+          window.scrollTo(0, 0);
+          
+          // Reset Webflow
+          resetWebflow(data);
+        },
+        beforeLeave(data) {
+          // Destroy animations from current page
+          console.log('🧹 Cleaning up animations before leaving...');
+          destroyAllAnimations();
+        }
+      },
+    ],
+    views: [
+      {
+        namespace: 'project-template',
+        beforeEnter() {
+          console.log('🎯 project-template beforeEnter');
+          // Clean up any existing ScrollTriggers
+          if (typeof ScrollTrigger !== 'undefined') {
+            scrollTriggerInstances.forEach(instance => {
+              if (instance && instance.kill) {
+                instance.kill();
+              }
+            });
+            scrollTriggerInstances = [];
+            ScrollTrigger.getAll().forEach(trigger => {
+              try {
+                trigger.kill();
+              } catch (e) {
+                // Ignore errors
+              }
+            });
+          }
+        },
+        afterEnter() {
+          console.log('🎯 project-template afterEnter - initializing animations...');
+          
+          // Wait for DOM to be ready
+          requestAnimationFrame(() => {
+            setTimeout(() => {
+              // Refresh ScrollTrigger before initializing
+              if (typeof ScrollTrigger !== 'undefined') {
+                ScrollTrigger.refresh();
+              }
+              
+              // Initialize all animations
+              initProjectTemplateAnimations();
+              
+              // Force ScrollTrigger refresh after initializing
+              if (typeof ScrollTrigger !== 'undefined') {
+                setTimeout(() => {
+                  ScrollTrigger.refresh();
+                }, 100);
+                setTimeout(() => {
+                  ScrollTrigger.refresh();
+                }, 300);
+              }
+            }, 200);
+          });
+        },
+        afterLeave() {
+          console.log('🧹 project-template afterLeave - destroying animations...');
+          destroyProjectTemplateAnimations();
+        }
+      }
+    ]
   });
-
-  // Hook: Before entering new page
-  barba.hooks.enter(data => {
-    // Lock page wrapper
-    const pageWrapper = document.querySelector(".page-wrapper");
-    if (pageWrapper) {
-      gsap.set(pageWrapper, { overflow: "hidden" });
-    }
-    
-    // Position next page container
-    gsap.set(data.next.container, {
-      position: "fixed",
-      top: 0,
-      left: 0,
-      width: "100%",
-    });
-  });
-
-  // Hook: After page transition completes
-  barba.hooks.after(data => {
-    console.log('✅ Barba after hook - page transition completed');
-    
-    // Reset container position
-    gsap.set(data.next.container, { position: "relative" });
-    
-    // Scroll to top
-    window.scrollTo(0, 0);
-    
-    // Reset Webflow
-    resetWebflow(data);
-    
-    // Initialize page-specific animations
-    const namespace = data.next.container.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
-    console.log('🔍 Namespace found:', namespace);
-    if (namespace) {
-      initPageAnimations(namespace);
-    } else {
-      console.warn('⚠️ No namespace found in new page');
-    }
-  });
-
-  // Initialize Barba with configuration
-  barba.init(barbaConfig);
 }
 
 // Initialize on DOM ready

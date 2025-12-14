@@ -99,6 +99,17 @@ class Sketch {
       return;
     }
     
+    // Clean up any existing canvas in the container before adding new one
+    const existingCanvas = this.container.querySelector('canvas');
+    if (existingCanvas) {
+      console.log('🧹 Removing existing canvas from container');
+      try {
+        this.container.removeChild(existingCanvas);
+      } catch (e) {
+        // Canvas might already be removed
+      }
+    }
+    
     this.images = JSON.parse(this.container.getAttribute('data-images'));
     this.width = this.container.offsetWidth;
     this.height = this.container.offsetHeight;
@@ -348,35 +359,66 @@ class Sketch {
   }
 
   destroy() {
+    console.log('🧹 Destroying Sketch instance...');
     this.stop();
+    
+    // Remove event listeners
     if (this.clicker && this.nextHandler) {
       this.clicker.removeEventListener('click', this.nextHandler);
+      this.nextHandler = null;
     }
     if (this.clicker2 && this.prevHandler) {
       this.clicker2.removeEventListener('click', this.prevHandler);
+      this.prevHandler = null;
     }
     if (this.resizeHandler) {
       window.removeEventListener("resize", this.resizeHandler);
+      this.resizeHandler = null;
     }
+    
+    // Remove canvas from DOM first
+    if (this.container && this.renderer && this.renderer.domElement) {
+      try {
+        if (this.renderer.domElement.parentNode === this.container) {
+          this.container.removeChild(this.renderer.domElement);
+          console.log('✅ Canvas removed from container');
+        }
+      } catch (e) {
+        console.warn('⚠️ Error removing canvas:', e);
+      }
+    }
+    
+    // Dispose Three.js resources
     if (this.renderer) {
       this.renderer.dispose();
+      this.renderer = null;
     }
     if (this.material) {
       this.material.dispose();
+      this.material = null;
     }
     if (this.geometry) {
       this.geometry.dispose();
+      this.geometry = null;
     }
     if (this.textures) {
-      this.textures.forEach(texture => texture.dispose());
+      this.textures.forEach(texture => {
+        if (texture && texture.dispose) {
+          texture.dispose();
+        }
+      });
+      this.textures = [];
     }
-    if (this.container && this.renderer && this.renderer.domElement) {
-      try {
-        this.container.removeChild(this.renderer.domElement);
-      } catch (e) {
-        // Element might already be removed
+    
+    // Clear scene
+    if (this.scene) {
+      while(this.scene.children.length > 0) {
+        this.scene.remove(this.scene.children[0]);
       }
+      this.scene = null;
     }
+    
+    console.log('✅ Sketch instance destroyed');
   }
 }
 
@@ -886,6 +928,19 @@ function initProjectTemplateAnimations() {
   // Initialize Three.js Sketch (planetary effect)
   const sliderContainer = document.getElementById("slider");
   if (sliderContainer) {
+    // Clean up container before creating new instance
+    const existingCanvases = sliderContainer.querySelectorAll('canvas');
+    if (existingCanvases.length > 0) {
+      console.log('🧹 Cleaning up', existingCanvases.length, 'existing canvas(es) from slider container');
+      existingCanvases.forEach(canvas => {
+        try {
+          sliderContainer.removeChild(canvas);
+        } catch (e) {
+          // Ignore errors
+        }
+      });
+    }
+    
     console.log('✅ Slider container found, initializing Sketch...');
     sketchInstance = new Sketch({
       debug: false,

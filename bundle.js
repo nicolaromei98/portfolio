@@ -734,9 +734,9 @@ function initScrollAnimations() {
       
       scrub: true,
       onLeave: () => {
-        // Quando esci dalla zona di animazione scrollando avanti, mantieni lo stato finale
-        // Questo previene che le words spariscono quando ScrollTrigger rimuove le proprietà inline
-        gsap.set(words, { x: 0, opacity: 1, clearProps: "none" });
+        // Quando esci scrollando avanti, mantieni lo stato finale (opacity: 1)
+        // Questo previene che le words spariscono quando ScrollTrigger potrebbe rimuovere le proprietà inline
+        gsap.set(words, { opacity: 1, x: 0 });
       },
       // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
     }

@@ -740,17 +740,6 @@ function initScrollAnimations() {
   
   console.log('✅ All elements found, creating ScrollTriggers...');
 
-  // Set initial state for words
-  gsap.set(words, { x: 50, opacity: 0 });
-  
-  // Create animation timeline
-  const timeline = gsap.to(words, {
-    x: 0,
-    opacity: 1,
-    stagger: 0.02,
-    ease: 'power4.inOut',
-  });
-
   // --- 1. IL TRIGGER CHE BLOCCA (PIN) ---
   // Questo deve rimanere 'top top' per non lasciare spazi vuoti sopra
   const pinInstance = ScrollTrigger.create({
@@ -766,15 +755,31 @@ function initScrollAnimations() {
 
   // --- 2. IL TRIGGER CHE ANIMA (MOVIMENTO) ---
   // Qui puoi decidere liberamente quando far partire l'animazione
-  const animationInstance = ScrollTrigger.create({
-    animation: timeline,
-    trigger: pinHeight,
-    start: 'top 70%',
-    end: 'bottom bottom',
-    scrub: true,
-    // markers: true // Attivali per debuggare l'ANIMAZIONE
+  const animationTween = gsap.to(words, {
+    x: 0,
+    opacity: 1,
+    stagger: 0.02,
+    ease: 'power4.inOut',
+    scrollTrigger: {
+      trigger: pinHeight,
+      
+      // ORA PUOI MODIFICARE QUESTO SENZA ROMPERE IL LAYOUT!
+      // Esempio: Inizia quando l'elemento è ancora sotto (top 80% dello schermo)
+      start: 'top 70%',
+      
+      // Finisce quando il pin finisce (o prima, come preferisci)
+      end: 'bottom bottom',
+      
+      scrub: true,
+      // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
+    }
   });
-  scrollTriggerInstances.push(animationInstance);
+  
+  // Store the ScrollTrigger instance from the animation
+  if (animationTween && animationTween.scrollTrigger) {
+    scrollTriggerInstances.push(animationTween.scrollTrigger);
+  }
+  
   console.log('✅ Words animation ScrollTrigger created');
   console.log('✅ Scroll animations initialized successfully');
 }

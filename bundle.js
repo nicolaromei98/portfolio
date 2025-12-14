@@ -673,6 +673,94 @@ function destroyLenisSmoothScroll() {
   }
 }
 
+function wrapWordsInSpan(element) {
+  const text = element.textContent;
+  element.innerHTML = text
+    .split(' ')
+    .map(word => `<span class="word">${word}</span>`)
+    .join(' ');
+}
+
+function initScrollAnimations() {
+  // Register ScrollTrigger plugin
+  if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
+    gsap.registerPlugin(ScrollTrigger);
+  } else {
+    return;
+  }
+
+  const paragraph = document.querySelector(".mwg_effect005 .paragraph");
+  if (paragraph) {
+    wrapWordsInSpan(paragraph);
+  }
+
+  const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
+  const container = document.querySelector(".mwg_effect005 .container");
+  const words = document.querySelectorAll(".mwg_effect005 .word");
+
+  if (!pinHeight || !container || !words.length) {
+    return;
+  }
+
+  // --- 1. IL TRIGGER CHE BLOCCA (PIN) ---
+  // Questo deve rimanere 'top top' per non lasciare spazi vuoti sopra
+  ScrollTrigger.create({
+    trigger: pinHeight,
+    start: 'top top',     // Blocca in cima
+    end: 'bottom bottom', // Sblocca alla fine
+    pin: container,       // Cosa bloccare
+    scrub: true,
+    // markers: true // Attivali per debuggare il PIN
+  });
+
+  // --- 2. IL TRIGGER CHE ANIMA (MOVIMENTO) ---
+  // Qui puoi decidere liberamente quando far partire l'animazione
+  // Il CSS già definisce lo stato iniziale con transform: translate(calc(100vw - 25px), 0) e opacity: 0
+  // GSAP animerà da quello stato verso x: 0, opacity: 1
+  gsap.to(words, {
+    x: 0,
+    opacity: 1,
+    stagger: 0.02,
+    ease: 'power4.inOut',
+    scrollTrigger: {
+      trigger: pinHeight,
+      
+      // ORA PUOI MODIFICARE QUESTO SENZA ROMPERE IL LAYOUT!
+      // Esempio: Inizia quando l'elemento è ancora sotto (top 80% dello schermo)
+      start: 'top 70%',
+      
+      // Finisce quando il pin finisce (o prima, come preferisci)
+      end: 'bottom bottom',
+      
+      scrub: true,
+      // Assicurati che le proprietà inline rimangano anche dopo l'animazione
+      onLeave: () => {
+        // Quando esci dalla zona di scroll (scrollando avanti), mantieni lo stato finale
+        gsap.set(words, { x: 0, opacity: 1, clearProps: "none" });
+      },
+      // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
+    }
+  });
+}
+
+function destroyScrollAnimations() {
+  // Kill all ScrollTriggers related to mwg_effect005
+  if (typeof ScrollTrigger !== 'undefined') {
+    ScrollTrigger.getAll().forEach(trigger => {
+      try {
+        if (trigger.vars && trigger.vars.trigger) {
+          const triggerEl = trigger.vars.trigger;
+          if (triggerEl && triggerEl.closest && triggerEl.closest('.mwg_effect005')) {
+            trigger.kill();
+          }
+        }
+      } catch (e) {
+        // If trigger is already destroyed, continue
+      }
+    });
+    ScrollTrigger.refresh();
+  }
+}
 
 function initGlobalParallax() {
   // Destroy existing parallax context
@@ -777,6 +865,9 @@ function initProjectTemplateAnimations() {
   // Initialize global parallax
   initGlobalParallax();
 
+  // Initialize scroll animations (words effect)
+  initScrollAnimations();
+
   // Initialize pixelate effect
   initPixelateImageRenderEffect();
 
@@ -852,6 +943,9 @@ function destroyProjectTemplateAnimations() {
 
   // Destroy pixelate effects
   destroyPixelateImageRenderEffect();
+
+  // Destroy scroll animations (words effect)
+  destroyScrollAnimations();
 
   // Destroy parallax
   destroyGlobalParallax();

@@ -703,6 +703,9 @@ function initScrollAnimations() {
     return;
   }
 
+  // Imposta l'opacità iniziale a 0 (gestita da GSAP, non dal CSS)
+  gsap.set(words, { opacity: 0 });
+
   // --- 1. IL TRIGGER CHE BLOCCA (PIN) ---
   // Questo deve rimanere 'top top' per non lasciare spazi vuoti sopra
   const pinInstance = ScrollTrigger.create({
@@ -733,11 +736,6 @@ function initScrollAnimations() {
       end: 'bottom bottom',
       
       scrub: true,
-      onLeave: () => {
-        // Quando esci scrollando avanti, mantieni lo stato finale (opacity: 1)
-        // Questo previene che le words spariscono quando ScrollTrigger potrebbe rimuovere le proprietà inline
-        gsap.set(words, { opacity: 1, x: 0 });
-      },
       // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
     }
   });

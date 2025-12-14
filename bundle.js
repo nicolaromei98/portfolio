@@ -698,52 +698,59 @@ function initScrollAnimations() {
     return;
   }
 
-  const paragraph = document.querySelector(".mwg_effect005 .paragraph");
-  if (paragraph) {
-    wrapWordsInSpan(paragraph);
-  }
-
-  const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
-  const container = document.querySelector(".mwg_effect005 .container");
-  const words = document.querySelectorAll(".mwg_effect005 .word");
-
-  if (!pinHeight || !container || !words.length) {
-    return;
-  }
-
-  // --- 1. IL TRIGGER CHE BLOCCA (PIN) ---
-  // Questo deve rimanere 'top top' per non lasciare spazi vuoti sopra
-  ScrollTrigger.create({
-    trigger: pinHeight,
-    start: 'top top',     // Blocca in cima
-    end: 'bottom bottom', // Sblocca alla fine
-    pin: container,       // Cosa bloccare
-    scrub: true,
-    // markers: true // Attivali per debuggare il PIN
-  });
-
-  // --- 2. IL TRIGGER CHE ANIMA (MOVIMENTO) ---
-  // Qui puoi decidere liberamente quando far partire l'animazione
-  gsap.to(words, {
-    x: 0,
-    opacity: 1,
-    stagger: 0.02,
-    ease: 'power4.inOut',
-    scrollTrigger: {
-      trigger: pinHeight,
-      
-      // ORA PUOI MODIFICARE QUESTO SENZA ROMPERE IL LAYOUT!
-      // Esempio: Inizia quando l'elemento è ancora sotto (top 80% dello schermo)
-      start: 'top 70%',
-      
-      // Finisce quando il pin finisce (o prima, come preferisci)
-      end: 'bottom bottom',
-      
-      scrub: true,
-      invalidateOnRefresh: true, // Ricalcola quando ScrollTrigger viene refreshato
-      // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
+  // Wait a bit to ensure DOM is completely ready (especially after Barba transitions)
+  setTimeout(() => {
+    const paragraph = document.querySelector(".mwg_effect005 .paragraph");
+    if (paragraph) {
+      wrapWordsInSpan(paragraph);
     }
-  });
+
+    const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
+    const container = document.querySelector(".mwg_effect005 .container");
+    const words = document.querySelectorAll(".mwg_effect005 .word");
+
+    if (!pinHeight || !container || !words.length) {
+      return;
+    }
+
+    // --- 1. IL TRIGGER CHE BLOCCA (PIN) ---
+    // Questo deve rimanere 'top top' per non lasciare spazi vuoti sopra
+    ScrollTrigger.create({
+      trigger: pinHeight,
+      start: 'top top',     // Blocca in cima
+      end: 'bottom bottom', // Sblocca alla fine
+      pin: container,       // Cosa bloccare
+      scrub: true,
+      // markers: true // Attivali per debuggare il PIN
+    });
+
+    // --- 2. IL TRIGGER CHE ANIMA (MOVIMENTO) ---
+    // Qui puoi decidere liberamente quando far partire l'animazione
+    gsap.to(words, {
+      x: 0,
+      opacity: 1,
+      stagger: 0.02,
+      ease: 'power4.inOut',
+      scrollTrigger: {
+        trigger: pinHeight,
+        
+        // ORA PUOI MODIFICARE QUESTO SENZA ROMPERE IL LAYOUT!
+        // Esempio: Inizia quando l'elemento è ancora sotto (top 80% dello schermo)
+        start: 'top 70%',
+        
+        // Finisce quando il pin finisce (o prima, come preferisci)
+        end: 'bottom bottom',
+        
+        scrub: true,
+        // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
+      }
+    });
+
+    // Refresh ScrollTrigger after creating triggers
+    if (typeof ScrollTrigger !== 'undefined') {
+      ScrollTrigger.refresh();
+    }
+  }, 100);
 }
 
 function destroyScrollAnimations() {
@@ -870,11 +877,6 @@ function initProjectTemplateAnimations() {
 
   // Initialize scroll animations (words effect)
   initScrollAnimations();
-
-  // Refresh ScrollTrigger immediately after initializing scroll animations
-  if (typeof ScrollTrigger !== 'undefined') {
-    ScrollTrigger.refresh();
-  }
 
   // Initialize pixelate effect
   initPixelateImageRenderEffect();
@@ -1096,14 +1098,11 @@ function setupBarbaTransitions() {
                 // Initialize all animations
                 initProjectTemplateAnimations();
                 
-                // Refresh ScrollTrigger immediately after initializing
+                // Refresh ScrollTrigger after animations are initialized
                 if (typeof ScrollTrigger !== 'undefined') {
-                  ScrollTrigger.refresh();
-                  
-                  // Additional refresh after a short delay to ensure everything is calculated
                   setTimeout(() => {
                     ScrollTrigger.refresh();
-                  }, 200);
+                  }, 150);
                 }
               });
             });

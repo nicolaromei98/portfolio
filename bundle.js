@@ -726,7 +726,21 @@ function initScrollAnimations() {
 
     // --- 2. IL TRIGGER CHE ANIMA (MOVIMENTO) ---
     // Qui puoi decidere liberamente quando far partire l'animazione
-    gsap.to(words, {
+    // Usa fromTo per definire esplicitamente lo stato iniziale e finale
+    // Lo stato iniziale corrisponde al CSS: transform: translate(calc(100vw - 25px), 0); opacity: 0;
+    const startX = window.innerWidth - 25; // Corrisponde a calc(100vw - 25px)
+    
+    // Imposta lo stato iniziale esplicitamente (sovrascrive il CSS)
+    gsap.set(words, {
+      x: startX,
+      opacity: 0,
+      clearProps: "none"
+    });
+    
+    gsap.fromTo(words, {
+      x: startX,
+      opacity: 0
+    }, {
       x: 0,
       opacity: 1,
       stagger: 0.02,
@@ -742,6 +756,23 @@ function initScrollAnimations() {
         end: 'bottom bottom',
         
         scrub: true,
+        // Mantieni le proprietà inline anche dopo l'animazione
+        onUpdate: (self) => {
+          // Quando l'animazione raggiunge il 100%, forza le proprietà inline a rimanere
+          if (self.progress >= 1) {
+            gsap.set(words, { x: 0, opacity: 1, clearProps: "none" });
+          } else if (self.progress <= 0) {
+            gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
+          }
+        },
+        onLeave: () => {
+          // Quando esci dalla zona di scroll (scrollando avanti), mantieni lo stato finale
+          gsap.set(words, { x: 0, opacity: 1, clearProps: "none" });
+        },
+        onLeaveBack: () => {
+          // Quando esci dalla zona di scroll (scrollando indietro), mantieni lo stato iniziale
+          gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
+        },
         // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
       }
     });

@@ -376,30 +376,15 @@ class Sketch {
       this.resizeHandler = null;
     }
     
-    // Remove canvas from DOM first (critical for cleanup)
-    if (this.renderer && this.renderer.domElement) {
+    // Remove canvas from DOM first
+    if (this.container && this.renderer && this.renderer.domElement) {
       try {
-        const canvas = this.renderer.domElement;
-        if (canvas.parentNode) {
-          canvas.parentNode.removeChild(canvas);
+        if (this.renderer.domElement.parentNode === this.container) {
+          this.container.removeChild(this.renderer.domElement);
         }
       } catch (e) {
         // Ignore errors
       }
-    }
-    
-    // Also clean up container to ensure no leftover canvases
-    if (this.container) {
-      const existingCanvases = this.container.querySelectorAll('canvas');
-      existingCanvases.forEach(canvas => {
-        try {
-          if (canvas.parentNode === this.container) {
-            this.container.removeChild(canvas);
-          }
-        } catch (e) {
-          // Ignore errors
-        }
-      });
     }
     
     // Dispose Three.js resources
@@ -431,12 +416,6 @@ class Sketch {
       }
       this.scene = null;
     }
-    
-    // Clear references
-    this.container = null;
-    this.camera = null;
-    this.clicker = null;
-    this.clicker2 = null;
   }
 }
 
@@ -809,12 +788,6 @@ function initProjectTemplateAnimations() {
   initPixelateImageRenderEffect();
 
   // Initialize Three.js Sketch (planetary effect)
-  // First, destroy any existing instance
-  if (sketchInstance) {
-    sketchInstance.destroy();
-    sketchInstance = null;
-  }
-  
   const sliderContainer = document.getElementById("slider");
   if (sliderContainer) {
     // Clean up container before creating new instance
@@ -829,9 +802,7 @@ function initProjectTemplateAnimations() {
       });
     }
     
-    // Wait a frame to ensure cleanup is complete
-    requestAnimationFrame(() => {
-      sketchInstance = new Sketch({
+    sketchInstance = new Sketch({
       debug: false,
       uniforms: {
         intensity: { value: 1, type: 'f', min: 0., max: 3 }
@@ -875,7 +846,6 @@ function initProjectTemplateAnimations() {
           gl_FragColor = mix(t1, t2, progress);
         }
       `
-      });
     });
   }
 }
@@ -901,23 +871,6 @@ function destroyProjectTemplateAnimations() {
 // REMOVED: destroyAllAnimations() - Conflicts with destroyProjectTemplateAnimations()
 
 function setupBarbaTransitions() {
-  // Check if Barba wrapper exists
-  const barbaContainer = document.querySelector('[data-barba="container"]');
-  if (!barbaContainer && typeof barba !== 'undefined') {
-    console.warn('⚠️ Barba: No container found with data-barba="container". Barba transitions will not work.');
-    // Initialize animations without Barba for initial page load
-    const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
-    if (namespace === 'project-template') {
-      setTimeout(() => {
-        initProjectTemplateAnimations();
-        if (typeof ScrollTrigger !== 'undefined') {
-          ScrollTrigger.refresh();
-        }
-      }, 300);
-    }
-    return;
-  }
-  
   // Initialize Barba with Views (recommended way)
   barba.init({
     preventRunning: true,
@@ -1000,21 +953,15 @@ function setupBarbaTransitions() {
                 // Initialize all animations (ONLY ONCE here)
                 initProjectTemplateAnimations();
                 
-                // Refresh ScrollTrigger after animations are initialized (multiple refreshes for Webflow)
+                // Refresh ScrollTrigger after animations are initialized
                 if (typeof ScrollTrigger !== 'undefined') {
                   setTimeout(() => {
                     ScrollTrigger.refresh();
-                  }, 100);
-                  setTimeout(() => {
-                    ScrollTrigger.refresh();
-                  }, 300);
-                  setTimeout(() => {
-                    ScrollTrigger.refresh();
-                  }, 500);
+                  }, 150);
                 }
               });
             });
-          }, 300); // Increased delay for Webflow
+          }, 200);
         },
         afterLeave() {
           // Clean up when leaving the namespace
@@ -1042,19 +989,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!isTransitioning) {
         initProjectTemplateAnimations();
         if (typeof ScrollTrigger !== 'undefined') {
-          // Multiple refreshes for Webflow to ensure everything is calculated
-          setTimeout(() => {
-            ScrollTrigger.refresh();
-          }, 100);
-          setTimeout(() => {
-            ScrollTrigger.refresh();
-          }, 300);
-          setTimeout(() => {
-            ScrollTrigger.refresh();
-          }, 500);
+          ScrollTrigger.refresh();
         }
       }
-    }, 500); // Longer delay for Webflow
+    }, 400); // Slightly longer delay to ensure Barba is set up
   }
 });
 

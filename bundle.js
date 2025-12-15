@@ -689,6 +689,8 @@ function destroyLenisSmoothScroll() {
 
 // ================== mwg_effect005 EFFECT ==================
 function wrapWordsInSpan(element) {
+  // Prevent double-wrapping if already processed
+  if (element.querySelector('.word')) return;
   const text = (element.textContent || "").trim();
   element.innerHTML = text
     .split(/\s+/)
@@ -756,9 +758,6 @@ function destroyMWGEffect005() {
   });
   // Clean inline styles and wrapping flag
   const paragraph = document.querySelector(".mwg_effect005 .paragraph");
-  if (paragraph && paragraph.dataset.wrapped) {
-    paragraph.removeAttribute("data-wrapped");
-  }
   const words = document.querySelectorAll(".mwg_effect005 .word");
   if (words.length) {
     gsap.set(words, { clearProps: "all" });

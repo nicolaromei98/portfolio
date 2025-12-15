@@ -55,34 +55,38 @@ function resetWebflow(data) {
 function playMainTransition(data) {
   // New transition:
   // - The new page overlaps the old one.
-  // - The old page is pushed slightly upward, scaled down, blurred.
-  // - Custom cubic-bezier ease, duration ~0.9s.
+  // - The old page is pushed upward with yPercent, scaled, blurred.
+  // - Ease: cubic-bezier(0.6, 0.08, 0.02, 0.99), duration 0.9s.
   const tl = gsap.timeline();
 
   // Prepare next container
   gsap.set(data.next.container, {
-    y: "100vh",
+    yPercent: 100,
     x: 0,
     rotation: 0,
     opacity: 1,
+    filter: "blur(0px)",
+    scale: 1,
   });
 
   tl.to(data.current.container, {
-    y: "-12vh",
+    yPercent: -50,
     x: 0,
     rotation: 0,
     scale: 0.9,
     filter: "blur(10px)",
     opacity: 0.6,
-    ease: "cubic-bezier(0.81, -0.003, 0.34, 1)",
+    ease: "cubic-bezier(0.6, 0.08, 0.02, 0.99)",
     duration: 0.9,
   }, 0)
   .to(data.next.container, {
-    y: "0vh",
+    yPercent: 0,
     x: 0,
     rotation: 0,
     opacity: 1,
-    ease: "cubic-bezier(0.81, -0.003, 0.34, 1)",
+    filter: "blur(0px)",
+    scale: 1,
+    ease: "cubic-bezier(0.6, 0.08, 0.02, 0.99)",
     duration: 0.9,
   }, 0);
 

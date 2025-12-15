@@ -53,35 +53,30 @@ function resetWebflow(data) {
 
 
 function playMainTransition(data) {
-  // New transition:
-  // - The new page overlaps the old one.
-  // - The old page is pushed upward with yPercent.
-  // - Ease: cubic-bezier(0.6, 0.08, 0.02, 0.99), duration 0.9s.
+  // Slide-like Y transition:
+  // - current slides up by 100% and its inner by 50% (parallax feel)
+  // - next slides in from 100% to 0%, inner from -50% to 0%
+  // - easing: cubic-bezier(0.6, 0.08, 0.02, 0.99), duration: 0.9s
   const tl = gsap.timeline();
 
+  const currentContainer = data.current.container;
+  const nextContainer = data.next.container;
+
   // Prepare next container
-  gsap.set(data.next.container, {
+  gsap.set(nextContainer, {
     yPercent: 100,
-    x: 0,
-    rotation: 0,
-    opacity: 1,
+    opacity: 1
   });
 
-  tl.to(data.current.container, {
-    yPercent: -50,
-    x: 0,
-    rotation: 0,
-    opacity: 0.6,
+  tl.to(currentContainer, {
+    yPercent: -100,
     ease: "cubic-bezier(0.6, 0.08, 0.02, 0.99)",
-    duration: 0.9,
+    duration: 0.9
   }, 0)
-  .to(data.next.container, {
+  .to(nextContainer, {
     yPercent: 0,
-    x: 0,
-    rotation: 0,
-    opacity: 1,
     ease: "cubic-bezier(0.6, 0.08, 0.02, 0.99)",
-    duration: 0.9,
+    duration: 0.9
   }, 0);
 
   return tl;

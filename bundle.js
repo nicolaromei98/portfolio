@@ -53,31 +53,24 @@ function resetWebflow(data) {
 
 
 function playMainTransition(data) {
-  // Overlap cut effect:
-  // - the new page cuts in from below (yPercent 100 -> 0)
-  // - the old page moves up much less (yPercent 0 -> -30)
-  // - easing: cubic-bezier(0.6, 0.08, 0.02, 0.99)
-  // - slower animation for clarity
   const tl = gsap.timeline();
 
-  const currentContainer = data.current.container;
-  const nextContainer = data.next.container;
-
-  // Prepare next container
-  gsap.set(nextContainer, {
+  // Prepare next page: start from bottom (100%) for forward navigation
+  gsap.set(data.next.container, {
     yPercent: 100,
     opacity: 1
   });
 
-  tl.to(currentContainer, {
-    yPercent: -30,
-    ease: "cubic-bezier(0.6, 0.08, 0.02, 0.99)",
-    duration: 1.4
+  // Wipe: current up, next up from bottom
+  tl.to(data.current.container, {
+    yPercent: -100,
+    ease: "power4.inOut",
+    duration: 0.9
   }, 0)
-  .to(nextContainer, {
+  .to(data.next.container, {
     yPercent: 0,
-    ease: "cubic-bezier(0.6, 0.08, 0.02, 0.99)",
-    duration: 1.4
+    ease: "power4.inOut",
+    duration: 0.9
   }, 0);
 
   return tl;

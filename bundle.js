@@ -682,11 +682,14 @@ function destroyLenisSmoothScroll() {
 
 /* ================== mwg_effect005 EFFECT ================== */
 function wrapWordsInSpan(element) {
+  // Avoid double wrapping
+  if (element.dataset.wrapped === "true") return;
   const text = (element.textContent || "").trim();
   element.innerHTML = text
     .split(/\s+/)
     .map((word) => `<span class="word">${word}</span>`)
     .join(" ");
+  element.dataset.wrapped = "true";
 }
 
 function initMWGEffect005() {
@@ -750,6 +753,9 @@ function initMWGEffect005() {
       // markers: true
     }
   });
+
+  // Ensure ScrollTrigger recalculates
+  ScrollTrigger.refresh();
 }
 
 function destroyMWGEffect005() {
@@ -773,6 +779,16 @@ function destroyMWGEffect005() {
       // Ignore errors
     }
   });
+
+  // Clear inline styles and wrapped flag so it can be re-initialized cleanly
+  const paragraph = document.querySelector(".mwg_effect005 .paragraph");
+  if (paragraph && paragraph.dataset.wrapped) {
+    paragraph.removeAttribute("data-wrapped");
+  }
+  const words = document.querySelectorAll(".mwg_effect005 .word");
+  if (words.length) {
+    gsap.set(words, { clearProps: "all" });
+  }
 
   ScrollTrigger.refresh();
 }
@@ -1063,7 +1079,7 @@ function setupBarbaTransitions() {
                 }
               });
             });
-          }, 200);
+          }, 300);
         },
         afterLeave() {
           // Clean up when leaving the namespace

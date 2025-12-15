@@ -37,9 +37,16 @@ function resetWebflow(data) {
   document.querySelector("html").setAttribute("data-wf-page", webflowPageId);
 
   if (window.Webflow) {
-    window.Webflow.destroy();
-    window.Webflow.ready();
-    window.Webflow.require("ix2").init();
+    try {
+      window.Webflow.destroy();
+      window.Webflow.ready();
+      const ix2 = window.Webflow.require && window.Webflow.require("ix2");
+      if (ix2 && typeof ix2.init === "function") {
+        ix2.init();
+      }
+    } catch (e) {
+      // Silently ignore if Webflow is not fully available
+    }
   }
 }
 

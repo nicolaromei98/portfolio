@@ -55,7 +55,7 @@ function resetWebflow(data) {
 function playMainTransition(data) {
   const tl = gsap.timeline();
 
-  // Prepare next page above the current one
+  // Set initial state of next page explicitly (overlapping the outgoing)
   gsap.set(data.next.container, {
     position: "fixed",
     top: 0,
@@ -63,20 +63,27 @@ function playMainTransition(data) {
     width: "100%",
     zIndex: 2,
     yPercent: 100,
-    opacity: 1
+    opacity: 1,
   });
 
-  // Overlap: current moves up only -30%, next slides in from bottom
-  tl.to(data.current.container, {
-    yPercent: -30,
-    ease: "power4.inOut",
-    duration: 0.9
-  }, 0)
-  .to(data.next.container, {
-    yPercent: 0,
-    ease: "power4.inOut",
-    duration: 0.9
-  }, 0);
+  // Overlap: current moves up -30%, next slides in from bottom
+  tl.to(
+    data.current.container,
+    {
+      yPercent: -30,
+      ease: "power2.inOut",
+      duration: 0.9,
+    },
+    0
+  ).to(
+    data.next.container,
+    {
+      yPercent: 0,
+      ease: "power2.inOut",
+      duration: 0.9,
+    },
+    0
+  );
 
   return tl;
 }

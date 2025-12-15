@@ -741,6 +741,9 @@ function initMWGEffect005() {
         // markers: true
       }
     });
+
+    // Refresh to ensure triggers are active after creation
+    ScrollTrigger.refresh && ScrollTrigger.refresh();
   } else {
     console.log("[mwg_effect005] init: missing elements", {
       pinHeight: !!pinHeight,
@@ -754,11 +757,13 @@ function destroyMWGEffect005() {
   if (typeof ScrollTrigger === 'undefined') {
     return;
   }
+  let killed = 0;
   ScrollTrigger.getAll().forEach((st) => {
     try {
       const t = st.vars && st.vars.trigger;
       if (t && t.closest && t.closest(".mwg_effect005")) {
         st.kill();
+        killed += 1;
       }
     } catch (e) {
       // ignore
@@ -769,7 +774,7 @@ function destroyMWGEffect005() {
   const words = document.querySelectorAll(".mwg_effect005 .word");
   if (words.length) {
     gsap.set(words, { clearProps: "all" });
-    console.log("[mwg_effect005] destroy: cleared words styles", words.length);
+    console.log("[mwg_effect005] destroy: cleared words styles", words.length, "triggers killed", killed);
   }
   ScrollTrigger.refresh && ScrollTrigger.refresh();
 }
@@ -871,9 +876,6 @@ function destroyGlobalParallax() {
 }
 
 function initProjectTemplateAnimations() {
-  // Clean any leftover words effect triggers/styles before re-init
-  destroyMWGEffect005();
-
   // Initialize Lenis smooth scroll first
   initLenisSmoothScroll();
 

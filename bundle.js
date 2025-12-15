@@ -694,16 +694,28 @@ function initScrollAnimations() {
     return;
   }
 
+  // Wait a bit to ensure DOM is ready (especially important for Webflow)
   const paragraph = document.querySelector(".mwg_effect005 .paragraph");
-  if (paragraph) {
-    wrapWordsInSpan(paragraph);
+  if (!paragraph) {
+    // Retry after a short delay if element not found
+    setTimeout(() => {
+      initScrollAnimations();
+    }, 200);
+    return;
   }
+
+  // Wrap words in spans
+  wrapWordsInSpan(paragraph);
 
   const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
   const container = document.querySelector(".mwg_effect005 .container");
   const words = document.querySelectorAll(".mwg_effect005 .word");
 
   if (!pinHeight || !container || !words.length) {
+    // Retry if elements not ready
+    setTimeout(() => {
+      initScrollAnimations();
+    }, 200);
     return;
   }
 
@@ -739,6 +751,9 @@ function initScrollAnimations() {
       // markers: true // Attivali per debuggare l'ANIMAZIONE (saranno diversi dai primi)
     }
   });
+
+  // Refresh ScrollTrigger to ensure calculations are correct
+  ScrollTrigger.refresh();
 }
 
 function destroyScrollAnimations() {
@@ -1055,15 +1070,21 @@ function setupBarbaTransitions() {
                 // Initialize all animations (ONLY ONCE here)
                 initProjectTemplateAnimations();
                 
-                // Refresh ScrollTrigger after animations are initialized
+                // Refresh ScrollTrigger after animations are initialized (multiple refreshes for Webflow)
                 if (typeof ScrollTrigger !== 'undefined') {
                   setTimeout(() => {
                     ScrollTrigger.refresh();
-                  }, 150);
+                  }, 100);
+                  setTimeout(() => {
+                    ScrollTrigger.refresh();
+                  }, 300);
+                  setTimeout(() => {
+                    ScrollTrigger.refresh();
+                  }, 500);
                 }
               });
             });
-          }, 200);
+          }, 300); // Increased delay for Webflow
         },
         afterLeave() {
           // Clean up when leaving the namespace
@@ -1091,10 +1112,19 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!isTransitioning) {
         initProjectTemplateAnimations();
         if (typeof ScrollTrigger !== 'undefined') {
-          ScrollTrigger.refresh();
+          // Multiple refreshes for Webflow to ensure everything is calculated
+          setTimeout(() => {
+            ScrollTrigger.refresh();
+          }, 100);
+          setTimeout(() => {
+            ScrollTrigger.refresh();
+          }, 300);
+          setTimeout(() => {
+            ScrollTrigger.refresh();
+          }, 500);
         }
       }
-    }, 400); // Slightly longer delay to ensure Barba is set up
+    }, 500); // Longer delay for Webflow
   }
 });
 

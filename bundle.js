@@ -55,15 +55,20 @@ function resetWebflow(data) {
 function playMainTransition(data) {
   const tl = gsap.timeline();
 
-  // Prepare next page: start from bottom (100%) for forward navigation
+  // Prepare next page above the current one
   gsap.set(data.next.container, {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "100%",
+    zIndex: 2,
     yPercent: 100,
     opacity: 1
   });
 
-  // Wipe: current up, next up from bottom
+  // Overlap: current moves up only -30%, next slides in from bottom
   tl.to(data.current.container, {
-    yPercent: -100,
+    yPercent: -30,
     ease: "power4.inOut",
     duration: 0.9
   }, 0)
@@ -1019,7 +1024,7 @@ function setupBarbaTransitions() {
               gsap.set(data.next.container, {
                 position: "relative",
                 zIndex: "auto",
-                clearProps: "top,left,width"
+                clearProps: "top,left,width,yPercent"
               });
               
               // Unlock page wrapper

@@ -784,6 +784,35 @@ function destroyMWGEffect005() {
     mwgEffect005Ctx = null;
   }
 
+  const scope = document.querySelector(".mwg_effect005");
+  if (scope) {
+    // Extra safety: kill any residual triggers tied to this scope
+    if (typeof ScrollTrigger !== 'undefined') {
+      ScrollTrigger.getAll().forEach((st) => {
+        try {
+          const t = st.vars && st.vars.trigger;
+          if (t && t.closest && t.closest(".mwg_effect005")) {
+            st.kill();
+          }
+        } catch (e) {
+          /* ignore */
+        }
+      });
+    }
+
+    // Remove any pin-spacer inside scope (if present)
+    scope.querySelectorAll('.pin-spacer').forEach((el) => {
+      if (el.parentNode) {
+        const child = el.firstElementChild;
+        if (child) {
+          el.parentNode.replaceChild(child, el);
+        } else {
+          el.parentNode.removeChild(el);
+        }
+      }
+    });
+  }
+
   // Restore plain paragraph text so Barba cache stays clean
   const paragraph = document.querySelector(".mwg_effect005 .paragraph");
   if (paragraph && paragraph.dataset && paragraph.dataset.originalText) {

@@ -1,9 +1,6 @@
 /**
- * Animations & Transitions Bundle
+ * Animations & Transitions Bundle - FIX BARBA JS
  * Single file bundle for Webflow integration via CDN
- * 
- * Usage:
- * <script src="https://cdn.jsdelivr.net/gh/yourusername/yourrepo@main/bundle.js"></script>
  */
 
 (function() {
@@ -29,1073 +26,1009 @@
   // UTILITY FUNCTIONS
   // ============================================================================
 
-function resetWebflow(data) {
-  const parser = new DOMParser();
-  const dom = parser.parseFromString(data.next.html, "text/html");
-  const webflowPageId = dom.querySelector("html").getAttribute("data-wf-page");
+  function resetWebflow(data) {
+    const parser = new DOMParser();
+    const dom = parser.parseFromString(data.next.html, "text/html");
+    const webflowPageId = dom.querySelector("html").getAttribute("data-wf-page");
 
-  document.querySelector("html").setAttribute("data-wf-page", webflowPageId);
+    document.querySelector("html").setAttribute("data-wf-page", webflowPageId);
 
-  if (window.Webflow) {
-    try {
-      window.Webflow.destroy();
-      window.Webflow.ready();
-      const ix2 = window.Webflow.require && window.Webflow.require("ix2");
-      if (ix2 && typeof ix2.init === "function") {
-        ix2.init();
-      }
-    } catch (e) {
-      // Silently ignore if Webflow is not fully available
-    }
-  }
-}
-
-
-function playMainTransition(data) {
-  const tl = gsap.timeline();
-
-  // Set initial state of next page explicitly
-  gsap.set(data.next.container, {
-    y: "100vh",
-    x: "-50vw",
-    rotation: -4,
-    opacity: 1
-  });
-
-  // Animate current page out
-  tl.to(data.current.container, {
-    opacity: 0.5,
-    y: "-12vh",
-    x: "12vw",
-    rotation: 4,
-    ease: "power4.out",
-    duration: 0.8,
-  })
-  // Change background color
-  .to(data.current.container.closest(".page-wrapper"), {
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-  }, "0")
-  // Animate next page in
-  .to(data.next.container, {
-    duration: 1,
-    y: 0,
-    x: 0,
-    rotation: 0,
-    ease: "power4.out",
-  }, "0");
-
-  return tl;
-}
-
-
-class Sketch {
-  constructor(opts) {
-    this.scene = new THREE.Scene();
-    this.vertex = `varying vec2 vUv;void main() {vUv = uv;gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );}`;
-    this.fragment = opts.fragment;
-    this.uniforms = opts.uniforms;
-    this.renderer = new THREE.WebGLRenderer();
-    this.width = window.innerWidth;
-    this.height = window.innerHeight;
-    this.renderer.setPixelRatio(window.devicePixelRatio);
-    this.renderer.setSize(this.width, this.height);
-    this.renderer.setClearColor(0xeeeeee, 1);
-    this.duration = opts.duration || 1;
-    this.debug = opts.debug || false;
-    this.easing = opts.easing || 'easeInOut';
-    this.clicker = document.getElementById("next");
-    this.clicker2 = document.getElementById("prev");
-    this.container = document.getElementById("slider");
-    
-    if (!this.container) {
-      return;
-    }
-    
-    // Clean up any existing canvas in the container before adding new one
-    const existingCanvas = this.container.querySelector('canvas');
-    if (existingCanvas) {
+    if (window.Webflow) {
       try {
-        this.container.removeChild(existingCanvas);
-      } catch (e) {
-        // Canvas might already be removed
-      }
-    }
-    
-    this.images = JSON.parse(this.container.getAttribute('data-images'));
-    this.width = this.container.offsetWidth;
-    this.height = this.container.offsetHeight;
-    this.container.appendChild(this.renderer.domElement);
-    this.camera = new THREE.PerspectiveCamera(
-      70,
-      window.innerWidth / window.innerHeight,
-      0.001,
-      1000
-    );
-    this.camera.position.set(0, 0, 2);
-    this.time = 0;
-    this.current = 0;
-    this.textures = [];
-    this.paused = true;
-    this.isRunning = false;
-    
-    this.initiate(() => {
-      this.setupResize();
-      this.settings();
-      this.addObjects();
-      this.resize();
-      this.clickEvent();
-      this.clickEvent2();
-      this.play();
-    });
-  }
-
-  initiate(cb) {
-    const promises = [];
-    let that = this;
-    this.images.forEach((url, i) => {
-      let promise = new Promise(resolve => {
-        that.textures[i] = new THREE.TextureLoader().load(url, resolve);
-      });
-      promises.push(promise);
-    });
-    Promise.all(promises).then(() => {
-      cb();
-    });
-  }
-
-  clickEvent() {
-    if (this.clicker) {
-      this.nextHandler = () => this.next();
-      this.clicker.addEventListener('click', this.nextHandler);
-    }
-  }
-
-  clickEvent2() {
-    if (this.clicker2) {
-      this.prevHandler = () => this.prev();
-      this.clicker2.addEventListener('click', this.prevHandler);
-    }
-  }
-
-  settings() {
-    let that = this;
-    if (this.debug && window.dat) {
-      this.gui = new dat.GUI();
-    }
-    this.settings = {
-      progress: 0.5
-    };
-    Object.keys(this.uniforms).forEach((item) => {
-      this.settings[item] = this.uniforms[item].value;
-      if (this.debug && this.gui) {
-        this.gui.add(this.settings, item, this.uniforms[item].min, this.uniforms[item].max, 0.01);
-      }
-    });
-  }
-
-  setupResize() {
-    this.resizeHandler = this.resize.bind(this);
-    window.addEventListener("resize", this.resizeHandler);
-  }
-
-  resize() {
-    if (!this.container) return;
-    
-    this.width = this.container.offsetWidth;
-    this.height = this.container.offsetHeight;
-    this.renderer.setSize(this.width, this.height);
-    this.camera.aspect = this.width / this.height;
-    
-    if (this.textures[0]) {
-      // image cover
-      this.imageAspect = this.textures[0].image.height / this.textures[0].image.width;
-      let a1;
-      let a2;
-      if (this.height / this.width > this.imageAspect) {
-        a1 = (this.width / this.height) * this.imageAspect;
-        a2 = 1;
-      } else {
-        a1 = 1;
-        a2 = (this.height / this.width) / this.imageAspect;
-      }
-      this.material.uniforms.resolution.value.x = this.width;
-      this.material.uniforms.resolution.value.y = this.height;
-      this.material.uniforms.resolution.value.z = a1;
-      this.material.uniforms.resolution.value.w = a2;
-    }
-    
-    const dist = this.camera.position.z;
-    const height = 1;
-    this.camera.fov = 2 * (180 / Math.PI) * Math.atan(height / (2 * dist));
-    if (this.plane) {
-      this.plane.scale.x = this.camera.aspect;
-      this.plane.scale.y = 1;
-    }
-    this.camera.updateProjectionMatrix();
-  }
-
-  addObjects() {
-    let that = this;
-    this.material = new THREE.ShaderMaterial({
-      extensions: {
-        derivatives: "#extension GL_OES_standard_derivatives : enable"
-      },
-      side: THREE.DoubleSide,
-      uniforms: {
-        time: {
-          type: "f",
-          value: 0
-        },
-        progress: {
-          type: "f",
-          value: 0
-        },
-        border: {
-          type: "f",
-          value: 0
-        },
-        intensity: {
-          type: "f",
-          value: 0
-        },
-        scaleX: {
-          type: "f",
-          value: 40
-        },
-        scaleY: {
-          type: "f",
-          value: 40
-        },
-        transition: {
-          type: "f",
-          value: 40
-        },
-        swipe: {
-          type: "f",
-          value: 0
-        },
-        width: {
-          type: "f",
-          value: 0
-        },
-        radius: {
-          type: "f",
-          value: 0
-        },
-        texture1: {
-          type: "f",
-          value: this.textures[0]
-        },
-        texture2: {
-          type: "f",
-          value: this.textures[1]
-        },
-        displacement: {
-          type: "f",
-          value: new THREE.TextureLoader().load('https://uploads-ssl.webflow.com/5dc1ae738cab24fef27d7fd2/5dcae913c897156755170518_disp1.jpg')
-        },
-        resolution: {
-          type: "v4",
-          value: new THREE.Vector4()
-        },
-      },
-      vertexShader: this.vertex,
-      fragmentShader: this.fragment
-    });
-    this.geometry = new THREE.PlaneGeometry(1, 1, 2, 2);
-    this.plane = new THREE.Mesh(this.geometry, this.material);
-    this.scene.add(this.plane);
-  }
-
-  stop() {
-    this.paused = true;
-  }
-
-  play() {
-    this.paused = false;
-    this.render();
-  }
-
-  next() {
-    if (this.isRunning) return;
-    this.isRunning = true;
-    let len = this.textures.length;
-    let nextTexture = this.textures[(this.current + 1) % len];
-    this.material.uniforms.texture2.value = nextTexture;
-    let tl = new TimelineMax();
-    tl.to(this.material.uniforms.progress, this.duration, {
-      value: 1,
-      ease: Power2[this.easing],
-      onComplete: () => {
-        this.current = (this.current + 1) % len;
-        this.material.uniforms.texture1.value = nextTexture;
-        this.material.uniforms.progress.value = 0;
-        this.isRunning = false;
-      }
-    });
-  }
-
-  prev() {
-    if (this.isRunning) return;
-    this.isRunning = true;
-    let len = this.textures.length;
-    const prevIndex = this.current === 0 ? len - 1 : this.current - 1;
-    let prevTexture = this.textures[prevIndex];
-    this.material.uniforms.texture2.value = prevTexture;
-    let tl = new TimelineMax();
-    tl.to(this.material.uniforms.progress, this.duration, {
-      value: 1,
-      ease: Power2[this.easing],
-      onComplete: () => {
-        this.current = prevIndex;
-        this.material.uniforms.texture1.value = prevTexture;
-        this.material.uniforms.progress.value = 0;
-        this.isRunning = false;
-      }
-    });
-  }
-
-  render() {
-    if (this.paused) return;
-    this.time += 0.05;
-    this.material.uniforms.time.value = this.time;
-    Object.keys(this.uniforms).forEach((item) => {
-      this.material.uniforms[item].value = this.settings[item];
-    });
-    requestAnimationFrame(this.render.bind(this));
-    this.renderer.render(this.scene, this.camera);
-  }
-
-  destroy() {
-    this.stop();
-    
-    // Remove event listeners
-    if (this.clicker && this.nextHandler) {
-      this.clicker.removeEventListener('click', this.nextHandler);
-      this.nextHandler = null;
-    }
-    if (this.clicker2 && this.prevHandler) {
-      this.clicker2.removeEventListener('click', this.prevHandler);
-      this.prevHandler = null;
-    }
-    if (this.resizeHandler) {
-      window.removeEventListener("resize", this.resizeHandler);
-      this.resizeHandler = null;
-    }
-    
-    // Remove canvas from DOM first
-    if (this.container && this.renderer && this.renderer.domElement) {
-      try {
-        if (this.renderer.domElement.parentNode === this.container) {
-          this.container.removeChild(this.renderer.domElement);
+        window.Webflow.destroy();
+        window.Webflow.ready();
+        const ix2 = window.Webflow.require && window.Webflow.require("ix2");
+        if (ix2 && typeof ix2.init === "function") {
+          ix2.init();
         }
       } catch (e) {
-        // Ignore errors
+        // Silently ignore if Webflow is not fully available
       }
-    }
-    
-    // Dispose Three.js resources
-    if (this.renderer) {
-      this.renderer.dispose();
-      this.renderer = null;
-    }
-    if (this.material) {
-      this.material.dispose();
-      this.material = null;
-    }
-    if (this.geometry) {
-      this.geometry.dispose();
-      this.geometry = null;
-    }
-    if (this.textures) {
-      this.textures.forEach(texture => {
-        if (texture && texture.dispose) {
-          texture.dispose();
-        }
-      });
-      this.textures = [];
-    }
-    
-    // Clear scene
-    if (this.scene) {
-      while(this.scene.children.length > 0) {
-        this.scene.remove(this.scene.children[0]);
-      }
-      this.scene = null;
     }
   }
-}
 
 
-function initPixelateImageRenderEffect() {
-  // Clean up existing instances
-  destroyPixelateImageRenderEffect();
-  
-  let renderDuration = 100;  // Velocizzato leggermente per l'hover
-  let renderSteps = 20;      // Più step per fluidità
-  let renderColumns = 10;    // Blocchi iniziali
+  function playMainTransition(data) {
+    const tl = gsap.timeline();
 
-  const pixelateElements = document.querySelectorAll('[data-pixelate-render]');
-  pixelateElements.forEach(setupPixelate);
+    // Set initial state of next page explicitly
+    gsap.set(data.next.container, {
+      y: "100vh",
+      x: "-50vw",
+      rotation: -4,
+      opacity: 1
+    });
 
-  function setupPixelate(root) {
-    const img = root.querySelector('[data-pixelate-render-img]');
-    if (!img) return;
+    // Animate current page out
+    tl.to(data.current.container, {
+      opacity: 0.5,
+      y: "-12vh",
+      x: "12vw",
+      rotation: 4,
+      ease: "power4.out",
+      duration: 0.8,
+    })
+    // Change background color
+    .to(data.current.container.closest(".page-wrapper"), {
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+    }, "0")
+    // Animate next page in
+    .to(data.next.container, {
+      duration: 1,
+      y: 0,
+      x: 0,
+      rotation: 0,
+      ease: "power4.out",
+    }, "0");
 
-    // Selettore trigger (hover è il focus qui)
-    const trigger = (root.getAttribute('data-pixelate-render-trigger') || 'load').toLowerCase();
+    return tl;
+  }
 
-    const durAttr = parseInt(root.getAttribute('data-pixelate-render-duration'), 10);
-    const stepsAttr = parseInt(root.getAttribute('data-pixelate-render-steps'), 10);
-    const colsAttr = parseInt(root.getAttribute('data-pixelate-render-columns'), 10);
-    const fitMode = (root.getAttribute('data-pixelate-render-fit') || 'cover').toLowerCase();
 
-    const elRenderDuration = Number.isFinite(durAttr) ? Math.max(16, durAttr) : renderDuration;
-    const elRenderSteps = Number.isFinite(stepsAttr) ? Math.max(1, stepsAttr) : renderSteps;
-    const elRenderColumns = Number.isFinite(colsAttr) ? Math.max(1, colsAttr) : renderColumns;
-
-    const canvas = document.createElement('canvas');
-    canvas.setAttribute('data-pixelate-canvas', '');
-    canvas.style.position = 'absolute';
-    canvas.style.inset = '0';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
-    canvas.style.pointerEvents = 'none'; // Importante: lascia passare il mouse all'img sotto
-    root.style.position ||= 'relative';
-    root.appendChild(canvas);
-
-    const ctx = canvas.getContext('2d', { alpha: true });
-    ctx.imageSmoothingEnabled = false;
-
-    const back = document.createElement('canvas');
-    const tiny = document.createElement('canvas');
-    const bctx = back.getContext('2d', { alpha: true });
-    const tctx = tiny.getContext('2d', { alpha: true });
-
-    let naturalW = 0, naturalH = 0;
-    let playing = false;
-    let stageIndex = 0;
-    let targetIndex = 0; // Dove vogliamo arrivare (0 = pixelato, MAX = nitido)
-    let lastTime = 0;
-    let backDirty = true, resizeTimeout = 0;
-    let steps = [elRenderColumns];
-
-    function fitCanvas() {
-      const r = root.getBoundingClientRect();
-      const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
-      const w = Math.max(1, Math.round(r.width * dpr));
-      const h = Math.max(1, Math.round(r.height * dpr));
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w; canvas.height = h;
-        back.width = w; back.height = h;
-        backDirty = true;
-      }
-      regenerateSteps();
-    }
-
-    function regenerateSteps() {
-      const cw = Math.max(1, canvas.width);
-      const startCols = Math.min(elRenderColumns, cw);
-      const total = Math.max(1, elRenderSteps);
-      const use = Math.max(1, Math.floor(total * 0.9)); 
-      const a = [];
-      const ratio = Math.pow(cw / startCols, 1 / total);
-      for (let i = 0; i < use; i++) {
-        a.push(Math.max(1, Math.round(startCols * Math.pow(ratio, i))));
-      }
-      for (let i = 1; i < a.length; i++) if (a[i] <= a[i - 1]) a[i] = a[i - 1] + 1;
-      steps = a.length ? a : [startCols];
-    }
-
-    function drawImageToBack() {
-      if (!backDirty || !naturalW || !naturalH) return;
-      const cw = back.width, ch = back.height;
-      let dw = cw, dh = ch, dx = 0, dy = 0;
-      if (fitMode !== 'stretch') {
-        const s = fitMode === 'cover' ? Math.max(cw / naturalW, ch / naturalH) : Math.min(cw / naturalW, ch / naturalH);
-        dw = Math.max(1, Math.round(naturalW * s));
-        dh = Math.max(1, Math.round(naturalH * s));
-        dx = ((cw - dw) >> 1);
-        dy = ((ch - dh) >> 1);
-      }
-      bctx.clearRect(0, 0, cw, ch);
-      bctx.imageSmoothingEnabled = true;
-      bctx.drawImage(img, dx, dy, dw, dh);
-      backDirty = false;
-    }
-
-    function pixelate(columns) {
-      const cw = canvas.width, ch = canvas.height;
-      const cols = Math.max(1, Math.floor(columns));
-      const rows = Math.max(1, Math.round(cols * (ch / cw)));
+  class Sketch {
+    constructor(opts) {
+      this.scene = new THREE.Scene();
+      this.vertex = `varying vec2 vUv;void main() {vUv = uv;gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );}`;
+      this.fragment = opts.fragment;
+      this.uniforms = opts.uniforms;
+      this.renderer = new THREE.WebGLRenderer();
+      this.width = window.innerWidth;
+      this.height = window.innerHeight;
+      this.renderer.setPixelRatio(window.devicePixelRatio);
+      this.renderer.setSize(this.width, this.height);
+      this.renderer.setClearColor(0xeeeeee, 1);
+      this.duration = opts.duration || 1;
+      this.debug = opts.debug || false;
+      this.easing = opts.easing || 'easeInOut';
+      this.clicker = document.getElementById("next");
+      this.clicker2 = document.getElementById("prev");
+      this.container = document.getElementById("slider");
       
-      // Se siamo alla massima risoluzione, puliamo il canvas per mostrare l'IMG originale sotto
-      // (Opzionale: rimuovi questo IF se vuoi che il canvas rimanga sempre sopra)
-      if (stageIndex === steps.length - 1 && targetIndex === steps.length - 1) {
-         ctx.clearRect(0, 0, cw, ch);
-         return;
-      }
-
-      if (tiny.width !== cols || tiny.height !== rows) { tiny.width = cols; tiny.height = rows; }
-      tctx.imageSmoothingEnabled = false;
-      tctx.clearRect(0, 0, cols, rows);
-      tctx.drawImage(back, 0, 0, cw, ch, 0, 0, cols, rows);
-      ctx.imageSmoothingEnabled = false;
-      ctx.clearRect(0, 0, cw, ch);
-      ctx.drawImage(tiny, 0, 0, cols, rows, 0, 0, cw, ch);
-    }
-
-    function draw(stepCols) {
-      if (!canvas.width || !canvas.height) return;
-      drawImageToBack();
-      pixelate(stepCols);
-    }
-
-    // Nuova logica di animazione bidirezionale
-    function animate(t) {
-      if (!playing) return;
-
-      // Gestione del timing
-      if (!lastTime) lastTime = t;
-      const delta = t - lastTime;
-
-      // Se è passato abbastanza tempo, facciamo un frame
-      if (delta >= elRenderDuration) {
-        if (stageIndex < targetIndex) {
-            stageIndex++; // Andiamo verso il nitido
-        } else if (stageIndex > targetIndex) {
-            stageIndex--; // Torniamo verso il pixelato
-        } else {
-            // Siamo arrivati a destinazione
-            playing = false;
-            // Ultimo disegno per assicurarsi che sia pulito o pixelato
-            draw(steps[stageIndex]);
-            return; 
-        }
-        
-        draw(steps[stageIndex]);
-        lastTime = t;
+      if (!this.container) {
+        return;
       }
       
-      requestAnimationFrame(animate);
-    }
-
-    function setTarget(isHovering) {
-       // Se hover: target è l'ultimo step (nitido)
-       // Se no hover: target è 0 (pixelato)
-       targetIndex = isHovering ? steps.length - 1 : 0;
-       
-       if (!playing) {
-           playing = true;
-           lastTime = 0; // Reset timer
-           requestAnimationFrame(animate);
-       }
-    }
-
-    function init() {
-        naturalW = img.naturalWidth; naturalH = img.naturalHeight;
-        if (!naturalW || !naturalH) return;
-        
-        fitCanvas();
-        
-        // Stato Iniziale: Pixelato (stageIndex 0)
-        stageIndex = 0;
-        targetIndex = 0;
-        backDirty = true;
-        draw(steps[0]);
-    }
-
-    function onWindowResize() {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-          fitCanvas();
-          draw(steps[stageIndex]);
-      }, 250);
-    }
-
-    // Gestione Trigger
-    if (img.complete && img.naturalWidth) init(); 
-    else img.addEventListener('load', init, { once: true });
-
-    window.addEventListener('resize', onWindowResize);
-
-    if (trigger === 'hover') {
-      root.addEventListener('mouseenter', () => setTarget(true));
-      root.addEventListener('mouseleave', () => setTarget(false));
-    } else {
-       // Se usi altri trigger (load, inview), facciamo solo l'entrata classica
-       // ma manteniamo la struttura compatibile
-       if(trigger === 'load') setTarget(true); // Parte subito
-    }
-
-    // Store instance for cleanup
-    pixelateInstances.push({
-      root,
-      canvas,
-      back,
-      tiny,
-      img,
-      onWindowResize,
-      setTarget,
-      trigger
-    });
-  }
-}
-
-function destroyPixelateImageRenderEffect() {
-  pixelateInstances.forEach(instance => {
-    window.removeEventListener('resize', instance.onWindowResize);
-    if (instance.canvas && instance.canvas.parentNode) {
-      instance.canvas.parentNode.removeChild(instance.canvas);
-    }
-  });
-  pixelateInstances = [];
-}
-
-function initLenisSmoothScroll() {
-  // Destroy existing instance if any
-  destroyLenisSmoothScroll();
-
-  if (typeof Lenis === 'undefined') {
-    return;
-  }
-
-  // Initialize a new Lenis instance for smooth scrolling
-  lenisInstance = new Lenis({
-    lerp: 0.1,
-    smooth: true,
-  });
-
-  // Synchronize Lenis scrolling with GSAP's ScrollTrigger plugin
-  lenisInstance.on('scroll', ScrollTrigger.update);
-
-  // Create animation loop (as per Lenis documentation)
-  const loop = (time) => {
-    if (lenisInstance) {
-      lenisInstance.raf(time);
-    }
-    requestAnimationFrame(loop);
-  };
-  requestAnimationFrame(loop);
-}
-
-function destroyLenisSmoothScroll() {
-  // Destroy Lenis instance
-  if (lenisInstance) {
-    lenisInstance.destroy();
-    lenisInstance = null;
-  }
-}
-
-// ================== mwg_effect005 EFFECT ==================
-function wrapWordsInSpan(element) {
-  // Re-wrap fresh content
-  const text = (element.textContent || "").trim();
-  element.innerHTML = text
-    .split(/\s+/)
-    .map((word) => `<span class="word">${word}</span>`)
-    .join(" ");
-}
-
-function initMWGEffect005() {
-  if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
-    return;
-  }
-
-  // Word wrapping
-  const paragraph = document.querySelector(".mwg_effect005 .paragraph");
-  if (paragraph) wrapWordsInSpan(paragraph);
-
-  // Elements
-  const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
-  const container = document.querySelector(".mwg_effect005 .container");
-  const words = document.querySelectorAll(".mwg_effect005 .word");
-
-  if (pinHeight && container && words.length) {
-    console.log("[mwg_effect005] init: words found", words.length);
-
-    const startX = window.innerWidth - 25;
-    gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
-
-    // 1) Pin trigger (layout lock)
-    ScrollTrigger.create({
-      trigger: pinHeight,
-      start: "top top",
-      end: "bottom bottom",
-      pin: container,
-      scrub: true,
-      invalidateOnRefresh: true
-      // markers: true
-    });
-
-    // 2) Animation trigger (motion)
-    gsap.fromTo(
-      words,
-      {
-        x: startX,
-        opacity: 0
-      },
-      {
-        x: 0,
-        opacity: 1,
-        stagger: 0.02,
-        ease: "power4.inOut",
-        scrollTrigger: {
-          trigger: pinHeight,
-          start: "top 70%",
-          end: "bottom bottom",
-          scrub: true,
-          invalidateOnRefresh: true
-          // markers: true
-        }
-      }
-    );
-
-    // Refresh to ensure triggers are active after creation
-    ScrollTrigger.refresh && ScrollTrigger.refresh();
-  } else {
-    console.log("[mwg_effect005] init: missing elements", {
-      pinHeight: !!pinHeight,
-      container: !!container,
-      words: words.length
-    });
-  }
-}
-
-function destroyMWGEffect005() {
-  if (typeof ScrollTrigger === 'undefined') {
-    return;
-  }
-  let killed = 0;
-  ScrollTrigger.getAll().forEach((st) => {
-    try {
-      const t = st.vars && st.vars.trigger;
-      if (t && t.closest && t.closest(".mwg_effect005")) {
-        st.kill();
-        killed += 1;
-      }
-    } catch (e) {
-      // ignore
-    }
-  });
-  // Clean inline styles and wrapping flag
-  const paragraph = document.querySelector(".mwg_effect005 .paragraph");
-  const words = document.querySelectorAll(".mwg_effect005 .word");
-  // Unwrap to a clean state for the next init
-  if (paragraph) {
-    const plainText = paragraph.textContent || "";
-    paragraph.textContent = plainText;
-  }
-  if (words.length) {
-    gsap.set(words, { clearProps: "all" });
-    console.log("[mwg_effect005] destroy: cleared words styles", words.length, "triggers killed", killed);
-  }
-  ScrollTrigger.refresh && ScrollTrigger.refresh();
-}
-
-function initGlobalParallax() {
-  // Destroy existing parallax context
-  if (parallaxContext) {
-    parallaxContext.revert();
-    parallaxContext = null;
-  }
-
-  if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
-    return;
-  }
-
-  const mm = gsap.matchMedia();
-
-  mm.add(
-    {
-      isMobile: "(max-width:479px)",
-      isMobileLandscape: "(max-width:767px)",
-      isTablet: "(max-width:991px)",
-      isDesktop: "(min-width:992px)"
-    },
-    (context) => {
-      const { isMobile, isMobileLandscape, isTablet } = context.conditions;
-
-      parallaxContext = gsap.context(() => {
-        document.querySelectorAll('[data-parallax="trigger"]').forEach((trigger) => {
-          // Check if this trigger has to be disabled on smaller breakpoints
-          const disable = trigger.getAttribute("data-parallax-disable");
-          if (
-            (disable === "mobile" && isMobile) ||
-            (disable === "mobileLandscape" && isMobileLandscape) ||
-            (disable === "tablet" && isTablet)
-          ) {
-            return;
-          }
-          
-          // Optional: you can target an element inside a trigger if necessary 
-          const target = trigger.querySelector('[data-parallax="target"]') || trigger;
-
-          // Get the direction value to decide between xPercent or yPercent tween
-          const direction = trigger.getAttribute("data-parallax-direction") || "vertical";
-          const prop = direction === "horizontal" ? "xPercent" : "yPercent";
-          
-          // Get the scrub value, our default is 'true' because that feels nice with Lenis
-          const scrubAttr = trigger.getAttribute("data-parallax-scrub");
-          const scrub = scrubAttr ? parseFloat(scrubAttr) : true;
-          
-          // Get the start position in % 
-          const startAttr = trigger.getAttribute("data-parallax-start");
-          const startVal = startAttr !== null ? parseFloat(startAttr) : 20;
-          
-          // Get the end position in %
-          const endAttr = trigger.getAttribute("data-parallax-end");
-          const endVal = endAttr !== null ? parseFloat(endAttr) : -20;
-          
-          // Get the start value of the ScrollTrigger
-          const scrollStartRaw = trigger.getAttribute("data-parallax-scroll-start") || "top bottom";
-          const scrollStart = `clamp(${scrollStartRaw})`;
-          
-          // Get the end value of the ScrollTrigger  
-          const scrollEndRaw = trigger.getAttribute("data-parallax-scroll-end") || "bottom top";
-          const scrollEnd = `clamp(${scrollEndRaw})`;
-
-          gsap.fromTo(
-            target,
-            { [prop]: startVal },
-            {
-              [prop]: endVal,
-              ease: "none",
-              scrollTrigger: {
-                trigger,
-                start: scrollStart,
-                end: scrollEnd,
-                scrub,
-              },
-            }
-          );
-        });
-      });
-
-      return () => {
-        if (parallaxContext) {
-          parallaxContext.revert();
-          parallaxContext = null;
-        }
-      };
-    }
-  );
-}
-
-function destroyGlobalParallax() {
-  if (parallaxContext) {
-    parallaxContext.revert();
-    parallaxContext = null;
-  }
-}
-
-function initProjectTemplateAnimations() {
-  // Initialize Lenis smooth scroll first
-  initLenisSmoothScroll();
-
-  // Initialize global parallax
-  initGlobalParallax();
-
-  // Initialize mwg_effect005 (words animation)
-  initMWGEffect005();
-
-  // Initialize pixelate effect
-  initPixelateImageRenderEffect();
-
-  // Initialize Three.js Sketch (planetary effect)
-  const sliderContainer = document.getElementById("slider");
-  if (sliderContainer) {
-    // Clean up container before creating new instance
-    const existingCanvases = sliderContainer.querySelectorAll('canvas');
-    if (existingCanvases.length > 0) {
-      existingCanvases.forEach(canvas => {
+      // Clean up any existing canvas in the container before adding new one
+      const existingCanvas = this.container.querySelector('canvas');
+      if (existingCanvas) {
         try {
-          sliderContainer.removeChild(canvas);
+          this.container.removeChild(existingCanvas);
+        } catch (e) {
+          // Canvas might already be removed
+        }
+      }
+      
+      this.images = JSON.parse(this.container.getAttribute('data-images'));
+      this.width = this.container.offsetWidth;
+      this.height = this.container.offsetHeight;
+      this.container.appendChild(this.renderer.domElement);
+      this.camera = new THREE.PerspectiveCamera(
+        70,
+        window.innerWidth / window.innerHeight,
+        0.001,
+        1000
+      );
+      this.camera.position.set(0, 0, 2);
+      this.time = 0;
+      this.current = 0;
+      this.textures = [];
+      this.paused = true;
+      this.isRunning = false;
+      
+      this.initiate(() => {
+        this.setupResize();
+        this.settings();
+        this.addObjects();
+        this.resize();
+        this.clickEvent();
+        this.clickEvent2();
+        this.play();
+      });
+    }
+
+    initiate(cb) {
+      const promises = [];
+      let that = this;
+      this.images.forEach((url, i) => {
+        let promise = new Promise(resolve => {
+          that.textures[i] = new THREE.TextureLoader().load(url, resolve);
+        });
+        promises.push(promise);
+      });
+      Promise.all(promises).then(() => {
+        cb();
+      });
+    }
+
+    clickEvent() {
+      if (this.clicker) {
+        this.nextHandler = () => this.next();
+        this.clicker.addEventListener('click', this.nextHandler);
+      }
+    }
+
+    clickEvent2() {
+      if (this.clicker2) {
+        this.prevHandler = () => this.prev();
+        this.clicker2.addEventListener('click', this.prevHandler);
+      }
+    }
+
+    settings() {
+      let that = this;
+      if (this.debug && window.dat) {
+        this.gui = new dat.GUI();
+      }
+      this.settings = {
+        progress: 0.5
+      };
+      Object.keys(this.uniforms).forEach((item) => {
+        this.settings[item] = this.uniforms[item].value;
+        if (this.debug && this.gui) {
+          this.gui.add(this.settings, item, this.uniforms[item].min, this.uniforms[item].max, 0.01);
+        }
+      });
+    }
+
+    setupResize() {
+      this.resizeHandler = this.resize.bind(this);
+      window.addEventListener("resize", this.resizeHandler);
+    }
+
+    resize() {
+      if (!this.container) return;
+      
+      this.width = this.container.offsetWidth;
+      this.height = this.container.offsetHeight;
+      this.renderer.setSize(this.width, this.height);
+      this.camera.aspect = this.width / this.height;
+      
+      if (this.textures[0]) {
+        // image cover
+        this.imageAspect = this.textures[0].image.height / this.textures[0].image.width;
+        let a1;
+        let a2;
+        if (this.height / this.width > this.imageAspect) {
+          a1 = (this.width / this.height) * this.imageAspect;
+          a2 = 1;
+        } else {
+          a1 = 1;
+          a2 = (this.height / this.width) / this.imageAspect;
+        }
+        this.material.uniforms.resolution.value.x = this.width;
+        this.material.uniforms.resolution.value.y = this.height;
+        this.material.uniforms.resolution.value.z = a1;
+        this.material.uniforms.resolution.value.w = a2;
+      }
+      
+      const dist = this.camera.position.z;
+      const height = 1;
+      this.camera.fov = 2 * (180 / Math.PI) * Math.atan(height / (2 * dist));
+      if (this.plane) {
+        this.plane.scale.x = this.camera.aspect;
+        this.plane.scale.y = 1;
+      }
+      this.camera.updateProjectionMatrix();
+    }
+
+    addObjects() {
+      let that = this;
+      this.material = new THREE.ShaderMaterial({
+        extensions: {
+          derivatives: "#extension GL_OES_standard_derivatives : enable"
+        },
+        side: THREE.DoubleSide,
+        uniforms: {
+          time: {
+            type: "f",
+            value: 0
+          },
+          progress: {
+            type: "f",
+            value: 0
+          },
+          border: {
+            type: "f",
+            value: 0
+          },
+          intensity: {
+            type: "f",
+            value: 0
+          },
+          scaleX: {
+            type: "f",
+            value: 40
+          },
+          scaleY: {
+            type: "f",
+            value: 40
+          },
+          transition: {
+            type: "f",
+            value: 40
+          },
+          swipe: {
+            type: "f",
+            value: 0
+          },
+          width: {
+            type: "f",
+            value: 0
+          },
+          radius: {
+            type: "f",
+            value: 0
+          },
+          texture1: {
+            type: "f",
+            value: this.textures[0]
+          },
+          texture2: {
+            type: "f",
+            value: this.textures[1]
+          },
+          displacement: {
+            type: "f",
+            value: new THREE.TextureLoader().load('https://uploads-ssl.webflow.com/5dc1ae738cab24fef27d7fd2/5dcae913c897156755170518_disp1.jpg')
+          },
+          resolution: {
+            type: "v4",
+            value: new THREE.Vector4()
+          },
+        },
+        vertexShader: this.vertex,
+        fragmentShader: this.fragment
+      });
+      this.geometry = new THREE.PlaneGeometry(1, 1, 2, 2);
+      this.plane = new THREE.Mesh(this.geometry, this.material);
+      this.scene.add(this.plane);
+    }
+
+    stop() {
+      this.paused = true;
+    }
+
+    play() {
+      this.paused = false;
+      this.render();
+    }
+
+    next() {
+      if (this.isRunning) return;
+      this.isRunning = true;
+      let len = this.textures.length;
+      let nextTexture = this.textures[(this.current + 1) % len];
+      this.material.uniforms.texture2.value = nextTexture;
+      let tl = new TimelineMax();
+      tl.to(this.material.uniforms.progress, this.duration, {
+        value: 1,
+        ease: Power2[this.easing],
+        onComplete: () => {
+          this.current = (this.current + 1) % len;
+          this.material.uniforms.texture1.value = nextTexture;
+          this.material.uniforms.progress.value = 0;
+          this.isRunning = false;
+        }
+      });
+    }
+
+    prev() {
+      if (this.isRunning) return;
+      this.isRunning = true;
+      let len = this.textures.length;
+      const prevIndex = this.current === 0 ? len - 1 : this.current - 1;
+      let prevTexture = this.textures[prevIndex];
+      this.material.uniforms.texture2.value = prevTexture;
+      let tl = new TimelineMax();
+      tl.to(this.material.uniforms.progress, this.duration, {
+        value: 1,
+        ease: Power2[this.easing],
+        onComplete: () => {
+          this.current = prevIndex;
+          this.material.uniforms.texture1.value = prevTexture;
+          this.material.uniforms.progress.value = 0;
+          this.isRunning = false;
+        }
+      });
+    }
+
+    render() {
+      if (this.paused) return;
+      this.time += 0.05;
+      this.material.uniforms.time.value = this.time;
+      Object.keys(this.uniforms).forEach((item) => {
+        this.material.uniforms[item].value = this.settings[item];
+      });
+      requestAnimationFrame(this.render.bind(this));
+      this.renderer.render(this.scene, this.camera);
+    }
+
+    destroy() {
+      this.stop();
+      
+      // Remove event listeners
+      if (this.clicker && this.nextHandler) {
+        this.clicker.removeEventListener('click', this.nextHandler);
+        this.nextHandler = null;
+      }
+      if (this.clicker2 && this.prevHandler) {
+        this.clicker2.removeEventListener('click', this.prevHandler);
+        this.prevHandler = null;
+      }
+      if (this.resizeHandler) {
+        window.removeEventListener("resize", this.resizeHandler);
+        this.resizeHandler = null;
+      }
+      
+      // Remove canvas from DOM first
+      if (this.container && this.renderer && this.renderer.domElement) {
+        try {
+          if (this.renderer.domElement.parentNode === this.container) {
+            this.container.removeChild(this.renderer.domElement);
+          }
         } catch (e) {
           // Ignore errors
         }
-      });
+      }
+      
+      // Dispose Three.js resources
+      if (this.renderer) {
+        this.renderer.dispose();
+        this.renderer = null;
+      }
+      if (this.material) {
+        this.material.dispose();
+        this.material = null;
+      }
+      if (this.geometry) {
+        this.geometry.dispose();
+        this.geometry = null;
+      }
+      if (this.textures) {
+        this.textures.forEach(texture => {
+          if (texture && texture.dispose) {
+            texture.dispose();
+          }
+        });
+        this.textures = [];
+      }
+      
+      // Clear scene
+      if (this.scene) {
+        while(this.scene.children.length > 0) {
+          this.scene.remove(this.scene.children[0]);
+        }
+        this.scene = null;
+      }
     }
+  }
+
+
+  function initPixelateImageRenderEffect() {
+    // Clean up existing instances
+    destroyPixelateImageRenderEffect();
     
-    sketchInstance = new Sketch({
-      debug: false,
-      uniforms: {
-        intensity: { value: 1, type: 'f', min: 0., max: 3 }
-      },
-      fragment: `
-        uniform float time;
-        uniform float progress;
-        uniform float intensity;
-        uniform float width;
-        uniform float scaleX;
-        uniform float scaleY;
-        uniform float transition;
-        uniform float radius;
-        uniform float swipe;
-        uniform sampler2D texture1;
-        uniform sampler2D texture2;
-        uniform sampler2D displacement;
-        uniform vec4 resolution;
-        varying vec2 vUv;
-        mat2 getRotM(float angle) {
-            float s = sin(angle);
-            float c = cos(angle);
-            return mat2(c, -s, s, c);
+    let renderDuration = 100;
+    let renderSteps = 20;
+    let renderColumns = 10;
+
+    const pixelateElements = document.querySelectorAll('[data-pixelate-render]');
+    pixelateElements.forEach(setupPixelate);
+
+    function setupPixelate(root) {
+      const img = root.querySelector('[data-pixelate-render-img]');
+      if (!img) return;
+
+      const trigger = (root.getAttribute('data-pixelate-render-trigger') || 'load').toLowerCase();
+
+      const durAttr = parseInt(root.getAttribute('data-pixelate-render-duration'), 10);
+      const stepsAttr = parseInt(root.getAttribute('data-pixelate-render-steps'), 10);
+      const colsAttr = parseInt(root.getAttribute('data-pixelate-render-columns'), 10);
+      const fitMode = (root.getAttribute('data-pixelate-render-fit') || 'cover').toLowerCase();
+
+      const elRenderDuration = Number.isFinite(durAttr) ? Math.max(16, durAttr) : renderDuration;
+      const elRenderSteps = Number.isFinite(stepsAttr) ? Math.max(1, stepsAttr) : renderSteps;
+      const elRenderColumns = Number.isFinite(colsAttr) ? Math.max(1, colsAttr) : renderColumns;
+
+      const canvas = document.createElement('canvas');
+      canvas.setAttribute('data-pixelate-canvas', '');
+      canvas.style.position = 'absolute';
+      canvas.style.inset = '0';
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+      canvas.style.pointerEvents = 'none'; 
+      root.style.position ||= 'relative';
+      root.appendChild(canvas);
+
+      const ctx = canvas.getContext('2d', { alpha: true });
+      ctx.imageSmoothingEnabled = false;
+
+      const back = document.createElement('canvas');
+      const tiny = document.createElement('canvas');
+      const bctx = back.getContext('2d', { alpha: true });
+      const tctx = tiny.getContext('2d', { alpha: true });
+
+      let naturalW = 0, naturalH = 0;
+      let playing = false;
+      let stageIndex = 0;
+      let targetIndex = 0; 
+      let lastTime = 0;
+      let backDirty = true, resizeTimeout = 0;
+      let steps = [elRenderColumns];
+
+      function fitCanvas() {
+        const r = root.getBoundingClientRect();
+        const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+        const w = Math.max(1, Math.round(r.width * dpr));
+        const h = Math.max(1, Math.round(r.height * dpr));
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w; canvas.height = h;
+          back.width = w; back.height = h;
+          backDirty = true;
         }
-        const float PI = 3.1415;
-        const float angle1 = PI *0.25;
-        const float angle2 = -PI *0.75;
+        regenerateSteps();
+      }
 
-        void main()	{
-          vec2 newUV = (vUv - vec2(0.5))*resolution.zw + vec2(0.5);
-
-          vec4 disp = texture2D(displacement, newUV);
-          vec2 dispVec = vec2(disp.r, disp.g);
-
-          vec2 distortedPosition1 = newUV + getRotM(angle1) * dispVec * intensity * progress;
-          vec4 t1 = texture2D(texture1, distortedPosition1);
-
-          vec2 distortedPosition2 = newUV + getRotM(angle2) * dispVec * intensity * (1.0 - progress);
-          vec4 t2 = texture2D(texture2, distortedPosition2);
-
-          gl_FragColor = mix(t1, t2, progress);
+      function regenerateSteps() {
+        const cw = Math.max(1, canvas.width);
+        const startCols = Math.min(elRenderColumns, cw);
+        const total = Math.max(1, elRenderSteps);
+        const use = Math.max(1, Math.floor(total * 0.9)); 
+        const a = [];
+        const ratio = Math.pow(cw / startCols, 1 / total);
+        for (let i = 0; i < use; i++) {
+          a.push(Math.max(1, Math.round(startCols * Math.pow(ratio, i))));
         }
-      `
-    });
-  }
-}
+        for (let i = 1; i < a.length; i++) if (a[i] <= a[i - 1]) a[i] = a[i - 1] + 1;
+        steps = a.length ? a : [startCols];
+      }
 
-function destroyProjectTemplateAnimations() {
-  // Destroy Sketch instance
-  if (sketchInstance) {
-    sketchInstance.destroy();
-    sketchInstance = null;
-  }
+      function drawImageToBack() {
+        if (!backDirty || !naturalW || !naturalH) return;
+        const cw = back.width, ch = back.height;
+        let dw = cw, dh = ch, dx = 0, dy = 0;
+        if (fitMode !== 'stretch') {
+          const s = fitMode === 'cover' ? Math.max(cw / naturalW, ch / naturalH) : Math.min(cw / naturalW, ch / naturalH);
+          dw = Math.max(1, Math.round(naturalW * s));
+          dh = Math.max(1, Math.round(naturalH * s));
+          dx = ((cw - dw) >> 1);
+          dy = ((ch - dh) >> 1);
+        }
+        bctx.clearRect(0, 0, cw, ch);
+        bctx.imageSmoothingEnabled = true;
+        bctx.drawImage(img, dx, dy, dw, dh);
+        backDirty = false;
+      }
 
-  // Destroy pixelate effects
-  destroyPixelateImageRenderEffect();
+      function pixelate(columns) {
+        const cw = canvas.width, ch = canvas.height;
+        const cols = Math.max(1, Math.floor(columns));
+        const rows = Math.max(1, Math.round(cols * (ch / cw)));
+        
+        if (stageIndex === steps.length - 1 && targetIndex === steps.length - 1) {
+           ctx.clearRect(0, 0, cw, ch);
+           return;
+        }
 
-  // Destroy mwg_effect005 (words animation)
-  destroyMWGEffect005();
+        if (tiny.width !== cols || tiny.height !== rows) { tiny.width = cols; tiny.height = rows; }
+        tctx.imageSmoothingEnabled = false;
+        tctx.clearRect(0, 0, cols, rows);
+        tctx.drawImage(back, 0, 0, cw, ch, 0, 0, cols, rows);
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, cw, ch);
+        ctx.drawImage(tiny, 0, 0, cols, rows, 0, 0, cw, ch);
+      }
 
-  // Destroy parallax
-  destroyGlobalParallax();
+      function draw(stepCols) {
+        if (!canvas.width || !canvas.height) return;
+        drawImageToBack();
+        pixelate(stepCols);
+      }
 
-  // Destroy Lenis
-  destroyLenisSmoothScroll();
-}
+      function animate(t) {
+        if (!playing) return;
+        if (!lastTime) lastTime = t;
+        const delta = t - lastTime;
 
-// REMOVED: initPageAnimations() - Not used, conflicts with Barba views
-// REMOVED: destroyAllAnimations() - Conflicts with destroyProjectTemplateAnimations()
-
-function setupBarbaTransitions() {
-  // Initialize Barba with Views (recommended way)
-  barba.init({
-    preventRunning: true,
-    transitions: [
-      {
-        name: "main-transition",
-        enter(data) {
-          // Lock page wrapper
-          const pageWrapper = document.querySelector(".page-wrapper");
-          if (pageWrapper) {
-            gsap.set(pageWrapper, { overflow: "hidden" });
+        if (delta >= elRenderDuration) {
+          if (stageIndex < targetIndex) {
+             stageIndex++;
+          } else if (stageIndex > targetIndex) {
+             stageIndex--;
+          } else {
+             playing = false;
+             draw(steps[stageIndex]);
+             return; 
           }
           
-          // Position next page container as fixed (Barba needs this for transitions)
-          gsap.set(data.next.container, {
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100%",
-            zIndex: 1,
-          });
-          
-          // Play transition animation
-          const tl = playMainTransition(data);
-          
-          return tl;
-        },
-        afterEnter(data) {
-          // Wait a bit to ensure transition animation is completely finished
-          // Use requestAnimationFrame to ensure browser has painted
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              // Scroll to top first
-              window.scrollTo(0, 0);
-              
-              // Reset container position (this must happen after scroll)
-              gsap.set(data.next.container, {
-                position: "relative",
-                zIndex: "auto",
-                clearProps: "top,left,width"
-              });
-              
-              // Unlock page wrapper
-              const pageWrapper = document.querySelector(".page-wrapper");
-              if (pageWrapper) {
-                gsap.set(pageWrapper, { overflow: "" });
-              }
-              
-              // Reset Webflow LAST, after everything is reset
-              // This prevents Webflow re-render from causing visual jump
-              setTimeout(() => {
-                resetWebflow(data);
-              }, 100);
-            });
-          });
-        },
-        beforeLeave(data) {
-          // Set flag to indicate we're transitioning
-          isTransitioning = true;
-          // Animations are destroyed by the view's beforeEnter/afterLeave hooks
+          draw(steps[stageIndex]);
+          lastTime = t;
         }
-      },
-    ],
-    views: [
-      {
-        namespace: 'project-template',
-        beforeEnter() {
-          // Destroy all animations before entering new page
-          destroyProjectTemplateAnimations();
+        
+        requestAnimationFrame(animate);
+      }
+
+      function setTarget(isHovering) {
+         targetIndex = isHovering ? steps.length - 1 : 0;
+         if (!playing) {
+             playing = true;
+             lastTime = 0; 
+             requestAnimationFrame(animate);
+         }
+      }
+
+      function init() {
+         naturalW = img.naturalWidth; naturalH = img.naturalHeight;
+         if (!naturalW || !naturalH) return;
+         
+         fitCanvas();
+         stageIndex = 0;
+         targetIndex = 0;
+         backDirty = true;
+         draw(steps[0]);
+      }
+
+      function onWindowResize() {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+           fitCanvas();
+           draw(steps[stageIndex]);
+        }, 250);
+      }
+
+      if (img.complete && img.naturalWidth) init(); 
+      else img.addEventListener('load', init, { once: true });
+
+      window.addEventListener('resize', onWindowResize);
+
+      if (trigger === 'hover') {
+        root.addEventListener('mouseenter', () => setTarget(true));
+        root.addEventListener('mouseleave', () => setTarget(false));
+      } else {
+         if(trigger === 'load') setTarget(true); 
+      }
+
+      pixelateInstances.push({
+        root,
+        canvas,
+        back,
+        tiny,
+        img,
+        onWindowResize,
+        setTarget,
+        trigger
+      });
+    }
+  }
+
+  function destroyPixelateImageRenderEffect() {
+    pixelateInstances.forEach(instance => {
+      window.removeEventListener('resize', instance.onWindowResize);
+      if (instance.canvas && instance.canvas.parentNode) {
+        instance.canvas.parentNode.removeChild(instance.canvas);
+      }
+    });
+    pixelateInstances = [];
+  }
+
+  function initLenisSmoothScroll() {
+    destroyLenisSmoothScroll();
+
+    if (typeof Lenis === 'undefined') {
+      return;
+    }
+
+    lenisInstance = new Lenis({
+      lerp: 0.1,
+      smooth: true,
+    });
+
+    lenisInstance.on('scroll', ScrollTrigger.update);
+
+    const loop = (time) => {
+      if (lenisInstance) {
+        lenisInstance.raf(time);
+      }
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }
+
+  function destroyLenisSmoothScroll() {
+    if (lenisInstance) {
+      lenisInstance.destroy();
+      lenisInstance = null;
+    }
+  }
+
+  // ================== mwg_effect005 EFFECT (FIXED) ==================
+  function wrapWordsInSpan(element) {
+    if (!element) return;
+    // Check if already wrapped to avoid double wrapping
+    if (element.querySelector('.word')) return;
+    
+    const text = (element.textContent || "").trim();
+    element.innerHTML = text
+      .split(/\s+/)
+      .map((word) => `<span class="word">${word}</span>`)
+      .join(" ");
+  }
+
+  // Modified to accept a scope (Container)
+  function initMWGEffect005(scope = document) {
+    if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
+      return;
+    }
+
+    // Scoped selectors - Finds elements ONLY inside the new page container
+    const paragraph = scope.querySelector(".mwg_effect005 .paragraph");
+    if (paragraph) wrapWordsInSpan(paragraph);
+
+    const pinHeight = scope.querySelector(".mwg_effect005 .pin-height");
+    const container = scope.querySelector(".mwg_effect005 .container");
+    const words = scope.querySelectorAll(".mwg_effect005 .word");
+
+    if (pinHeight && container && words.length) {
+      console.log("[mwg_effect005] init: words found", words.length);
+
+      // Force refresh to ensure layout is calculated correctly
+      ScrollTrigger.refresh();
+
+      const startX = window.innerWidth - 25;
+      gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
+
+      // 1) Pin trigger
+      ScrollTrigger.create({
+        trigger: pinHeight,
+        start: "top top",
+        end: "bottom bottom",
+        pin: container,
+        scrub: true,
+        invalidateOnRefresh: true
+      });
+
+      // 2) Animation trigger
+      gsap.fromTo(
+        words,
+        {
+          x: startX,
+          opacity: 0
         },
-        afterEnter() {
-          // Reset transition flag
-          isTransitioning = false;
-          
-          // Wait for all resets to complete before initializing animations
-          // This prevents the visual "jump" that looks like animation restarting
-          setTimeout(() => {
+        {
+          x: 0,
+          opacity: 1,
+          stagger: 0.02,
+          ease: "power4.inOut",
+          scrollTrigger: {
+            trigger: pinHeight,
+            start: "top 70%",
+            end: "bottom bottom",
+            scrub: true,
+            invalidateOnRefresh: true
+          }
+        }
+      );
+
+      // Final refresh
+      ScrollTrigger.refresh();
+    }
+  }
+
+  function destroyMWGEffect005() {
+    if (typeof ScrollTrigger === 'undefined') {
+      return;
+    }
+    
+    // 1. Kill triggers
+    let killed = 0;
+    ScrollTrigger.getAll().forEach((st) => {
+      try {
+        const t = st.vars && st.vars.trigger;
+        if (t && (t.classList.contains("pin-height") || t.closest(".mwg_effect005"))) {
+          st.kill();
+          killed += 1;
+        }
+      } catch (e) {
+        // ignore
+      }
+    });
+
+    // 2. IMPORTANT: Restore original text (clean DOM)
+    // This removes the <span class="word"> tags so next init starts fresh
+    const paragraphs = document.querySelectorAll(".mwg_effect005 .paragraph");
+    paragraphs.forEach(p => {
+      if (p.querySelector('.word')) {
+        // Resetting textContent removes HTML tags
+        p.textContent = p.textContent;
+      }
+    });
+    
+    // Clear props on any remaining word elements just in case
+    const words = document.querySelectorAll(".mwg_effect005 .word");
+    if (words.length) {
+      gsap.set(words, { clearProps: "all" });
+    }
+    
+    console.log("[mwg_effect005] destroyed and HTML cleaned. Triggers killed:", killed);
+    ScrollTrigger.refresh();
+  }
+
+  function initGlobalParallax() {
+    if (parallaxContext) {
+      parallaxContext.revert();
+      parallaxContext = null;
+    }
+
+    if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
+      return;
+    }
+
+    const mm = gsap.matchMedia();
+
+    mm.add(
+      {
+        isMobile: "(max-width:479px)",
+        isMobileLandscape: "(max-width:767px)",
+        isTablet: "(max-width:991px)",
+        isDesktop: "(min-width:992px)"
+      },
+      (context) => {
+        const { isMobile, isMobileLandscape, isTablet } = context.conditions;
+
+        parallaxContext = gsap.context(() => {
+          document.querySelectorAll('[data-parallax="trigger"]').forEach((trigger) => {
+            const disable = trigger.getAttribute("data-parallax-disable");
+            if (
+              (disable === "mobile" && isMobile) ||
+              (disable === "mobileLandscape" && isMobileLandscape) ||
+              (disable === "tablet" && isTablet)
+            ) {
+              return;
+            }
+            
+            const target = trigger.querySelector('[data-parallax="target"]') || trigger;
+            const direction = trigger.getAttribute("data-parallax-direction") || "vertical";
+            const prop = direction === "horizontal" ? "xPercent" : "yPercent";
+            const scrubAttr = trigger.getAttribute("data-parallax-scrub");
+            const scrub = scrubAttr ? parseFloat(scrubAttr) : true;
+            const startAttr = trigger.getAttribute("data-parallax-start");
+            const startVal = startAttr !== null ? parseFloat(startAttr) : 20;
+            const endAttr = trigger.getAttribute("data-parallax-end");
+            const endVal = endAttr !== null ? parseFloat(endAttr) : -20;
+            const scrollStartRaw = trigger.getAttribute("data-parallax-scroll-start") || "top bottom";
+            const scrollStart = `clamp(${scrollStartRaw})`;
+            const scrollEndRaw = trigger.getAttribute("data-parallax-scroll-end") || "bottom top";
+            const scrollEnd = `clamp(${scrollEndRaw})`;
+
+            gsap.fromTo(
+              target,
+              { [prop]: startVal },
+              {
+                [prop]: endVal,
+                ease: "none",
+                scrollTrigger: {
+                  trigger,
+                  start: scrollStart,
+                  end: scrollEnd,
+                  scrub,
+                },
+              }
+            );
+          });
+        });
+
+        return () => {
+          if (parallaxContext) {
+            parallaxContext.revert();
+            parallaxContext = null;
+          }
+        };
+      }
+    );
+  }
+
+  function destroyGlobalParallax() {
+    if (parallaxContext) {
+      parallaxContext.revert();
+      parallaxContext = null;
+    }
+  }
+
+  // Modified to accept a container argument for Scoping
+  function initProjectTemplateAnimations(container = document) {
+    // Initialize Lenis smooth scroll first
+    initLenisSmoothScroll();
+
+    // Initialize global parallax
+    initGlobalParallax();
+
+    // Initialize mwg_effect005 (PASSED CONTAINER)
+    initMWGEffect005(container);
+
+    // Initialize pixelate effect
+    initPixelateImageRenderEffect();
+
+    // Initialize Three.js Sketch
+    const sliderContainer = document.getElementById("slider");
+    if (sliderContainer) {
+      const existingCanvases = sliderContainer.querySelectorAll('canvas');
+      if (existingCanvases.length > 0) {
+        existingCanvases.forEach(canvas => {
+          try {
+            sliderContainer.removeChild(canvas);
+          } catch (e) {
+            // Ignore errors
+          }
+        });
+      }
+      
+      sketchInstance = new Sketch({
+        debug: false,
+        uniforms: {
+          intensity: { value: 1, type: 'f', min: 0., max: 3 }
+        },
+        fragment: `
+          uniform float time;
+          uniform float progress;
+          uniform float intensity;
+          uniform float width;
+          uniform float scaleX;
+          uniform float scaleY;
+          uniform float transition;
+          uniform float radius;
+          uniform float swipe;
+          uniform sampler2D texture1;
+          uniform sampler2D texture2;
+          uniform sampler2D displacement;
+          uniform vec4 resolution;
+          varying vec2 vUv;
+          mat2 getRotM(float angle) {
+              float s = sin(angle);
+              float c = cos(angle);
+              return mat2(c, -s, s, c);
+          }
+          const float PI = 3.1415;
+          const float angle1 = PI *0.25;
+          const float angle2 = -PI *0.75;
+
+          void main()	{
+            vec2 newUV = (vUv - vec2(0.5))*resolution.zw + vec2(0.5);
+
+            vec4 disp = texture2D(displacement, newUV);
+            vec2 dispVec = vec2(disp.r, disp.g);
+
+            vec2 distortedPosition1 = newUV + getRotM(angle1) * dispVec * intensity * progress;
+            vec4 t1 = texture2D(texture1, distortedPosition1);
+
+            vec2 distortedPosition2 = newUV + getRotM(angle2) * dispVec * intensity * (1.0 - progress);
+            vec4 t2 = texture2D(texture2, distortedPosition2);
+
+            gl_FragColor = mix(t1, t2, progress);
+          }
+        `
+      });
+    }
+  }
+
+  function destroyProjectTemplateAnimations() {
+    if (sketchInstance) {
+      sketchInstance.destroy();
+      sketchInstance = null;
+    }
+    destroyPixelateImageRenderEffect();
+    destroyMWGEffect005(); // This now cleans HTML too
+    destroyGlobalParallax();
+    destroyLenisSmoothScroll();
+  }
+
+  function setupBarbaTransitions() {
+    barba.init({
+      preventRunning: true,
+      transitions: [
+        {
+          name: "main-transition",
+          enter(data) {
+            const pageWrapper = document.querySelector(".page-wrapper");
+            if (pageWrapper) {
+              gsap.set(pageWrapper, { overflow: "hidden" });
+            }
+            
+            gsap.set(data.next.container, {
+              position: "fixed",
+              top: 0,
+              left: 0,
+              width: "100%",
+              zIndex: 1,
+            });
+            
+            const tl = playMainTransition(data);
+            return tl;
+          },
+          afterEnter(data) {
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
-                // Initialize all animations (ONLY ONCE here)
-                initProjectTemplateAnimations();
+                window.scrollTo(0, 0);
                 
-                // Refresh ScrollTrigger after animations are initialized
-                if (typeof ScrollTrigger !== 'undefined') {
-                  setTimeout(() => {
-                    ScrollTrigger.refresh();
-                  }, 150);
+                gsap.set(data.next.container, {
+                  position: "relative",
+                  zIndex: "auto",
+                  clearProps: "top,left,width"
+                });
+                
+                const pageWrapper = document.querySelector(".page-wrapper");
+                if (pageWrapper) {
+                  gsap.set(pageWrapper, { overflow: "" });
                 }
+                
+                setTimeout(() => {
+                  resetWebflow(data);
+                }, 100);
               });
             });
-          }, 300);
+          },
+          beforeLeave(data) {
+            isTransitioning = true;
+          }
         },
-        afterLeave() {
-          // Clean up when leaving the namespace
-          destroyProjectTemplateAnimations();
+      ],
+      views: [
+        {
+          namespace: 'project-template',
+          beforeEnter() {
+            destroyProjectTemplateAnimations();
+          },
+          afterEnter(data) {
+            isTransitioning = false;
+            
+            setTimeout(() => {
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  // PASSING THE CONTAINER TO INIT (CRITICAL FIX)
+                  initProjectTemplateAnimations(data.next.container);
+                  
+                  if (typeof ScrollTrigger !== 'undefined') {
+                    setTimeout(() => {
+                      ScrollTrigger.refresh();
+                    }, 150);
+                  }
+                });
+              });
+            }, 300);
+          },
+          afterLeave() {
+            destroyProjectTemplateAnimations();
+          }
         }
-      }
-    ]
+      ]
+    });
+  }
+
+  // Initialize on DOM ready
+  document.addEventListener("DOMContentLoaded", () => {
+    // Initial load - pass document
+    initProjectTemplateAnimations(document);
+    // Setup Barba
+    setupBarbaTransitions();
   });
-}
-
-// Initialize on DOM ready
-document.addEventListener("DOMContentLoaded", () => {
-  // Setup Barba.js transitions
-  setupBarbaTransitions();
-});
-
-
 
 })();

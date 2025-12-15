@@ -689,36 +689,40 @@ function wrapWordsInSpan(element) {
     .join(" ");
 }
 
-function initMWGEffect005(root = document) {
-  // Scope dentro root (utile se in futuro usi Barba)
-  const scope = root.querySelector(".mwg_effect005");
-  if (!scope) return;
-
-  const paragraph = scope.querySelector(".paragraph");
-  if (paragraph && !paragraph.dataset.wrapped) {
-    wrapWordsInSpan(paragraph);
-    paragraph.dataset.wrapped = "true";
+function initMWGEffect005() {
+  // ScrollTrigger is already registered globally
+  if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
+    return;
   }
 
-  const pinHeight = scope.querySelector(".pin-height");
-  const container = scope.querySelector(".container");
-  const words = scope.querySelectorAll(".word");
+  // --- Word wrapping ---
+  const paragraph = document.querySelector(".mwg_effect005 .paragraph");
+  if (paragraph) {
+    wrapWordsInSpan(paragraph);
+  }
 
-  if (!pinHeight || !container || !words.length) return;
+  // --- Elements ---
+  const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
+  const container = document.querySelector(".mwg_effect005 .container");
+  const words = document.querySelectorAll(".mwg_effect005 .word");
 
-  // Kill eventuali trigger precedenti su questi elementi (anti doppioni)
+  if (!pinHeight || !container || !words.length) {
+    return;
+  }
+
+  // Kill any existing ScrollTriggers on these elements to prevent duplicates
   ScrollTrigger.getAll().forEach((st) => {
-    const t = st.vars && st.vars.trigger;
-    if (t === pinHeight) st.kill();
+    try {
+      const t = st.vars && st.vars.trigger;
+      if (t === pinHeight) {
+        st.kill();
+      }
+    } catch (e) {
+      // Ignore errors
+    }
   });
 
-  // Stato iniziale che corrisponde al CSS: transform: translate(calc(100vw - 25px), 0)
-  const startX = window.innerWidth - 25; // Corrisponde a calc(100vw - 25px)
-  
-  // Imposta lo stato iniziale esplicitamente (sovrascrive il CSS)
-  gsap.set(words, { x: startX, opacity: 0, willChange: "transform,opacity", clearProps: "none" });
-
-  // 1) PIN
+  // 1) Pin trigger (layout lock)
   ScrollTrigger.create({
     trigger: pinHeight,
     start: "top top",
@@ -729,11 +733,10 @@ function initMWGEffect005(root = document) {
     // markers: true
   });
 
-  // 2) REVEAL parole - usa fromTo per definire esplicitamente stato iniziale e finale
-  const animationTween = gsap.fromTo(words, {
-    x: startX,
-    opacity: 0
-  }, {
+  // 2) Animation trigger (motion)
+  // CSS already sets initial state: transform: translate(calc(100vw - 25px), 0); opacity: 0;
+  // GSAP will animate from that state to x: 0, opacity: 1
+  gsap.to(words, {
     x: 0,
     opacity: 1,
     stagger: 0.02,
@@ -743,65 +746,21 @@ function initMWGEffect005(root = document) {
       start: "top 70%",
       end: "bottom bottom",
       scrub: true,
-      invalidateOnRefresh: true,
-      // Mantieni le proprietà inline anche dopo l'animazione
-      onUpdate: (self) => {
-        // Quando l'animazione raggiunge il 100%, forza le proprietà inline a rimanere
-        if (self.progress >= 1) {
-          gsap.set(words, { x: 0, opacity: 1, clearProps: "none" });
-        } else if (self.progress <= 0) {
-          gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
-        }
-      },
-      onLeave: () => {
-        // Quando esci dalla zona di scroll (scrollando avanti), mantieni lo stato finale
-        gsap.set(words, { x: 0, opacity: 1, clearProps: "none" });
-      },
-      onLeaveBack: () => {
-        // Quando esci dalla zona di scroll (scrollando indietro), mantieni lo stato iniziale
-        gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
-      },
-      onEnter: () => {
-        // Quando entri nella zona, assicurati che lo stato iniziale sia corretto
-        gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
-      }
+      invalidateOnRefresh: true
       // markers: true
     }
   });
-
-  // Listener per resize per ricalcolare startX
-  const resizeHandler = () => {
-    const newStartX = window.innerWidth - 25;
-    // Aggiorna lo stato iniziale se siamo all'inizio dell'animazione
-    const words = scope.querySelectorAll(".word");
-    if (words.length) {
-      // Controlla se siamo nello stato iniziale (opacity: 0)
-      const firstWord = words[0];
-      const computedStyle = window.getComputedStyle(firstWord);
-      if (parseFloat(computedStyle.opacity) === 0) {
-        gsap.set(words, { x: newStartX, clearProps: "none" });
-      }
-    }
-    ScrollTrigger.refresh();
-  };
-  window.addEventListener('resize', resizeHandler);
-  
-  // Salva il resize handler per la pulizia (se necessario)
-  if (!window._mwgEffect005ResizeHandlers) {
-    window._mwgEffect005ResizeHandlers = [];
-  }
-  window._mwgEffect005ResizeHandlers.push(resizeHandler);
-
-  // Refresh per sicurezza (Webflow layout/asset)
-  ScrollTrigger.refresh();
 }
 
-function destroyMWGEffect005(root = document) {
-  const scope = root.querySelector(".mwg_effect005");
-  if (!scope) return;
+function destroyMWGEffect005() {
+  if (typeof ScrollTrigger === 'undefined') {
+    return;
+  }
 
-  const pinHeight = scope.querySelector(".pin-height");
-  if (!pinHeight) return;
+  const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
+  if (!pinHeight) {
+    return;
+  }
 
   // Kill all ScrollTriggers related to mwg_effect005
   ScrollTrigger.getAll().forEach((st) => {
@@ -811,21 +770,9 @@ function destroyMWGEffect005(root = document) {
         st.kill();
       }
     } catch (e) {
-      // If trigger is already destroyed, continue
+      // Ignore errors
     }
   });
-
-  // Reset wrapped flag - IMPORTANTE: questo permette di wrappare di nuovo dopo transizione Barba
-  const paragraph = scope.querySelector(".paragraph");
-  if (paragraph && paragraph.dataset.wrapped) {
-    delete paragraph.dataset.wrapped;
-  }
-
-  // Rimuovi eventuali proprietà inline dalle words per permettere reinizializzazione pulita
-  const words = scope.querySelectorAll(".word");
-  if (words.length) {
-    gsap.set(words, { clearProps: "all" });
-  }
 
   ScrollTrigger.refresh();
 }
@@ -1109,19 +1056,14 @@ function setupBarbaTransitions() {
                 initProjectTemplateAnimations();
                 
                 // Refresh ScrollTrigger after animations are initialized
-                // Multiple refreshes to ensure everything is calculated correctly
                 if (typeof ScrollTrigger !== 'undefined') {
                   setTimeout(() => {
                     ScrollTrigger.refresh();
-                    // Second refresh after a bit more time for mwg_effect005
-                    setTimeout(() => {
-                      ScrollTrigger.refresh();
-                    }, 100);
                   }, 150);
                 }
               });
             });
-          }, 250); // Slightly longer delay to ensure DOM is fully ready
+          }, 200);
         },
         afterLeave() {
           // Clean up when leaving the namespace

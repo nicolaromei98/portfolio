@@ -59,7 +59,7 @@ function playMainTransition(data) {
   gsap.set(data.next.container, {
     y: "100vh",
     x: "-50vw",
-    rotation: -4,
+    rotation: -2,
     opacity: 1
   });
 
@@ -68,8 +68,8 @@ function playMainTransition(data) {
     opacity: 0.5,
     y: "-12vh",
     x: "12vw",
-    rotation: 4,
-    ease: "power4.out",
+    rotation: 2,
+    ease: "power2.out",
     duration: 0.8,
   })
   // Change background color
@@ -82,7 +82,7 @@ function playMainTransition(data) {
     y: 0,
     x: 0,
     rotation: 0,
-    ease: "power4.out",
+    ease: "power2.out",
   }, "0");
 
   return tl;

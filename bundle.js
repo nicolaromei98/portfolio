@@ -689,8 +689,7 @@ function destroyLenisSmoothScroll() {
 
 // ================== mwg_effect005 EFFECT ==================
 function wrapWordsInSpan(element) {
-  // Prevent double-wrapping if already processed
-  if (element.querySelector('.word')) return;
+  // Re-wrap fresh content
   const text = (element.textContent || "").trim();
   element.innerHTML = text
     .split(/\s+/)
@@ -782,6 +781,11 @@ function destroyMWGEffect005() {
   // Clean inline styles and wrapping flag
   const paragraph = document.querySelector(".mwg_effect005 .paragraph");
   const words = document.querySelectorAll(".mwg_effect005 .word");
+  // Unwrap to a clean state for the next init
+  if (paragraph) {
+    const plainText = paragraph.textContent || "";
+    paragraph.textContent = plainText;
+  }
   if (words.length) {
     gsap.set(words, { clearProps: "all" });
     console.log("[mwg_effect005] destroy: cleared words styles", words.length, "triggers killed", killed);

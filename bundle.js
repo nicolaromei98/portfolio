@@ -715,18 +715,6 @@ function initMWGEffect005() {
     return;
   }
 
-  // Remove any residual pin-spacer from previous runs inside scope (safety)
-  scope.querySelectorAll('.pin-spacer').forEach((el) => {
-    if (el.parentNode) {
-      const child = el.firstElementChild;
-      if (child) {
-        el.parentNode.replaceChild(child, el);
-      } else {
-        el.parentNode.removeChild(el);
-      }
-    }
-  });
-
   // Word wrapping (keeps a copy of the original text)
   const paragraph = scope.querySelector(".paragraph");
   if (paragraph) wrapWordsInSpan(paragraph);
@@ -801,21 +789,6 @@ function destroyMWGEffect005() {
   if (paragraph && paragraph.dataset && paragraph.dataset.originalText) {
     paragraph.textContent = paragraph.dataset.originalText;
     delete paragraph.dataset.originalText;
-  }
-
-  // Remove any residual pin-spacer inside scope (extra safety)
-  const scope = document.querySelector(".mwg_effect005");
-  if (scope) {
-    scope.querySelectorAll('.pin-spacer').forEach((el) => {
-      if (el.parentNode) {
-        const child = el.firstElementChild;
-        if (child) {
-          el.parentNode.replaceChild(child, el);
-        } else {
-          el.parentNode.removeChild(el);
-        }
-      }
-    });
   }
 
   if (typeof ScrollTrigger !== 'undefined') {

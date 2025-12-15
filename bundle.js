@@ -53,10 +53,11 @@ function resetWebflow(data) {
 
 
 function playMainTransition(data) {
-  // Slide-like Y transition:
-  // - current slides up by 100% and its inner by 50% (parallax feel)
-  // - next slides in from 100% to 0%, inner from -50% to 0%
-  // - easing: cubic-bezier(0.6, 0.08, 0.02, 0.99), duration: 0.9s
+  // Overlap cut effect:
+  // - the new page cuts in from below (yPercent 100 -> 0)
+  // - the old page moves up much less (yPercent 0 -> -30)
+  // - easing: cubic-bezier(0.6, 0.08, 0.02, 0.99)
+  // - slower animation for clarity
   const tl = gsap.timeline();
 
   const currentContainer = data.current.container;
@@ -69,14 +70,14 @@ function playMainTransition(data) {
   });
 
   tl.to(currentContainer, {
-    yPercent: -100,
+    yPercent: -30,
     ease: "cubic-bezier(0.6, 0.08, 0.02, 0.99)",
-    duration: 0.9
+    duration: 1.4
   }, 0)
   .to(nextContainer, {
     yPercent: 0,
     ease: "cubic-bezier(0.6, 0.08, 0.02, 0.99)",
-    duration: 0.9
+    duration: 1.4
   }, 0);
 
   return tl;

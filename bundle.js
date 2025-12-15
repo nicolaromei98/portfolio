@@ -893,6 +893,9 @@ function destroyGlobalParallax() {
 }
 
 function initProjectTemplateAnimations() {
+  // Safety: clean any leftover mwg triggers before new init
+  destroyMWGEffect005();
+
   // Initialize Lenis smooth scroll first
   initLenisSmoothScroll();
 

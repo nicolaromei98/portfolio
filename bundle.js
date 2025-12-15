@@ -1080,24 +1080,6 @@ function setupBarbaTransitions() {
 document.addEventListener("DOMContentLoaded", () => {
   // Setup Barba.js transitions
   setupBarbaTransitions();
-  
-  // Initialize page-specific animations for initial page load
-  // Only if this is the initial page load (not a Barba transition)
-  // The view's afterEnter hook will handle initialization during transitions
-  const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
-  if (namespace === 'project-template') {
-    // Check if Barba has already initialized (if not, this is the first page load)
-    // Barba views handle initialization during transitions, so we only need this for initial load
-    setTimeout(() => {
-      // Only initialize if we're not in a transition
-      if (!isTransitioning) {
-        initProjectTemplateAnimations();
-        if (typeof ScrollTrigger !== 'undefined') {
-          ScrollTrigger.refresh();
-        }
-      }
-    }, 400); // Slightly longer delay to ensure Barba is set up
-  }
 });
 
 

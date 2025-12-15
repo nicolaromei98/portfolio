@@ -689,16 +689,11 @@ function destroyLenisSmoothScroll() {
 }
 
 // ================== mwg_effect005 EFFECT ==================
+
 function wrapWordsInSpan(element) {
-  // Preserve original text so we can cleanly revert on destroy/leave
-  const originalText =
-    (element.dataset && element.dataset.originalText) ||
-    (element.textContent || "").trim();
-
-  if (element.dataset) {
-    element.dataset.originalText = originalText;
-  }
-
+  // Wrap only once
+  if (element.querySelector(".word")) return;
+  const originalText = (element.textContent || "").trim();
   element.innerHTML = originalText
     .split(/\s+/)
     .map((word) => `<span class="word">${word}</span>`)
@@ -711,115 +706,60 @@ function initMWGEffect005() {
   }
 
   const scope = document.querySelector(".mwg_effect005");
-  if (!scope) {
-    return;
-  }
+  if (!scope) return;
 
-  // Word wrapping (keeps a copy of the original text)
   const paragraph = scope.querySelector(".paragraph");
   if (paragraph) wrapWordsInSpan(paragraph);
 
-  // Use gsap.context so Barba/GSAP can revert everything safely
   mwgEffect005Ctx = gsap.context((self) => {
     const pinHeight = self.selector(".pin-height")[0];
     const container = self.selector(".container")[0];
     const words = self.selector(".word");
 
-    if (pinHeight && container && words.length) {
-      console.log("[mwg_effect005] init: words found", words.length);
-
-      const startX = window.innerWidth - 25;
-      gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
-
-      // 1) Pin trigger (layout lock)
-      ScrollTrigger.create({
-        trigger: pinHeight,
-        start: "top top",
-        end: "bottom bottom",
-        pin: container,
-        scrub: true,
-        invalidateOnRefresh: true
-        // markers: true
-      });
-
-      // 2) Animation trigger (motion)
-      gsap.fromTo(
-        words,
-        {
-          x: startX,
-          opacity: 0
-        },
-        {
-          x: 0,
-          opacity: 1,
-          stagger: 0.02,
-          ease: "power4.inOut",
-          scrollTrigger: {
-            trigger: pinHeight,
-            start: "top 70%",
-            end: "bottom bottom",
-            scrub: true,
-            invalidateOnRefresh: true
-            // markers: true
-          }
-        }
-      );
-
-      // Refresh to ensure triggers are active after creation
-      ScrollTrigger.refresh && ScrollTrigger.refresh();
-    } else {
-      console.log("[mwg_effect005] init: missing elements", {
-        pinHeight: !!pinHeight,
-        container: !!container,
-        words: words.length
-      });
+    if (!(pinHeight && container && words.length)) {
+      return;
     }
+
+    const startX = window.innerWidth - 25;
+
+    ScrollTrigger.create({
+      trigger: pinHeight,
+      start: "top top",
+      end: "bottom bottom",
+      pin: container,
+      scrub: true,
+      invalidateOnRefresh: true
+    });
+
+    gsap.fromTo(
+      words,
+      { x: startX, opacity: 0 },
+      {
+        x: 0,
+        opacity: 1,
+        stagger: 0.02,
+        ease: "power4.inOut",
+        scrollTrigger: {
+          trigger: pinHeight,
+          start: "top 70%",
+          end: "bottom bottom",
+          scrub: true,
+          invalidateOnRefresh: true
+        }
+      }
+    );
   }, scope);
+
+  if (typeof ScrollTrigger !== 'undefined' && ScrollTrigger.refresh) {
+    ScrollTrigger.refresh();
+  }
 }
 
 function destroyMWGEffect005() {
-  // Revert everything created inside the context (triggers, pins, sets)
   if (mwgEffect005Ctx) {
     mwgEffect005Ctx.revert();
     mwgEffect005Ctx = null;
   }
-
-  const scope = document.querySelector(".mwg_effect005");
-  if (scope) {
-    // Extra safety: kill any residual triggers tied to this scope
-    if (typeof ScrollTrigger !== 'undefined') {
-      ScrollTrigger.getAll().forEach((st) => {
-        try {
-          const t = st.vars && st.vars.trigger;
-          if (t && t.closest && t.closest(".mwg_effect005")) {
-            st.kill();
-          }
-        } catch (e) {
-          /* ignore */
-        }
-      });
-    }
-
-    // Remove any pin-spacer inside scope (if present)
-    scope.querySelectorAll('.pin-spacer').forEach((el) => {
-      if (el.parentNode) {
-        const child = el.firstElementChild;
-        if (child) {
-          el.parentNode.replaceChild(child, el);
-        } else {
-          el.parentNode.removeChild(el);
-        }
-      }
-    });
-  }
-
-  // Restore plain paragraph text so Barba cache stays clean
-  const paragraph = document.querySelector(".mwg_effect005 .paragraph");
-  if (paragraph && paragraph.dataset && paragraph.dataset.originalText) {
-    paragraph.textContent = paragraph.dataset.originalText;
-    delete paragraph.dataset.originalText;
-  }
-
   if (typeof ScrollTrigger !== 'undefined') {
     ScrollTrigger.refresh && ScrollTrigger.refresh();
   }

@@ -55,7 +55,7 @@ function resetWebflow(data) {
 function playMainTransition(data) {
   // New transition:
   // - The new page overlaps the old one.
-  // - The old page is pushed upward with yPercent, scaled, blurred.
+  // - The old page is pushed upward with yPercent.
   // - Ease: cubic-bezier(0.6, 0.08, 0.02, 0.99), duration 0.9s.
   const tl = gsap.timeline();
 
@@ -65,16 +65,12 @@ function playMainTransition(data) {
     x: 0,
     rotation: 0,
     opacity: 1,
-    filter: "blur(0px)",
-    scale: 1,
   });
 
   tl.to(data.current.container, {
     yPercent: -50,
     x: 0,
     rotation: 0,
-    scale: 0.9,
-    filter: "blur(10px)",
     opacity: 0.6,
     ease: "cubic-bezier(0.6, 0.08, 0.02, 0.99)",
     duration: 0.9,
@@ -84,8 +80,6 @@ function playMainTransition(data) {
     x: 0,
     rotation: 0,
     opacity: 1,
-    filter: "blur(0px)",
-    scale: 1,
     ease: "cubic-bezier(0.6, 0.08, 0.02, 0.99)",
     duration: 0.9,
   }, 0);

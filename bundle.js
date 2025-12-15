@@ -1,5 +1,5 @@
 /**
- * Animations & Transitions Bundle - FIX BARBA JS
+ * Animations & Transitions Bundle (FIXED VERSION)
  * Single file bundle for Webflow integration via CDN
  */
 
@@ -17,6 +17,7 @@
   
   // Store instances for cleanup
   let parallaxContext = null;
+  let mwgContext = null; // <--- NUOVO: Contesto specifico per MWG Effect
   let lenisInstance = null;
   let sketchInstance = null;
   let pixelateInstances = [];
@@ -46,7 +47,6 @@
       }
     }
   }
-
 
   function playMainTransition(data) {
     const tl = gsap.timeline();
@@ -84,6 +84,9 @@
     return tl;
   }
 
+  // ============================================================================
+  // SKETCH (THREE.JS) CLASS
+  // ============================================================================
 
   class Sketch {
     constructor(opts) {
@@ -428,9 +431,9 @@
     // Clean up existing instances
     destroyPixelateImageRenderEffect();
     
-    let renderDuration = 100;
-    let renderSteps = 20;
-    let renderColumns = 10;
+    let renderDuration = 100;  // Velocizzato leggermente per l'hover
+    let renderSteps = 20;      // Più step per fluidità
+    let renderColumns = 10;    // Blocchi iniziali
 
     const pixelateElements = document.querySelectorAll('[data-pixelate-render]');
     pixelateElements.forEach(setupPixelate);
@@ -439,6 +442,7 @@
       const img = root.querySelector('[data-pixelate-render-img]');
       if (!img) return;
 
+      // Selettore trigger (hover è il focus qui)
       const trigger = (root.getAttribute('data-pixelate-render-trigger') || 'load').toLowerCase();
 
       const durAttr = parseInt(root.getAttribute('data-pixelate-render-duration'), 10);
@@ -456,7 +460,7 @@
       canvas.style.inset = '0';
       canvas.style.width = '100%';
       canvas.style.height = '100%';
-      canvas.style.pointerEvents = 'none'; 
+      canvas.style.pointerEvents = 'none'; // Importante: lascia passare il mouse all'img sotto
       root.style.position ||= 'relative';
       root.appendChild(canvas);
 
@@ -471,7 +475,7 @@
       let naturalW = 0, naturalH = 0;
       let playing = false;
       let stageIndex = 0;
-      let targetIndex = 0; 
+      let targetIndex = 0; // Dove vogliamo arrivare (0 = pixelato, MAX = nitido)
       let lastTime = 0;
       let backDirty = true, resizeTimeout = 0;
       let steps = [elRenderColumns];
@@ -525,6 +529,7 @@
         const cols = Math.max(1, Math.floor(columns));
         const rows = Math.max(1, Math.round(cols * (ch / cw)));
         
+        // Se siamo alla massima risoluzione, puliamo il canvas per mostrare l'IMG originale sotto
         if (stageIndex === steps.length - 1 && targetIndex === steps.length - 1) {
            ctx.clearRect(0, 0, cw, ch);
            return;
@@ -545,18 +550,24 @@
         pixelate(stepCols);
       }
 
+      // Nuova logica di animazione bidirezionale
       function animate(t) {
         if (!playing) return;
+
+        // Gestione del timing
         if (!lastTime) lastTime = t;
         const delta = t - lastTime;
 
+        // Se è passato abbastanza tempo, facciamo un frame
         if (delta >= elRenderDuration) {
           if (stageIndex < targetIndex) {
-             stageIndex++;
+             stageIndex++; // Andiamo verso il nitido
           } else if (stageIndex > targetIndex) {
-             stageIndex--;
+             stageIndex--; // Torniamo verso il pixelato
           } else {
+             // Siamo arrivati a destinazione
              playing = false;
+             // Ultimo disegno per assicurarsi che sia pulito o pixelato
              draw(steps[stageIndex]);
              return; 
           }
@@ -569,10 +580,13 @@
       }
 
       function setTarget(isHovering) {
+         // Se hover: target è l'ultimo step (nitido)
+         // Se no hover: target è 0 (pixelato)
          targetIndex = isHovering ? steps.length - 1 : 0;
+         
          if (!playing) {
              playing = true;
-             lastTime = 0; 
+             lastTime = 0; // Reset timer
              requestAnimationFrame(animate);
          }
       }
@@ -582,6 +596,8 @@
          if (!naturalW || !naturalH) return;
          
          fitCanvas();
+         
+         // Stato Iniziale: Pixelato (stageIndex 0)
          stageIndex = 0;
          targetIndex = 0;
          backDirty = true;
@@ -596,6 +612,7 @@
         }, 250);
       }
 
+      // Gestione Trigger
       if (img.complete && img.naturalWidth) init(); 
       else img.addEventListener('load', init, { once: true });
 
@@ -605,9 +622,10 @@
         root.addEventListener('mouseenter', () => setTarget(true));
         root.addEventListener('mouseleave', () => setTarget(false));
       } else {
-         if(trigger === 'load') setTarget(true); 
+         if(trigger === 'load') setTarget(true); // Parte subito
       }
 
+      // Store instance for cleanup
       pixelateInstances.push({
         root,
         canvas,
@@ -632,19 +650,23 @@
   }
 
   function initLenisSmoothScroll() {
+    // Destroy existing instance if any
     destroyLenisSmoothScroll();
 
     if (typeof Lenis === 'undefined') {
       return;
     }
 
+    // Initialize a new Lenis instance for smooth scrolling
     lenisInstance = new Lenis({
       lerp: 0.1,
       smooth: true,
     });
 
+    // Synchronize Lenis scrolling with GSAP's ScrollTrigger plugin
     lenisInstance.on('scroll', ScrollTrigger.update);
 
+    // Create animation loop (as per Lenis documentation)
     const loop = (time) => {
       if (lenisInstance) {
         lenisInstance.raf(time);
@@ -655,125 +677,105 @@
   }
 
   function destroyLenisSmoothScroll() {
+    // Destroy Lenis instance
     if (lenisInstance) {
       lenisInstance.destroy();
       lenisInstance = null;
     }
   }
 
-  // ================== mwg_effect005 EFFECT (FIXED) ==================
-  function wrapWordsInSpan(element) {
-    if (!element) return;
-    // Check if already wrapped to avoid double wrapping
-    if (element.querySelector('.word')) return;
-    
-    const text = (element.textContent || "").trim();
-    element.innerHTML = text
-      .split(/\s+/)
-      .map((word) => `<span class="word">${word}</span>`)
-      .join(" ");
-  }
+  // ============================================================================
+  // MWG_EFFECT005 (FIXED for Barba/Cleanup)
+  // ============================================================================
 
-  // Modified to accept a scope (Container)
-  function initMWGEffect005(scope = document) {
+  function initMWGEffect005() {
     if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
       return;
     }
 
-    // Scoped selectors - Finds elements ONLY inside the new page container
-    const paragraph = scope.querySelector(".mwg_effect005 .paragraph");
-    if (paragraph) wrapWordsInSpan(paragraph);
-
-    const pinHeight = scope.querySelector(".mwg_effect005 .pin-height");
-    const container = scope.querySelector(".mwg_effect005 .container");
-    const words = scope.querySelectorAll(".mwg_effect005 .word");
-
-    if (pinHeight && container && words.length) {
-      console.log("[mwg_effect005] init: words found", words.length);
-
-      // Force refresh to ensure layout is calculated correctly
-      ScrollTrigger.refresh();
-
-      const startX = window.innerWidth - 25;
-      gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
-
-      // 1) Pin trigger
-      ScrollTrigger.create({
-        trigger: pinHeight,
-        start: "top top",
-        end: "bottom bottom",
-        pin: container,
-        scrub: true,
-        invalidateOnRefresh: true
-      });
-
-      // 2) Animation trigger
-      gsap.fromTo(
-        words,
-        {
-          x: startX,
-          opacity: 0
-        },
-        {
-          x: 0,
-          opacity: 1,
-          stagger: 0.02,
-          ease: "power4.inOut",
-          scrollTrigger: {
-            trigger: pinHeight,
-            start: "top 70%",
-            end: "bottom bottom",
-            scrub: true,
-            invalidateOnRefresh: true
-          }
-        }
-      );
-
-      // Final refresh
-      ScrollTrigger.refresh();
+    // Se esiste già un contesto, lo revertiamo prima di ricrearlo (sicurezza extra)
+    if (mwgContext) {
+      mwgContext.revert();
     }
+
+    // Selezioniamo il wrapper dell'effetto
+    const wrapper = document.querySelector(".mwg_effect005");
+    if (!wrapper) return;
+
+    // Word wrapping: Solo se non è già stato fatto (evita duplicati su pagine in cache)
+    const paragraph = wrapper.querySelector(".paragraph");
+    if (paragraph && !paragraph.querySelector('.word')) {
+      const text = (paragraph.textContent || "").trim();
+      paragraph.innerHTML = text
+        .split(/\s+/)
+        .map((word) => `<span class="word">${word}</span>`)
+        .join(" ");
+    }
+
+    // Creiamo il contesto GSAP scoped al wrapper
+    mwgContext = gsap.context(() => {
+        const pinHeight = wrapper.querySelector(".pin-height");
+        const container = wrapper.querySelector(".container");
+        const words = wrapper.querySelectorAll(".word");
+
+        if (pinHeight && container && words.length > 0) {
+            console.log("[mwg_effect005] init: starting animation");
+            const startX = window.innerWidth - 25;
+            
+            // Imposta stato iniziale
+            gsap.set(words, { x: startX, opacity: 0 });
+
+            // 1) Pin trigger (layout lock)
+            ScrollTrigger.create({
+                trigger: pinHeight,
+                start: "top top",
+                end: "bottom bottom",
+                pin: container,
+                scrub: true,
+                invalidateOnRefresh: true
+            });
+
+            // 2) Animation trigger (motion)
+            gsap.to(words, {
+                x: 0,
+                opacity: 1,
+                stagger: 0.02,
+                ease: "power4.inOut",
+                scrollTrigger: {
+                    trigger: pinHeight,
+                    start: "top 70%",
+                    end: "bottom bottom",
+                    scrub: true,
+                    invalidateOnRefresh: true
+                }
+            });
+            
+            // Trigger refresh manuale per calcolare correttamente le posizioni
+            ScrollTrigger.refresh();
+        } else {
+             console.log("[mwg_effect005] init: elements missing inside wrapper");
+        }
+    }, wrapper); // Scope: tutto ciò che accade qui dentro viene pulito automaticamente
   }
 
   function destroyMWGEffect005() {
-    if (typeof ScrollTrigger === 'undefined') {
-      return;
+    // Il metodo revert() del contesto GSAP pulisce tutto:
+    // - Uccide i ScrollTrigger
+    // - Rimuove i pin-spacer dal DOM
+    // - Resetta le proprietà CSS (transform, opacity) allo stato originale
+    if (mwgContext) {
+      mwgContext.revert();
+      mwgContext = null;
+      console.log("[mwg_effect005] destroyed via context");
     }
-    
-    // 1. Kill triggers
-    let killed = 0;
-    ScrollTrigger.getAll().forEach((st) => {
-      try {
-        const t = st.vars && st.vars.trigger;
-        if (t && (t.classList.contains("pin-height") || t.closest(".mwg_effect005"))) {
-          st.kill();
-          killed += 1;
-        }
-      } catch (e) {
-        // ignore
-      }
-    });
-
-    // 2. IMPORTANT: Restore original text (clean DOM)
-    // This removes the <span class="word"> tags so next init starts fresh
-    const paragraphs = document.querySelectorAll(".mwg_effect005 .paragraph");
-    paragraphs.forEach(p => {
-      if (p.querySelector('.word')) {
-        // Resetting textContent removes HTML tags
-        p.textContent = p.textContent;
-      }
-    });
-    
-    // Clear props on any remaining word elements just in case
-    const words = document.querySelectorAll(".mwg_effect005 .word");
-    if (words.length) {
-      gsap.set(words, { clearProps: "all" });
-    }
-    
-    console.log("[mwg_effect005] destroyed and HTML cleaned. Triggers killed:", killed);
-    ScrollTrigger.refresh();
   }
 
+  // ============================================================================
+  // GLOBAL PARALLAX
+  // ============================================================================
+
   function initGlobalParallax() {
+    // Destroy existing parallax context
     if (parallaxContext) {
       parallaxContext.revert();
       parallaxContext = null;
@@ -797,6 +799,7 @@
 
         parallaxContext = gsap.context(() => {
           document.querySelectorAll('[data-parallax="trigger"]').forEach((trigger) => {
+            // Check if this trigger has to be disabled on smaller breakpoints
             const disable = trigger.getAttribute("data-parallax-disable");
             if (
               (disable === "mobile" && isMobile) ||
@@ -806,17 +809,30 @@
               return;
             }
             
+            // Optional: you can target an element inside a trigger if necessary 
             const target = trigger.querySelector('[data-parallax="target"]') || trigger;
+
+            // Get the direction value to decide between xPercent or yPercent tween
             const direction = trigger.getAttribute("data-parallax-direction") || "vertical";
             const prop = direction === "horizontal" ? "xPercent" : "yPercent";
+            
+            // Get the scrub value, our default is 'true' because that feels nice with Lenis
             const scrubAttr = trigger.getAttribute("data-parallax-scrub");
             const scrub = scrubAttr ? parseFloat(scrubAttr) : true;
+            
+            // Get the start position in % 
             const startAttr = trigger.getAttribute("data-parallax-start");
             const startVal = startAttr !== null ? parseFloat(startAttr) : 20;
+            
+            // Get the end position in %
             const endAttr = trigger.getAttribute("data-parallax-end");
             const endVal = endAttr !== null ? parseFloat(endAttr) : -20;
+            
+            // Get the start value of the ScrollTrigger
             const scrollStartRaw = trigger.getAttribute("data-parallax-scroll-start") || "top bottom";
             const scrollStart = `clamp(${scrollStartRaw})`;
+            
+            // Get the end value of the ScrollTrigger  
             const scrollEndRaw = trigger.getAttribute("data-parallax-scroll-end") || "bottom top";
             const scrollEnd = `clamp(${scrollEndRaw})`;
 
@@ -854,23 +870,27 @@
     }
   }
 
-  // Modified to accept a container argument for Scoping
-  function initProjectTemplateAnimations(container = document) {
+  // ============================================================================
+  // MAIN INIT/DESTROY CONTROLLERS
+  // ============================================================================
+
+  function initProjectTemplateAnimations() {
     // Initialize Lenis smooth scroll first
     initLenisSmoothScroll();
 
     // Initialize global parallax
     initGlobalParallax();
 
-    // Initialize mwg_effect005 (PASSED CONTAINER)
-    initMWGEffect005(container);
+    // Initialize mwg_effect005 (words animation)
+    initMWGEffect005();
 
     // Initialize pixelate effect
     initPixelateImageRenderEffect();
 
-    // Initialize Three.js Sketch
+    // Initialize Three.js Sketch (planetary effect)
     const sliderContainer = document.getElementById("slider");
     if (sliderContainer) {
+      // Clean up container before creating new instance
       const existingCanvases = sliderContainer.querySelectorAll('canvas');
       if (existingCanvases.length > 0) {
         existingCanvases.forEach(canvas => {
@@ -931,28 +951,40 @@
   }
 
   function destroyProjectTemplateAnimations() {
+    // Destroy Sketch instance
     if (sketchInstance) {
       sketchInstance.destroy();
       sketchInstance = null;
     }
+
+    // Destroy pixelate effects
     destroyPixelateImageRenderEffect();
-    destroyMWGEffect005(); // This now cleans HTML too
+
+    // Destroy mwg_effect005 (words animation)
+    destroyMWGEffect005();
+
+    // Destroy parallax
     destroyGlobalParallax();
+
+    // Destroy Lenis
     destroyLenisSmoothScroll();
   }
 
   function setupBarbaTransitions() {
+    // Initialize Barba with Views (recommended way)
     barba.init({
       preventRunning: true,
       transitions: [
         {
           name: "main-transition",
           enter(data) {
+            // Lock page wrapper
             const pageWrapper = document.querySelector(".page-wrapper");
             if (pageWrapper) {
               gsap.set(pageWrapper, { overflow: "hidden" });
             }
             
+            // Position next page container as fixed (Barba needs this for transitions)
             gsap.set(data.next.container, {
               position: "fixed",
               top: 0,
@@ -961,25 +993,33 @@
               zIndex: 1,
             });
             
+            // Play transition animation
             const tl = playMainTransition(data);
+            
             return tl;
           },
           afterEnter(data) {
+            // Wait a bit to ensure transition animation is completely finished
+            // Use requestAnimationFrame to ensure browser has painted
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
+                // Scroll to top first
                 window.scrollTo(0, 0);
                 
+                // Reset container position (this must happen after scroll)
                 gsap.set(data.next.container, {
                   position: "relative",
                   zIndex: "auto",
                   clearProps: "top,left,width"
                 });
                 
+                // Unlock page wrapper
                 const pageWrapper = document.querySelector(".page-wrapper");
                 if (pageWrapper) {
                   gsap.set(pageWrapper, { overflow: "" });
                 }
                 
+                // Reset Webflow LAST, after everything is reset
                 setTimeout(() => {
                   resetWebflow(data);
                 }, 100);
@@ -987,6 +1027,7 @@
             });
           },
           beforeLeave(data) {
+            // Set flag to indicate we're transitioning
             isTransitioning = true;
           }
         },
@@ -995,17 +1036,21 @@
         {
           namespace: 'project-template',
           beforeEnter() {
+            // Destroy all animations before entering new page
             destroyProjectTemplateAnimations();
           },
-          afterEnter(data) {
+          afterEnter() {
+            // Reset transition flag
             isTransitioning = false;
             
+            // Wait for all resets to complete before initializing animations
             setTimeout(() => {
               requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
-                  // PASSING THE CONTAINER TO INIT (CRITICAL FIX)
-                  initProjectTemplateAnimations(data.next.container);
+                  // Initialize all animations (ONLY ONCE here)
+                  initProjectTemplateAnimations();
                   
+                  // Refresh ScrollTrigger after animations are initialized
                   if (typeof ScrollTrigger !== 'undefined') {
                     setTimeout(() => {
                       ScrollTrigger.refresh();
@@ -1016,6 +1061,7 @@
             }, 300);
           },
           afterLeave() {
+            // Clean up when leaving the namespace
             destroyProjectTemplateAnimations();
           }
         }
@@ -1025,9 +1071,7 @@
 
   // Initialize on DOM ready
   document.addEventListener("DOMContentLoaded", () => {
-    // Initial load - pass document
-    initProjectTemplateAnimations(document);
-    // Setup Barba
+    // Setup Barba.js transitions
     setupBarbaTransitions();
   });
 

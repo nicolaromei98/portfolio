@@ -53,37 +53,36 @@ function resetWebflow(data) {
 
 
 function playMainTransition(data) {
+  // New transition:
+  // - The new page overlaps the old one.
+  // - The old page is pushed slightly upward.
+  // - Ease cubic in/out, duration ~0.9s.
   const tl = gsap.timeline();
 
-  // Set initial state of next page explicitly
+  // Prepare next container
   gsap.set(data.next.container, {
     y: "100vh",
-    x: "-50vw",
-    rotation: -4,
-    opacity: 1
-  });
-
-  // Animate current page out
-  tl.to(data.current.container, {
-    opacity: 0.5,
-    y: "-12vh",
-    x: "12vw",
-    rotation: 4,
-    ease: "power4.out",
-    duration: 0.8,
-  })
-  // Change background color
-  .to(data.current.container.closest(".page-wrapper"), {
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-  }, "0")
-  // Animate next page in
-  .to(data.next.container, {
-    duration: 1,
-    y: 0,
     x: 0,
     rotation: 0,
-    ease: "power4.out",
-  }, "0");
+    opacity: 1,
+  });
+
+  tl.to(data.current.container, {
+    y: "-12vh",
+    x: 0,
+    rotation: 0,
+    opacity: 0.6,
+    ease: "power1.inOut", // cubic-like ease
+    duration: 0.9,
+  }, 0)
+  .to(data.next.container, {
+    y: "0vh",
+    x: 0,
+    rotation: 0,
+    opacity: 1,
+    ease: "power1.inOut", // cubic-like ease
+    duration: 0.9,
+  }, 0);
 
   return tl;
 }

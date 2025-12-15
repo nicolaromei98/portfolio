@@ -57,29 +57,33 @@ function playMainTransition(data) {
 
   // Set initial state of next page explicitly
   gsap.set(data.next.container, {
-    yPercent: 100,
-    xPercent: 0,
+    y: "100vh",
+    x: "-50vw",
+    rotation: -4,
     opacity: 1
   });
 
-  // Overlap transition: current goes up, next slides in from bottom
-  tl.to(
-    data.current.container,
-    {
-      yPercent: -30,
-      ease: "power2.inOut",
-      duration: 0.9,
-    },
-    0
-  ).to(
-    data.next.container,
-    {
-      yPercent: 0,
-      ease: "power2.inOut",
-      duration: 0.9,
-    },
-    0
-  );
+  // Animate current page out
+  tl.to(data.current.container, {
+    opacity: 0.5,
+    y: "-12vh",
+    x: "12vw",
+    rotation: 4,
+    ease: "power4.out",
+    duration: 0.8,
+  })
+  // Change background color
+  .to(data.current.container.closest(".page-wrapper"), {
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  }, "0")
+  // Animate next page in
+  .to(data.next.container, {
+    duration: 1,
+    y: 0,
+    x: 0,
+    rotation: 0,
+    ease: "power4.out",
+  }, "0");
 
   return tl;
 }
@@ -1027,7 +1031,7 @@ function setupBarbaTransitions() {
               gsap.set(data.next.container, {
                 position: "relative",
                 zIndex: "auto",
-                clearProps: "top,left,width,yPercent,xPercent"
+                clearProps: "top,left,width"
               });
               
               // Unlock page wrapper

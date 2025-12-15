@@ -713,6 +713,8 @@ function initMWGEffect005() {
   const words = document.querySelectorAll(".mwg_effect005 .word");
 
   if (pinHeight && container && words.length) {
+    console.log("[mwg_effect005] init: words found", words.length);
+
     // 1) Pin trigger (layout lock)
     ScrollTrigger.create({
       trigger: pinHeight,
@@ -739,6 +741,12 @@ function initMWGEffect005() {
         // markers: true
       }
     });
+  } else {
+    console.log("[mwg_effect005] init: missing elements", {
+      pinHeight: !!pinHeight,
+      container: !!container,
+      words: words.length
+    });
   }
 }
 
@@ -761,6 +769,7 @@ function destroyMWGEffect005() {
   const words = document.querySelectorAll(".mwg_effect005 .word");
   if (words.length) {
     gsap.set(words, { clearProps: "all" });
+    console.log("[mwg_effect005] destroy: cleared words styles", words.length);
   }
   ScrollTrigger.refresh && ScrollTrigger.refresh();
 }

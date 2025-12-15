@@ -24,6 +24,7 @@
   let sketchInstance = null;
   let pixelateInstances = [];
   let mwgEffect005Cleanup = null;
+  let aboutSliderCleanup = null;
   let isTransitioning = false; // Flag to prevent double initialization
 
   // ============================================================================
@@ -761,6 +762,114 @@ function destroyMWGEffect005NoST() {
   }
 }
 
+// ================== mwg_effect005 EFFECT (NO ScrollTrigger) ==================
+function initMWGEffect005NoST() {
+  if (typeof gsap === 'undefined') return;
+
+  // Clean previous
+  destroyMWGEffect005NoST();
+
+  const scope = document.querySelector('.mwg_effect005');
+  if (!scope) return;
+  const paragraph = scope.querySelector('.paragraph');
+  if (paragraph && !paragraph.querySelector('.word')) {
+    const text = (paragraph.textContent || '').trim();
+    paragraph.innerHTML = text
+      .split(/\s+/)
+      .map((word) => `<span class="word">${word}</span>`)
+      .join(' ');
+  }
+
+  const pinHeight = scope.querySelector('.pin-height');
+  const container = scope.querySelector('.container');
+  const words = scope.querySelectorAll('.word');
+  if (!(pinHeight && container && words.length)) return;
+
+  // Sticky pin
+  container.style.position = 'sticky';
+  container.style.top = '0';
+
+  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+  const easeInOut4 = (p) =>
+    p < 0.5 ? 8 * p * p * p * p : 1 - Math.pow(-2 * p + 2, 4) / 2;
+  const getTranslateX = (el) => {
+    const t = getComputedStyle(el).transform;
+    if (!t || t === 'none') return 0;
+    if (t.startsWith('matrix(')) return parseFloat(t.split(',')[4]) || 0;
+    if (t.startsWith('matrix3d(')) return parseFloat(t.split(',')[12]) || 0;
+    return 0;
+  };
+
+  const baseX = Array.from(words, (el) => getTranslateX(el));
+  baseX.forEach((x, i) => gsap.set(words[i], { x }));
+  const setX = Array.from(words, (el) => gsap.quickSetter(el, 'x', 'px'));
+  const setO = Array.from(words, (el) => gsap.quickSetter(el, 'opacity'));
+
+  let startY = 0;
+  let endY = 0;
+  let range = 1;
+  let ticking = false;
+
+  function measure() {
+    const rect = pinHeight.getBoundingClientRect();
+    const y = window.scrollY;
+    startY = y + rect.top - window.innerHeight * 0.7; // start: top 70%
+    endY = y + rect.bottom - window.innerHeight; // end: bottom bottom
+    range = Math.max(1, endY - startY);
+  }
+
+  function update() {
+    ticking = false;
+    const t = clamp01((window.scrollY - startY) / range);
+    const n = words.length;
+    const stagger = 0.02;
+    const totalStagger = stagger * (n - 1);
+    const animWindow = Math.max(0.0001, 1 - totalStagger);
+
+    for (let i = 0; i < n; i++) {
+      const localStart = i * stagger;
+      const p = clamp01((t - localStart) / animWindow);
+      const eased = easeInOut4(p);
+      setX[i](baseX[i] * (1 - eased));
+      setO[i](eased);
+    }
+  }
+
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(update);
+  }
+
+  function onResize() {
+    measure();
+    for (let i = 0; i < words.length; i++) {
+      baseX[i] = getTranslateX(words[i]);
+      gsap.set(words[i], { x: baseX[i] });
+    }
+    update();
+  }
+
+  measure();
+  update();
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onResize);
+
+  mwgEffect005Cleanup = () => {
+    window.removeEventListener('scroll', onScroll, { passive: true });
+    window.removeEventListener('resize', onResize);
+    gsap.set(words, { clearProps: 'all' });
+  };
+}
+
+function destroyMWGEffect005NoST() {
+  if (mwgEffect005Cleanup) {
+    mwgEffect005Cleanup();
+    mwgEffect005Cleanup = null;
+  }
+}
+
 function initLenisSmoothScroll() {
   // Destroy existing instance if any
   destroyLenisSmoothScroll();
@@ -988,6 +1097,288 @@ function destroyProjectTemplateAnimations() {
   destroyLenisSmoothScroll();
 }
 
+// ================== ABOUT PAGE (Draggable Loop) ==================
+function initDraggableInfiniteGSAPSlider() {
+  if (typeof gsap === 'undefined' || typeof Draggable === 'undefined' || typeof InertiaPlugin === 'undefined') {
+    return;
+  }
+
+  const wrapper = document.querySelector('[data-slider="list"]');
+  if (!wrapper) return;
+
+  const slides = gsap.utils.toArray('[data-slider="slide"]');
+  if (!slides.length) return;
+
+  // Cleanup existing
+  destroyDraggableInfiniteGSAPSlider();
+
+  let activeElement = null;
+  let currentEl = null;
+  let currentIndex = 0;
+
+  // Responsive: decide which element is active
+  const mq = window.matchMedia('(min-width: 992px)');
+  let useNextForActive = mq.matches;
+
+  const onMQChange = (e) => {
+    useNextForActive = e.matches;
+    if (currentEl) {
+      applyActive(currentEl);
+    }
+  };
+  mq.addEventListener('change', onMQChange);
+
+  function resolveActive(el) {
+    return useNextForActive ? (el.nextElementSibling || slides[0]) : el;
+  }
+
+  function applyActive(el) {
+    if (activeElement) activeElement.classList.remove('active');
+    const target = resolveActive(el);
+    target.classList.add('active');
+    activeElement = target;
+  }
+
+  // Helper: horizontal loop (simplified from provided code)
+  function horizontalLoop(items, config) {
+    items = gsap.utils.toArray(items);
+    config = config || {};
+    let tl = gsap.timeline({
+      repeat: config.repeat,
+      paused: config.paused,
+      defaults: { ease: "none" },
+      onUpdate: config.onChange && function () {
+        const i = tl.closestIndex();
+        if (tl._lastIndex !== i) {
+          tl._lastIndex = i;
+          config.onChange(items[i], i);
+        }
+      }
+    });
+
+    const snap = config.snap === false ? (v) => v : gsap.utils.snap(config.snap || 1);
+    const center = config.center === true ? items[0].parentNode : gsap.utils.toArray(config.center)[0] || items[0].parentNode;
+    const widths = [];
+    const xPercents = [];
+    let totalWidth;
+    const pixelsPerSecond = (config.speed || 1) * 100;
+    const times = [];
+    let timeWrap;
+    let curIndex = 0;
+    let proxy;
+
+    const populate = () => {
+      const startX = items[0].offsetLeft;
+      const spaceBefore = [];
+      let b1 = center.getBoundingClientRect(), b2;
+      items.forEach((el, i) => {
+        widths[i] = parseFloat(gsap.getProperty(el, "width", "px"));
+        xPercents[i] = snap(parseFloat(gsap.getProperty(el, "x", "px")) / widths[i] * 100 + gsap.getProperty(el, "xPercent"));
+        b2 = el.getBoundingClientRect();
+        spaceBefore[i] = b2.left - (i ? b1.right : b1.left);
+        b1 = b2;
+      });
+      gsap.set(items, { xPercent: i => xPercents[i] });
+      totalWidth = items[items.length - 1].offsetLeft + xPercents[items.length - 1] / 100 * widths[items.length - 1] - startX + spaceBefore[0] + items[items.length - 1].offsetWidth * gsap.getProperty(items[items.length - 1], "scaleX") + (parseFloat(config.paddingRight) || 0);
+    };
+
+    const populateTimeline = () => {
+      tl.clear();
+      times.length = 0;
+      const startX = items[0].offsetLeft;
+      items.forEach((item, i) => {
+        const curX = xPercents[i] / 100 * widths[i];
+        const distanceToStart = item.offsetLeft + curX - startX;
+        const distanceToLoop = distanceToStart + widths[i] * gsap.getProperty(item, "scaleX");
+        tl.to(item, { xPercent: snap((curX - distanceToLoop) / widths[i] * 100), duration: distanceToLoop / pixelsPerSecond }, 0)
+          .fromTo(item, { xPercent: snap((curX - distanceToLoop + totalWidth) / widths[i] * 100) }, {
+            xPercent: xPercents[i],
+            duration: (curX - distanceToLoop + totalWidth - curX) / pixelsPerSecond,
+            immediateRender: false
+          }, distanceToLoop / pixelsPerSecond)
+          .add("label" + i, distanceToStart / pixelsPerSecond);
+        times[i] = distanceToStart / pixelsPerSecond;
+      });
+      timeWrap = gsap.utils.wrap(0, tl.duration());
+    };
+
+    populate();
+    populateTimeline();
+
+    const refresh = () => {
+      const progress = tl.progress();
+      tl.progress(0, true);
+      populate();
+      populateTimeline();
+      tl.progress(progress, true);
+    };
+
+    const onResize = () => refresh(true);
+    window.addEventListener("resize", onResize);
+
+    function toIndex(index, vars) {
+      vars = vars || {};
+      if (Math.abs(index - curIndex) > items.length / 2) {
+        index += index > curIndex ? -items.length : items.length;
+      }
+      let newIndex = gsap.utils.wrap(0, items.length, index);
+      let time = times[newIndex];
+      if ((time > tl.time()) !== (index > curIndex) && index !== curIndex) {
+        time += tl.duration() * (index > curIndex ? 1 : -1);
+      }
+      if (time < 0 || time > tl.duration()) {
+        vars.modifiers = { time: timeWrap };
+      }
+      curIndex = newIndex;
+      vars.overwrite = true;
+      gsap.killTweensOf(proxy);
+      return vars.duration === 0 ? tl.time(timeWrap(time)) : tl.tweenTo(time, vars);
+    }
+
+    tl.toIndex = (index, vars) => toIndex(index, vars);
+    tl.closestIndex = (setCurrent) => {
+      let index = getClosest(times, tl.time(), tl.duration());
+      if (setCurrent) {
+        curIndex = index;
+        tl._lastIndex = index;
+      }
+      return index;
+    };
+    tl.current = () => curIndex;
+
+    function getClosest(values, value, wrap) {
+      let i = values.length, closest = 1e10, index = 0, d;
+      while (i--) {
+        d = Math.abs(values[i] - value);
+        if (d > wrap / 2) d = wrap - d;
+        if (d < closest) {
+          closest = d;
+          index = i;
+        }
+      }
+      return index;
+    }
+
+    // Draggable
+    let draggable;
+    let wasPlaying = false;
+    let startProgress = 0;
+    let ratio = 0;
+    let initChangeX = 0;
+    let lastSnap = 0;
+    const wrap = gsap.utils.wrap(0, 1);
+
+    proxy = document.createElement("div");
+
+    draggable = Draggable.create(proxy, {
+      trigger: items[0].parentNode,
+      type: "x",
+      onPressInit() {
+        gsap.killTweensOf(tl);
+        wasPlaying = !tl.paused();
+        tl.pause();
+        startProgress = tl.progress();
+        refresh();
+        ratio = 1 / totalWidth;
+        initChangeX = (startProgress / -ratio) - this.x;
+        gsap.set(proxy, { x: startProgress / -ratio });
+      },
+      onDrag() {
+        align();
+      },
+      onThrowUpdate() {
+        align();
+      },
+      overshootTolerance: 0,
+      inertia: true,
+      snap(value) {
+        if (Math.abs(startProgress / -ratio - this.x) < 10) {
+          return lastSnap + initChangeX;
+        }
+        let time = -(value * ratio) * tl.duration();
+        let wrappedTime = timeWrap(time);
+        let snapTime = times[getClosest(times, wrappedTime, tl.duration())];
+        let dif = snapTime - wrappedTime;
+        if (Math.abs(dif) > tl.duration() / 2) dif += dif < 0 ? tl.duration() : -tl.duration();
+        lastSnap = (time + dif) / tl.duration() / -ratio;
+        return lastSnap;
+      },
+      onRelease() {
+        syncIndex();
+        this.isThrowing && (tl._indexIsDirty = true);
+      },
+      onThrowComplete() {
+        syncIndex();
+        wasPlaying && tl.play();
+      }
+    })[0];
+
+    function align() {
+      tl.progress(wrap(startProgress + (draggable.startX - draggable.x) * ratio));
+    }
+
+    function syncIndex() {
+      tl.closestIndex(true);
+    }
+
+    tl.draggable = draggable;
+    tl.closestIndex(true);
+    tl._lastIndex = curIndex;
+    config.onChange && config.onChange(items[curIndex], curIndex);
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      draggable && draggable.kill();
+      tl && tl.kill();
+    };
+  }
+
+  const loopCleanup = horizontalLoop(slides, {
+    paused: true,
+    draggable: true,
+    center: false,
+    onChange: (element, index) => {
+      currentEl = element;
+      currentIndex = index;
+      applyActive(element);
+    }
+  });
+
+  if (!currentEl && slides[0]) {
+    currentEl = slides[0];
+    currentIndex = 0;
+    applyActive(currentEl);
+  }
+
+  aboutSliderCleanup = () => {
+    if (loopCleanup) loopCleanup();
+    mq.removeEventListener('change', onMQChange);
+    if (activeElement) activeElement.classList.remove('active');
+    activeElement = null;
+    currentEl = null;
+  };
+}
+
+function destroyDraggableInfiniteGSAPSlider() {
+  if (aboutSliderCleanup) {
+    aboutSliderCleanup();
+    aboutSliderCleanup = null;
+  }
+}
+
+function initAboutAnimations() {
+  destroyAboutAnimations();
+  initLenisSmoothScroll();
+  initGlobalParallax();
+  initDraggableInfiniteGSAPSlider();
+}
+
+function destroyAboutAnimations() {
+  destroyDraggableInfiniteGSAPSlider();
+  destroyGlobalParallax();
+  destroyLenisSmoothScroll();
+}
+
 // REMOVED: initPageAnimations() - Not used, conflicts with Barba views
 // REMOVED: destroyAllAnimations() - Conflicts with destroyProjectTemplateAnimations()
 
@@ -1088,6 +1479,30 @@ function setupBarbaTransitions() {
           // Clean up when leaving the namespace
           destroyProjectTemplateAnimations();
         }
+      },
+      {
+        namespace: 'about',
+        beforeEnter() {
+          destroyAboutAnimations();
+        },
+        afterEnter() {
+          isTransitioning = false;
+          setTimeout(() => {
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                initAboutAnimations();
+                if (typeof ScrollTrigger !== 'undefined') {
+                  setTimeout(() => {
+                    ScrollTrigger.refresh();
+                  }, 150);
+                }
+              });
+            });
+          }, 300);
+        },
+        afterLeave() {
+          destroyAboutAnimations();
+        }
       }
     ]
   });
@@ -1114,6 +1529,16 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
     }, 400); // Slightly longer delay to ensure Barba is set up
+  }
+  if (namespace === 'about') {
+    setTimeout(() => {
+      if (!isTransitioning) {
+        initAboutAnimations();
+        if (typeof ScrollTrigger !== 'undefined') {
+          ScrollTrigger.refresh();
+        }
+      }
+    }, 400);
   }
 });
 

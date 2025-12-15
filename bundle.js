@@ -93,10 +93,9 @@ function playMainTransition(data) {
 class Sketch {
   constructor(opts) {
     if (typeof THREE === 'undefined') {
-      // Three.js not loaded, skip initialization
+      // Three.js not loaded, skip safely
       return;
     }
-
     this.scene = new THREE.Scene();
     this.vertex = `varying vec2 vUv;void main() {vUv = uv;gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );}`;
     this.fragment = opts.fragment;

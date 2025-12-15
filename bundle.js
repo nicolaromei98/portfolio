@@ -687,6 +687,85 @@ function destroyLenisSmoothScroll() {
   }
 }
 
+// ================== mwg_effect005 EFFECT ==================
+function wrapWordsInSpan(element) {
+  const text = (element.textContent || "").trim();
+  element.innerHTML = text
+    .split(/\s+/)
+    .map((word) => `<span class="word">${word}</span>`)
+    .join(" ");
+}
+
+function initMWGEffect005() {
+  if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
+    return;
+  }
+
+  // Word wrapping
+  const paragraph = document.querySelector(".mwg_effect005 .paragraph");
+  if (paragraph) wrapWordsInSpan(paragraph);
+
+  // Elements
+  const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
+  const container = document.querySelector(".mwg_effect005 .container");
+  const words = document.querySelectorAll(".mwg_effect005 .word");
+
+  if (pinHeight && container && words.length) {
+    // 1) Pin trigger (layout lock)
+    ScrollTrigger.create({
+      trigger: pinHeight,
+      start: "top top",
+      end: "bottom bottom",
+      pin: container,
+      scrub: true,
+      invalidateOnRefresh: true
+      // markers: true
+    });
+
+    // 2) Animation trigger (motion)
+    gsap.to(words, {
+      x: 0,
+      opacity: 1,
+      stagger: 0.02,
+      ease: "power4.inOut",
+      scrollTrigger: {
+        trigger: pinHeight,
+        start: "top 70%",
+        end: "bottom bottom",
+        scrub: true,
+        invalidateOnRefresh: true
+        // markers: true
+      }
+    });
+  }
+}
+
+function destroyMWGEffect005() {
+  if (typeof ScrollTrigger === 'undefined') {
+    return;
+  }
+  ScrollTrigger.getAll().forEach((st) => {
+    try {
+      const t = st.vars && st.vars.trigger;
+      if (t && t.closest && t.closest(".mwg_effect005")) {
+        st.kill();
+      }
+    } catch (e) {
+      // ignore
+    }
+  });
+  // Clean inline styles and wrapping flag
+  const paragraph = document.querySelector(".mwg_effect005 .paragraph");
+  if (paragraph && paragraph.dataset.wrapped) {
+    paragraph.removeAttribute("data-wrapped");
+  }
+  const words = document.querySelectorAll(".mwg_effect005 .word");
+  if (words.length) {
+    gsap.set(words, { clearProps: "all" });
+  }
+  ScrollTrigger.refresh && ScrollTrigger.refresh();
+}
+
 function initGlobalParallax() {
   // Destroy existing parallax context
   if (parallaxContext) {
@@ -784,11 +863,17 @@ function destroyGlobalParallax() {
 }
 
 function initProjectTemplateAnimations() {
+  // Clean any leftover words effect triggers/styles before re-init
+  destroyMWGEffect005();
+
   // Initialize Lenis smooth scroll first
   initLenisSmoothScroll();
 
   // Initialize global parallax
   initGlobalParallax();
+
+  // Initialize mwg_effect005 (words animation)
+  initMWGEffect005();
 
   // Initialize pixelate effect
   initPixelateImageRenderEffect();
@@ -865,6 +950,9 @@ function destroyProjectTemplateAnimations() {
 
   // Destroy pixelate effects
   destroyPixelateImageRenderEffect();
+
+  // Destroy mwg_effect005 (words animation)
+  destroyMWGEffect005();
 
   // Destroy parallax
   destroyGlobalParallax();

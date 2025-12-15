@@ -58,8 +58,8 @@ function playMainTransition(data) {
   // Set initial state of next page explicitly
   gsap.set(data.next.container, {
     y: "100vh",
-    x: "-50vw",
-    rotation: -2,
+    x: 0,
+    rotation: 0,
     opacity: 1
   });
 
@@ -67,9 +67,9 @@ function playMainTransition(data) {
   tl.to(data.current.container, {
     opacity: 0.5,
     y: "-12vh",
-    x: "12vw",
-    rotation: 2,
-    ease: "power2.out",
+    x: 0,
+    rotation: 0,
+    ease: "power4.out",
     duration: 0.8,
   })
   // Change background color
@@ -82,7 +82,7 @@ function playMainTransition(data) {
     y: 0,
     x: 0,
     rotation: 0,
-    ease: "power2.out",
+    ease: "power4.out",
   }, "0");
 
   return tl;

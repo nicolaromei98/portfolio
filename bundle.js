@@ -712,8 +712,9 @@ function initMWGEffect005(root = document) {
     if (t === pinHeight) st.kill();
   });
 
-  // (Consigliato) stato iniziale, così non dipendi da CSS
-  gsap.set(words, { x: 24, opacity: 0, willChange: "transform,opacity" });
+  // Stato iniziale che corrisponde al CSS: transform: translate(calc(100vw - 25px), 0)
+  const startX = window.innerWidth - 25; // Corrisponde a calc(100vw - 25px)
+  gsap.set(words, { x: startX, opacity: 0, willChange: "transform,opacity" });
 
   // 1) PIN
   ScrollTrigger.create({

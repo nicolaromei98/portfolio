@@ -55,8 +55,8 @@ function resetWebflow(data) {
 function playMainTransition(data) {
   // New transition:
   // - The new page overlaps the old one.
-  // - The old page is pushed slightly upward.
-  // - Ease cubic in/out, duration ~0.9s.
+  // - The old page is pushed slightly upward, scaled down, blurred.
+  // - Custom cubic-bezier ease, duration ~0.9s.
   const tl = gsap.timeline();
 
   // Prepare next container
@@ -71,8 +71,10 @@ function playMainTransition(data) {
     y: "-12vh",
     x: 0,
     rotation: 0,
+    scale: 0.9,
+    filter: "blur(10px)",
     opacity: 0.6,
-    ease: "power1.inOut", // cubic-like ease
+    ease: "cubic-bezier(0.81, -0.003, 0.34, 1)",
     duration: 0.9,
   }, 0)
   .to(data.next.container, {
@@ -80,7 +82,7 @@ function playMainTransition(data) {
     x: 0,
     rotation: 0,
     opacity: 1,
-    ease: "power1.inOut", // cubic-like ease
+    ease: "cubic-bezier(0.81, -0.003, 0.34, 1)",
     duration: 0.9,
   }, 0);
 

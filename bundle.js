@@ -653,13 +653,23 @@ function initLenisSmoothScroll() {
     return;
   }
 
-  // Initialize a new Lenis instance with autoRaf (automatic RAF loop)
-  lenisInstance = new Lenis({ 
-    autoRaf: true 
+  // Initialize a new Lenis instance for smooth scrolling
+  lenisInstance = new Lenis({
+    lerp: 0.1,
+    smooth: true,
   });
 
   // Synchronize Lenis scrolling with GSAP's ScrollTrigger plugin
   lenisInstance.on('scroll', ScrollTrigger.update);
+
+  // Create animation loop (as per Lenis documentation)
+  const loop = (time) => {
+    if (lenisInstance) {
+      lenisInstance.raf(time);
+    }
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
 }
 
 function destroyLenisSmoothScroll() {
@@ -670,6 +680,7 @@ function destroyLenisSmoothScroll() {
   }
 }
 
+/* ================== mwg_effect005 EFFECT ================== */
 function wrapWordsInSpan(element) {
   const text = (element.textContent || "").trim();
   element.innerHTML = text
@@ -678,28 +689,33 @@ function wrapWordsInSpan(element) {
     .join(" ");
 }
 
-function initScrollAnimations() {
-  // ScrollTrigger is already registered globally
-  if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
-    return;
-  }
+function initMWGEffect005(root = document) {
+  // Scope dentro root (utile se in futuro usi Barba)
+  const scope = root.querySelector(".mwg_effect005");
+  if (!scope) return;
 
-  // Word wrapping
-  const paragraph = document.querySelector(".mwg_effect005 .paragraph");
-  if (paragraph) {
+  const paragraph = scope.querySelector(".paragraph");
+  if (paragraph && !paragraph.dataset.wrapped) {
     wrapWordsInSpan(paragraph);
+    paragraph.dataset.wrapped = "true";
   }
 
-  // Elements
-  const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
-  const container = document.querySelector(".mwg_effect005 .container");
-  const words = document.querySelectorAll(".mwg_effect005 .word");
+  const pinHeight = scope.querySelector(".pin-height");
+  const container = scope.querySelector(".container");
+  const words = scope.querySelectorAll(".word");
 
-  if (!pinHeight || !container || !words.length) {
-    return;
-  }
+  if (!pinHeight || !container || !words.length) return;
 
-  // 1) Pin trigger (layout lock)
+  // Kill eventuali trigger precedenti su questi elementi (anti doppioni)
+  ScrollTrigger.getAll().forEach((st) => {
+    const t = st.vars && st.vars.trigger;
+    if (t === pinHeight) st.kill();
+  });
+
+  // (Consigliato) stato iniziale, così non dipendi da CSS
+  gsap.set(words, { x: 24, opacity: 0, willChange: "transform,opacity" });
+
+  // 1) PIN
   ScrollTrigger.create({
     trigger: pinHeight,
     start: "top top",
@@ -710,7 +726,7 @@ function initScrollAnimations() {
     // markers: true
   });
 
-  // 2) Animation trigger (motion)
+  // 2) REVEAL parole
   gsap.to(words, {
     x: 0,
     opacity: 1,
@@ -725,25 +741,37 @@ function initScrollAnimations() {
       // markers: true
     }
   });
+
+  // Refresh per sicurezza (Webflow layout/asset)
+  ScrollTrigger.refresh();
 }
 
-function destroyScrollAnimations() {
+function destroyMWGEffect005(root = document) {
+  const scope = root.querySelector(".mwg_effect005");
+  if (!scope) return;
+
+  const pinHeight = scope.querySelector(".pin-height");
+  if (!pinHeight) return;
+
   // Kill all ScrollTriggers related to mwg_effect005
-  if (typeof ScrollTrigger !== 'undefined') {
-    ScrollTrigger.getAll().forEach(trigger => {
-      try {
-        if (trigger.vars && trigger.vars.trigger) {
-          const triggerEl = trigger.vars.trigger;
-          if (triggerEl && triggerEl.closest && triggerEl.closest('.mwg_effect005')) {
-            trigger.kill();
-          }
-        }
-      } catch (e) {
-        // If trigger is already destroyed, continue
+  ScrollTrigger.getAll().forEach((st) => {
+    try {
+      const t = st.vars && st.vars.trigger;
+      if (t === pinHeight) {
+        st.kill();
       }
-    });
-    ScrollTrigger.refresh();
+    } catch (e) {
+      // If trigger is already destroyed, continue
+    }
+  });
+
+  // Reset wrapped flag
+  const paragraph = scope.querySelector(".paragraph");
+  if (paragraph && paragraph.dataset.wrapped) {
+    delete paragraph.dataset.wrapped;
   }
+
+  ScrollTrigger.refresh();
 }
 
 function initGlobalParallax() {
@@ -849,8 +877,8 @@ function initProjectTemplateAnimations() {
   // Initialize global parallax
   initGlobalParallax();
 
-  // Initialize scroll animations (mwg_effect005)
-  initScrollAnimations();
+  // Initialize mwg_effect005 (words animation)
+  initMWGEffect005();
 
   // Initialize pixelate effect
   initPixelateImageRenderEffect();
@@ -928,8 +956,8 @@ function destroyProjectTemplateAnimations() {
   // Destroy pixelate effects
   destroyPixelateImageRenderEffect();
 
-  // Destroy scroll animations (mwg_effect005)
-  destroyScrollAnimations();
+  // Destroy mwg_effect005 (words animation)
+  destroyMWGEffect005();
 
   // Destroy parallax
   destroyGlobalParallax();

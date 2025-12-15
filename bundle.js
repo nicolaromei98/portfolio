@@ -720,11 +720,11 @@ function initMWGEffect005() {
     return;
   }
 
-  // Kill any existing ScrollTriggers on these elements to prevent duplicates
+  // Kill any existing ScrollTriggers scoped to mwg_effect005 (old pages or duplicates)
   ScrollTrigger.getAll().forEach((st) => {
     try {
       const t = st.vars && st.vars.trigger;
-      if (t === pinHeight) {
+      if (t && t.closest && t.closest(".mwg_effect005")) {
         st.kill();
       }
     } catch (e) {
@@ -771,15 +771,11 @@ function destroyMWGEffect005() {
   }
 
   const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
-  if (!pinHeight) {
-    return;
-  }
-
-  // Kill all ScrollTriggers related to mwg_effect005
+  // Kill all ScrollTriggers related to mwg_effect005 (any scope)
   ScrollTrigger.getAll().forEach((st) => {
     try {
       const t = st.vars && st.vars.trigger;
-      if (t === pinHeight) {
+      if (t && t.closest && t.closest('.mwg_effect005')) {
         st.kill();
       }
     } catch (e) {

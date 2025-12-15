@@ -92,6 +92,11 @@ function playMainTransition(data) {
 
 class Sketch {
   constructor(opts) {
+    if (typeof THREE === 'undefined') {
+      // Three.js not loaded, skip initialization
+      return;
+    }
+
     this.scene = new THREE.Scene();
     this.vertex = `varying vec2 vUv;void main() {vUv = uv;gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );}`;
     this.fragment = opts.fragment;
@@ -1016,7 +1021,7 @@ function initProjectTemplateAnimations() {
 
   // Initialize Three.js Sketch (planetary effect)
   const sliderContainer = document.getElementById("slider");
-  if (sliderContainer) {
+  if (sliderContainer && typeof THREE !== 'undefined') {
     // Clean up container before creating new instance
     const existingCanvases = sliderContainer.querySelectorAll('canvas');
     if (existingCanvases.length > 0) {

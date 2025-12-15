@@ -653,23 +653,13 @@ function initLenisSmoothScroll() {
     return;
   }
 
-  // Initialize a new Lenis instance for smooth scrolling
-  lenisInstance = new Lenis({
-    lerp: 0.1,
-    smooth: true,
+  // Initialize a new Lenis instance with autoRaf (automatic RAF loop)
+  lenisInstance = new Lenis({ 
+    autoRaf: true 
   });
 
   // Synchronize Lenis scrolling with GSAP's ScrollTrigger plugin
   lenisInstance.on('scroll', ScrollTrigger.update);
-
-  // Create animation loop (as per Lenis documentation)
-  const loop = (time) => {
-    if (lenisInstance) {
-      lenisInstance.raf(time);
-    }
-    requestAnimationFrame(loop);
-  };
-  requestAnimationFrame(loop);
 }
 
 function destroyLenisSmoothScroll() {
@@ -680,6 +670,81 @@ function destroyLenisSmoothScroll() {
   }
 }
 
+function wrapWordsInSpan(element) {
+  const text = (element.textContent || "").trim();
+  element.innerHTML = text
+    .split(/\s+/)
+    .map((word) => `<span class="word">${word}</span>`)
+    .join(" ");
+}
+
+function initScrollAnimations() {
+  // ScrollTrigger is already registered globally
+  if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
+    return;
+  }
+
+  // Word wrapping
+  const paragraph = document.querySelector(".mwg_effect005 .paragraph");
+  if (paragraph) {
+    wrapWordsInSpan(paragraph);
+  }
+
+  // Elements
+  const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
+  const container = document.querySelector(".mwg_effect005 .container");
+  const words = document.querySelectorAll(".mwg_effect005 .word");
+
+  if (!pinHeight || !container || !words.length) {
+    return;
+  }
+
+  // 1) Pin trigger (layout lock)
+  ScrollTrigger.create({
+    trigger: pinHeight,
+    start: "top top",
+    end: "bottom bottom",
+    pin: container,
+    scrub: true,
+    invalidateOnRefresh: true
+    // markers: true
+  });
+
+  // 2) Animation trigger (motion)
+  gsap.to(words, {
+    x: 0,
+    opacity: 1,
+    stagger: 0.02,
+    ease: "power4.inOut",
+    scrollTrigger: {
+      trigger: pinHeight,
+      start: "top 70%",
+      end: "bottom bottom",
+      scrub: true,
+      invalidateOnRefresh: true
+      // markers: true
+    }
+  });
+}
+
+function destroyScrollAnimations() {
+  // Kill all ScrollTriggers related to mwg_effect005
+  if (typeof ScrollTrigger !== 'undefined') {
+    ScrollTrigger.getAll().forEach(trigger => {
+      try {
+        if (trigger.vars && trigger.vars.trigger) {
+          const triggerEl = trigger.vars.trigger;
+          if (triggerEl && triggerEl.closest && triggerEl.closest('.mwg_effect005')) {
+            trigger.kill();
+          }
+        }
+      } catch (e) {
+        // If trigger is already destroyed, continue
+      }
+    });
+    ScrollTrigger.refresh();
+  }
+}
 
 function initGlobalParallax() {
   // Destroy existing parallax context
@@ -784,6 +849,9 @@ function initProjectTemplateAnimations() {
   // Initialize global parallax
   initGlobalParallax();
 
+  // Initialize scroll animations (mwg_effect005)
+  initScrollAnimations();
+
   // Initialize pixelate effect
   initPixelateImageRenderEffect();
 
@@ -859,6 +927,9 @@ function destroyProjectTemplateAnimations() {
 
   // Destroy pixelate effects
   destroyPixelateImageRenderEffect();
+
+  // Destroy scroll animations (mwg_effect005)
+  destroyScrollAnimations();
 
   // Destroy parallax
   destroyGlobalParallax();

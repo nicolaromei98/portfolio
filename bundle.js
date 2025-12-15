@@ -956,6 +956,23 @@ function destroyProjectTemplateAnimations() {
 // REMOVED: destroyAllAnimations() - Conflicts with destroyProjectTemplateAnimations()
 
 function setupBarbaTransitions() {
+  // Check if Barba wrapper exists
+  const barbaContainer = document.querySelector('[data-barba="container"]');
+  if (!barbaContainer && typeof barba !== 'undefined') {
+    console.warn('⚠️ Barba: No container found with data-barba="container". Barba transitions will not work.');
+    // Initialize animations without Barba for initial page load
+    const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
+    if (namespace === 'project-template') {
+      setTimeout(() => {
+        initProjectTemplateAnimations();
+        if (typeof ScrollTrigger !== 'undefined') {
+          ScrollTrigger.refresh();
+        }
+      }, 300);
+    }
+    return;
+  }
+  
   // Initialize Barba with Views (recommended way)
   barba.init({
     preventRunning: true,

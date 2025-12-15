@@ -715,6 +715,9 @@ function initMWGEffect005() {
   if (pinHeight && container && words.length) {
     console.log("[mwg_effect005] init: words found", words.length);
 
+    const startX = window.innerWidth - 25;
+    gsap.set(words, { x: startX, opacity: 0, clearProps: "none" });
+
     // 1) Pin trigger (layout lock)
     ScrollTrigger.create({
       trigger: pinHeight,
@@ -727,20 +730,27 @@ function initMWGEffect005() {
     });
 
     // 2) Animation trigger (motion)
-    gsap.to(words, {
-      x: 0,
-      opacity: 1,
-      stagger: 0.02,
-      ease: "power4.inOut",
-      scrollTrigger: {
-        trigger: pinHeight,
-        start: "top 70%",
-        end: "bottom bottom",
-        scrub: true,
-        invalidateOnRefresh: true
-        // markers: true
+    gsap.fromTo(
+      words,
+      {
+        x: startX,
+        opacity: 0
+      },
+      {
+        x: 0,
+        opacity: 1,
+        stagger: 0.02,
+        ease: "power4.inOut",
+        scrollTrigger: {
+          trigger: pinHeight,
+          start: "top 70%",
+          end: "bottom bottom",
+          scrub: true,
+          invalidateOnRefresh: true
+          // markers: true
+        }
       }
-    });
+    );
 
     // Refresh to ensure triggers are active after creation
     ScrollTrigger.refresh && ScrollTrigger.refresh();

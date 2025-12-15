@@ -55,18 +55,14 @@ function resetWebflow(data) {
 function playMainTransition(data) {
   const tl = gsap.timeline();
 
-  // Set initial state of next page explicitly (overlapping the outgoing)
+  // Set initial state of next page explicitly
   gsap.set(data.next.container, {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    width: "100%",
-    zIndex: 2,
     yPercent: 100,
-    opacity: 1,
+    xPercent: 0,
+    opacity: 1
   });
 
-  // Overlap: current moves up -30%, next slides in from bottom
+  // Overlap transition: current goes up, next slides in from bottom
   tl.to(
     data.current.container,
     {
@@ -1031,7 +1027,7 @@ function setupBarbaTransitions() {
               gsap.set(data.next.container, {
                 position: "relative",
                 zIndex: "auto",
-                clearProps: "top,left,width,yPercent"
+                clearProps: "top,left,width,yPercent,xPercent"
               });
               
               // Unlock page wrapper

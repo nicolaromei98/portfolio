@@ -1326,7 +1326,19 @@ void main() {
       this.renderer.setSize(ww, wh);
       this.renderer.setPixelRatio(gsap.utils.clamp(1, 1.5, window.devicePixelRatio));
       this.renderer.setClearColor(0xE7E7E7, 1);
-      document.body.appendChild(this.renderer.domElement);
+      const canvasEl = this.renderer.domElement;
+      // Keep canvas full-viewport, behind UI, and non-blocking
+      canvasEl.style.position = 'fixed';
+      canvasEl.style.top = '0';
+      canvasEl.style.left = '0';
+      canvasEl.style.width = '100%';
+      canvasEl.style.height = '100%';
+      canvasEl.style.pointerEvents = 'none';
+      canvasEl.style.zIndex = '-1';
+      if (canvasEl.parentNode) {
+        canvasEl.parentNode.removeChild(canvasEl);
+      }
+      document.body.appendChild(canvasEl);
 
       this.addPlanes();
       this.addEvents();

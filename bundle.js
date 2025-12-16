@@ -941,6 +941,11 @@ function initGlobalParallax() {
     return;
   }
 
+  // Guard for older GSAP versions that don't have matchMedia
+  if (typeof gsap.matchMedia !== 'function') {
+    return;
+  }
+
   const mm = gsap.matchMedia();
 
   mm.add(

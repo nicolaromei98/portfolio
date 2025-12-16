@@ -957,18 +957,14 @@ function initGlobalParallax() {
 
   const triggersCreated = [];
 
-  const setupParallax = () => {
+  const setupParallaxCore = (conditions) => {
+    const { isMobile, isMobileLandscape, isTablet } = conditions || {};
     document.querySelectorAll('[data-parallax="trigger"]').forEach((trigger) => {
       const disable = trigger.getAttribute("data-parallax-disable");
-      const isMobile = window.matchMedia("(max-width:479px)").matches;
-      const isMobileLandscape = window.matchMedia("(max-width:767px)").matches;
-      const isTablet = window.matchMedia("(max-width:991px)").matches;
-
-      if (
-        (disable === "mobile" && isMobile) ||
-        (disable === "mobileLandscape" && isMobileLandscape) ||
-        (disable === "tablet" && isTablet)
-      ) {
+      const disableMobile = disable === "mobile" && isMobile;
+      const disableMobileLandscape = disable === "mobileLandscape" && isMobileLandscape;
+      const disableTablet = disable === "tablet" && isTablet;
+      if (disableMobile || disableMobileLandscape || disableTablet) {
         return;
       }
 
@@ -1007,8 +1003,15 @@ function initGlobalParallax() {
     });
   };
 
-  // Responsive setup when matchMedia exists, otherwise single pass
-  if (typeof gsap.matchMedia === 'function') {
+  const cleanup = () => {
+    triggersCreated.forEach(t => t.kill());
+    triggersCreated.length = 0;
+  };
+
+  const hasMatchMedia = typeof gsap.matchMedia === 'function';
+  const hasContext = typeof gsap.context === 'function';
+
+  if (hasMatchMedia && hasContext) {
     const mm = gsap.matchMedia();
     mm.add(
       {
@@ -1017,26 +1020,29 @@ function initGlobalParallax() {
         isTablet: "(max-width:991px)",
         isDesktop: "(min-width:992px)"
       },
-      () => {
-        setupParallax();
+      (context) => {
+        const destroyLocal = () => cleanup();
+        gsap.context(() => {
+          setupParallaxCore(context.conditions);
+        });
         return () => {
-          triggersCreated.forEach(t => t.kill());
-          triggersCreated.length = 0;
+          destroyLocal();
         };
       }
     );
-    // Keep a cleanup that also clears matchMedia contexts
     parallaxContext = () => {
-      triggersCreated.forEach(t => t.kill());
-      triggersCreated.length = 0;
+      cleanup();
       mm.revert && mm.revert();
     };
   } else {
-    setupParallax();
-    parallaxContext = () => {
-      triggersCreated.forEach(t => t.kill());
-      triggersCreated.length = 0;
+    // Fallback for older GSAP: single pass without context
+    const simpleConditions = {
+      isMobile: window.matchMedia("(max-width:479px)").matches,
+      isMobileLandscape: window.matchMedia("(max-width:767px)").matches,
+      isTablet: window.matchMedia("(max-width:991px)").matches,
     };
+    setupParallaxCore(simpleConditions);
+    parallaxContext = cleanup;
   }
 }
 

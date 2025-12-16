@@ -21,6 +21,27 @@
   let homeTimeCleanup = null;
   let isTransitioning = false; // Flag to prevent double initialization
 
+  function unlockScrollAfterLenisReady() {
+    const finish = () => unlockScroll();
+    if (!lenisInstance) {
+      finish();
+      return;
+    }
+    let attempts = 0;
+    const tick = () => {
+      attempts += 1;
+      if (typeof lenisInstance.raf === 'function') {
+        lenisInstance.raf(performance.now());
+      }
+      if (attempts >= 2) {
+        finish();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
   function ensureLenisRunning() {
     if (!lenisInstance) return;
     if (typeof lenisInstance.start === 'function') {
@@ -1817,9 +1838,6 @@ function setupBarbaTransitions() {
               if (pageWrapper) {
                 gsap.set(pageWrapper, { overflow: "" });
               }
-            
-            // Re-enable scroll after transition completes
-            unlockScroll();
               
               // Reset Webflow LAST, after everything is reset
               // This prevents Webflow re-render from causing visual jump
@@ -1855,6 +1873,7 @@ function setupBarbaTransitions() {
                 // Initialize all animations (ONLY ONCE here)
                 initProjectTemplateAnimations();
                 ensureLenisRunning();
+                unlockScrollAfterLenisReady();
                 
                 // Refresh ScrollTrigger after animations are initialized
                 if (typeof ScrollTrigger !== 'undefined') {
@@ -1883,6 +1902,7 @@ function setupBarbaTransitions() {
               requestAnimationFrame(() => {
                 initAboutAnimations();
                 ensureLenisRunning();
+                unlockScrollAfterLenisReady();
                 if (typeof ScrollTrigger !== 'undefined') {
                   setTimeout(() => {
                     ScrollTrigger.refresh();
@@ -1908,6 +1928,7 @@ function setupBarbaTransitions() {
               requestAnimationFrame(() => {
                 initHomeAnimations();
                 ensureLenisRunning();
+                unlockScrollAfterLenisReady();
                 if (typeof ScrollTrigger !== 'undefined') {
                   setTimeout(() => {
                     ScrollTrigger.refresh();
@@ -1942,6 +1963,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!isTransitioning) {
         initProjectTemplateAnimations();
         ensureLenisRunning();
+        unlockScrollAfterLenisReady();
         if (typeof ScrollTrigger !== 'undefined') {
           ScrollTrigger.refresh();
         }
@@ -1953,6 +1975,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!isTransitioning) {
         initAboutAnimations();
         ensureLenisRunning();
+        unlockScrollAfterLenisReady();
         if (typeof ScrollTrigger !== 'undefined') {
           ScrollTrigger.refresh();
         }
@@ -1964,6 +1987,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!isTransitioning) {
         initHomeAnimations();
         ensureLenisRunning();
+        unlockScrollAfterLenisReady();
         if (typeof ScrollTrigger !== 'undefined') {
           ScrollTrigger.refresh();
         }

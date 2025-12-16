@@ -68,10 +68,7 @@ function playMainTransition(data) {
 
   // Set initial state of next page explicitly for a fade
   gsap.set(data.next.container, {
-    autoAlpha: 0,
-    y: 0,
-    x: 0,
-    rotation: 0
+    autoAlpha: 0
   });
 
   const pageWrapper = data.current.container.closest(".page-wrapper");
@@ -1764,7 +1761,7 @@ function setupBarbaTransitions() {
               gsap.set(data.next.container, {
                 position: "relative",
                 zIndex: "auto",
-                clearProps: "position,top,left,width,zIndex"
+                clearProps: "position,top,left,width,zIndex,transform"
               });
               
               // Unlock page wrapper

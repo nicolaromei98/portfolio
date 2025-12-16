@@ -1581,8 +1581,15 @@ void main() {
 
       this.el = gridEl;
       this.el.style.touchAction = 'none';
+      if (getComputedStyle(this.el).position === 'static') {
+        this.el.style.position = 'relative';
+      }
 
       this.scene = new THREE.Scene();
+
+      const rect = this.el.getBoundingClientRect();
+      ww = rect.width || ww;
+      wh = rect.height || wh;
 
       this.camera = new THREE.OrthographicCamera(
         ww / -2, ww / 2, wh / 2, wh / -2, 1, 1000
@@ -1596,7 +1603,16 @@ void main() {
 
       this.renderer.setClearColor(0xE7E7E7, 1);
 
-      document.body.appendChild(this.renderer.domElement);
+      // Attach canvas inside the grid and keep it behind other content
+      const canvas = this.renderer.domElement;
+      canvas.style.position = 'absolute';
+      canvas.style.inset = '0';
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+      canvas.style.display = 'block';
+      canvas.style.pointerEvents = 'none';
+      canvas.style.zIndex = '0';
+      this.el.appendChild(canvas);
 
       this.addPlanes();
       this.addEvents();
@@ -1708,8 +1724,9 @@ void main() {
     }
 
     resize = () => {
-      ww = window.innerWidth;
-      wh = window.innerHeight;
+      const rect = this.el.getBoundingClientRect();
+      ww = rect.width || window.innerWidth;
+      wh = rect.height || window.innerHeight;
       const { bottom, right } = this.el.getBoundingClientRect();
       this.max.x = right;
       this.max.y = bottom;
@@ -1717,6 +1734,10 @@ void main() {
       if (this.planes) {
         this.planes.forEach(plane => plane.resize());
       }
+
+      this.renderer.setSize(ww, wh);
+      this.renderer.domElement.style.width = '100%';
+      this.renderer.domElement.style.height = '100%';
     }
   }
 

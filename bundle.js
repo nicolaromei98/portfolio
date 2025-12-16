@@ -31,6 +31,22 @@
   // UTILITY FUNCTIONS
   // ============================================================================
 
+  function lockScroll() {
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    if (lenisInstance && typeof lenisInstance.stop === 'function') {
+      lenisInstance.stop();
+    }
+  }
+
+  function unlockScroll() {
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+    if (lenisInstance && typeof lenisInstance.start === 'function') {
+      lenisInstance.start();
+    }
+  }
+
 function resetWebflow(data) {
   const parser = new DOMParser();
   const dom = parser.parseFromString(data.next.html, "text/html");
@@ -1395,6 +1411,9 @@ function setupBarbaTransitions() {
       {
         name: "main-transition",
         enter(data) {
+          // Block scroll during transition
+          lockScroll();
+
           // Lock page wrapper
           const pageWrapper = document.querySelector(".page-wrapper");
           if (pageWrapper) {
@@ -1435,6 +1454,9 @@ function setupBarbaTransitions() {
               if (pageWrapper) {
                 gsap.set(pageWrapper, { overflow: "" });
               }
+            
+            // Re-enable scroll after transition completes
+            unlockScroll();
               
               // Reset Webflow LAST, after everything is reset
               // This prevents Webflow re-render from causing visual jump

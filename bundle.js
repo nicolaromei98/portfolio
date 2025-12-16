@@ -1096,6 +1096,10 @@ function initHomeCanvas() {
 
   if (typeof THREE === 'undefined' || typeof gsap === 'undefined') return;
 
+  const planeEls = [...document.querySelectorAll('.js-plane')];
+  const sources = planeEls.map(el => el.dataset.src).filter(Boolean);
+  if (!sources.length) return;
+
   const gridEl = document.querySelector('.js-grid');
   if (!gridEl) return;
 
@@ -1389,27 +1393,51 @@ void main() {
     }
   }
 
-  const core = new Core();
+  let preloadCancelled = false;
+  const preloadImages = (srcs) => Promise.all(
+    srcs.map(src => new Promise(resolve => {
+      const img = new Image();
+      const done = () => resolve();
+      img.onload = done;
+      img.onerror = done;
+      img.src = src;
+    }))
+  );
 
-  homeCanvasCleanup = () => {
-    if (core) {
-      gsap.ticker.remove(core.tick);
-      window.removeEventListener('mousemove', core.onMouseMove);
-      window.removeEventListener('mousedown', core.onMouseDown);
-      window.removeEventListener('mouseup', core.onMouseUp);
-      window.removeEventListener('wheel', core.onWheel, { passive: true });
-      window.removeEventListener('touchstart', core.onTouchStart);
-      window.removeEventListener('touchmove', core.onTouchMove);
-      window.removeEventListener('touchend', core.onTouchEnd);
-      window.removeEventListener('resize', core.resize);
-      if (core.renderer && core.renderer.domElement && core.renderer.domElement.parentNode) {
-        core.renderer.domElement.parentNode.removeChild(core.renderer.domElement);
-      }
-      if (core.el) {
-        core.el.style.touchAction = '';
-      }
+  preloadImages(sources).then(() => {
+    if (preloadCancelled) return;
+    const core = new Core();
+    const canvasEl = core && core.renderer && core.renderer.domElement;
+    if (canvasEl) {
+      canvasEl.style.transition = 'opacity 0.35s ease';
+      canvasEl.style.opacity = '0';
+      requestAnimationFrame(() => {
+        canvasEl.style.opacity = '1';
+      });
     }
-  };
+
+    homeCanvasCleanup = () => {
+      preloadCancelled = true;
+      if (core) {
+        gsap.ticker.remove(core.tick);
+        window.removeEventListener('mousemove', core.onMouseMove);
+        window.removeEventListener('mousedown', core.onMouseDown);
+        window.removeEventListener('mouseup', core.onMouseUp);
+        window.removeEventListener('wheel', core.onWheel, { passive: true });
+        window.removeEventListener('touchstart', core.onTouchStart);
+        window.removeEventListener('touchmove', core.onTouchMove);
+        window.removeEventListener('touchend', core.onTouchEnd);
+        window.removeEventListener('resize', core.resize);
+        if (core.renderer && core.renderer.domElement && core.renderer.domElement.parentNode) {
+          core.renderer.domElement.parentNode.removeChild(core.renderer.domElement);
+        }
+        if (core.el) {
+          core.el.style.touchAction = '';
+        }
+      }
+    };
+  });
+
 }
 
 function destroyHomeCanvas() {

@@ -77,33 +77,28 @@ function playMainTransition(data) {
 
   // Set initial state of next page explicitly
   gsap.set(data.next.container, {
-    y: "100vh",
-    x: 0,
-    rotation: 0,
-    opacity: 1
-  });
-
-  // Animate current page out
-  tl.to(data.current.container, {
-    opacity: 0.5,
-    y: "-12vh",
-    x: 0,
-    rotation: 0,
-    ease: "power4.out",
-    duration: 0.8,
-  })
-  // Change background color
-  .to(data.current.container.closest(".page-wrapper"), {
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-  }, "0")
-  // Animate next page in
-  .to(data.next.container, {
-    duration: 1,
+    opacity: 0,
     y: 0,
     x: 0,
-    rotation: 0,
-    ease: "power4.out",
-  }, "0");
+    rotation: 0
+  });
+
+  // Smooth fade out of current and fade in of next with a neutral background
+  const pageWrapper = data.current.container.closest(".page-wrapper");
+  if (pageWrapper) {
+    gsap.set(pageWrapper, { backgroundColor: "#E7E7E7" });
+  }
+
+  tl.to(data.current.container, {
+    opacity: 0,
+    duration: 0.35,
+    ease: "power1.out"
+  })
+  .to(data.next.container, {
+    opacity: 1,
+    duration: 0.55,
+    ease: "power1.out"
+  }, "-=0.05");
 
   return tl;
 }

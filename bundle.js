@@ -1937,6 +1937,15 @@ function setupBarbaTransitions() {
                     ScrollTrigger.refresh();
                   }, 150);
                 }
+                const overlay = getTransitionOverlay();
+                gsap.to(overlay, {
+                  autoAlpha: 0,
+                  duration: 0.35,
+                  ease: "power2.out",
+                  onComplete: () => {
+                    overlay.style.visibility = 'hidden';
+                  }
+                });
               });
             });
           }, 300);
@@ -2008,6 +2017,15 @@ document.addEventListener("DOMContentLoaded", () => {
         if (typeof ScrollTrigger !== 'undefined') {
           ScrollTrigger.refresh();
         }
+        const overlay = getTransitionOverlay();
+        gsap.to(overlay, {
+          autoAlpha: 0,
+          duration: 0.35,
+          ease: "power2.out",
+          onComplete: () => {
+            overlay.style.visibility = 'hidden';
+          }
+        });
       }
     }, 400); // Slightly longer delay to ensure Barba is set up
   }
@@ -2020,6 +2038,15 @@ document.addEventListener("DOMContentLoaded", () => {
         if (typeof ScrollTrigger !== 'undefined') {
           ScrollTrigger.refresh();
         }
+        const overlay = getTransitionOverlay();
+        gsap.to(overlay, {
+          autoAlpha: 0,
+          duration: 0.35,
+          ease: "power2.out",
+          onComplete: () => {
+            overlay.style.visibility = 'hidden';
+          }
+        });
       }
     }, 400);
   }

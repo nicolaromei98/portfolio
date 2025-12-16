@@ -21,6 +21,38 @@
   let homeTimeCleanup = null;
   let isTransitioning = false; // Flag to prevent double initialization
 
+  function preloadHomePlanes() {
+    const planeEls = Array.from(document.querySelectorAll('.js-plane'));
+    const sources = planeEls.map(el => el.dataset.src).filter(Boolean);
+    if (!sources.length) return Promise.resolve();
+    return Promise.all(
+      sources.map(src => new Promise(resolve => {
+        const img = new Image();
+        const done = () => resolve();
+        img.onload = done;
+        img.onerror = done;
+        img.src = src;
+      }))
+    );
+  }
+
+  function hideOverlayAfterLoad(promise) {
+    const overlay = getTransitionOverlay();
+    gsap.set(overlay, { autoAlpha: 1, visibility: 'visible', pointerEvents: 'none' });
+    Promise.resolve(promise)
+      .then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+      .then(() => {
+        gsap.to(overlay, {
+          autoAlpha: 0,
+          duration: 0.4,
+          ease: "power2.out",
+          onComplete: () => {
+            overlay.style.visibility = 'hidden';
+          }
+        });
+      });
+  }
+
   function unlockScrollAfterLenisReady() {
     const finish = () => unlockScroll();
     if (!lenisInstance) {
@@ -1926,9 +1958,12 @@ function setupBarbaTransitions() {
           setTimeout(() => {
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
+                const loadPromise = preloadHomePlanes();
+                const overlay = getTransitionOverlay();
+                gsap.set(overlay, { autoAlpha: 1, visibility: 'visible', pointerEvents: 'none' });
                 initHomeAnimations();
                 ensureLenisRunning();
-                unlockScrollAfterLenisReady();
+                hideOverlayAfterLoad(loadPromise);
                 if (typeof ScrollTrigger !== 'undefined') {
                   setTimeout(() => {
                     ScrollTrigger.refresh();
@@ -1985,9 +2020,12 @@ document.addEventListener("DOMContentLoaded", () => {
   if (namespace === 'home') {
     setTimeout(() => {
       if (!isTransitioning) {
+        const loadPromise = preloadHomePlanes();
+        const overlay = getTransitionOverlay();
+        gsap.set(overlay, { autoAlpha: 1, visibility: 'visible', pointerEvents: 'none' });
         initHomeAnimations();
         ensureLenisRunning();
-        unlockScrollAfterLenisReady();
+        hideOverlayAfterLoad(loadPromise);
         if (typeof ScrollTrigger !== 'undefined') {
           ScrollTrigger.refresh();
         }

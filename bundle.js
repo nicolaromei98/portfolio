@@ -1725,6 +1725,13 @@ function setupBarbaTransitions() {
     transitions: [
       {
         name: "main-transition",
+        leave(data) {
+          return gsap.to(data.current.container, {
+            autoAlpha: 0,
+            duration: 0.4,
+            ease: "power2.out"
+          });
+        },
         enter(data) {
           // Block scroll during transition
           lockScroll();

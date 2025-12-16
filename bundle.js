@@ -21,37 +21,37 @@
   let homeTimeCleanup = null;
   let isTransitioning = false; // Flag to prevent double initialization
 
-  function preloadHomePlanes() {
-    const planeEls = Array.from(document.querySelectorAll('.js-plane'));
-    const sources = planeEls.map(el => el.dataset.src).filter(Boolean);
-    if (!sources.length) return Promise.resolve();
-    return Promise.all(
-      sources.map(src => new Promise(resolve => {
-        const img = new Image();
-        const done = () => resolve();
-        img.onload = done;
-        img.onerror = done;
-        img.src = src;
-      }))
-    );
-  }
-
-  function hideOverlayAfterLoad(promise, onReady) {
-    const overlay = getTransitionOverlay();
-    gsap.set(overlay, { autoAlpha: 1, visibility: 'visible', pointerEvents: 'none' });
-    Promise.resolve(promise)
-      .then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
-      .then(() => {
-        if (typeof onReady === 'function') onReady();
-        gsap.to(overlay, {
-          autoAlpha: 0,
-          duration: 0.4,
-          ease: "power2.out",
-          onComplete: () => {
-            overlay.style.visibility = 'hidden';
-          }
-        });
+  function waitForNextContent(container) {
+    return new Promise((resolve) => {
+      if (!container) {
+        resolve();
+        return;
+      }
+      const imgs = Array.from(container.querySelectorAll('img')).filter((img) => !img.complete || img.naturalWidth === 0);
+      if (!imgs.length) {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+        return;
+      }
+      let pending = imgs.length;
+      const done = () => {
+        pending -= 1;
+        if (pending <= 0) {
+          requestAnimationFrame(() => requestAnimationFrame(resolve));
+        }
+      };
+      imgs.forEach((img) => {
+        const finish = () => done();
+        if (img.decode) {
+          img.decode().then(finish).catch(finish);
+        } else {
+          img.addEventListener('load', finish, { once: true });
+          img.addEventListener('error', finish, { once: true });
+        }
       });
+      setTimeout(() => {
+        resolve();
+      }, 1200);
+    });
   }
 
   function unlockScrollAfterLenisReady() {
@@ -1844,10 +1844,6 @@ function setupBarbaTransitions() {
           const overlay = getTransitionOverlay();
           gsap.set(overlay, { autoAlpha: 1, visibility: 'visible' });
           const tl = playMainTransition(data);
-          tl.to(overlay, { autoAlpha: 0, duration: 0.4, ease: "power2.out" }, 0.1)
-            .add(() => {
-              overlay.style.visibility = 'hidden';
-            });
           
           return tl;
         },
@@ -1877,6 +1873,18 @@ function setupBarbaTransitions() {
               setTimeout(() => {
                 resetWebflow(data);
               }, 100);
+              
+              const overlay = getTransitionOverlay();
+              waitForNextContent(data.next.container).then(() => {
+                gsap.to(overlay, {
+                  autoAlpha: 0,
+                  duration: 0.35,
+                  ease: "power2.out",
+                  onComplete: () => {
+                    overlay.style.visibility = 'hidden';
+                  }
+                });
+              });
             });
           });
         },
@@ -1959,19 +1967,14 @@ function setupBarbaTransitions() {
           setTimeout(() => {
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
-                const loadPromise = preloadHomePlanes();
-                const overlay = getTransitionOverlay();
-                gsap.set(overlay, { autoAlpha: 1, visibility: 'visible', pointerEvents: 'none' });
                 initHomeAnimations();
-                hideOverlayAfterLoad(loadPromise, () => {
-                  ensureLenisRunning();
-                  unlockScrollAfterLenisReady();
-                  if (typeof ScrollTrigger !== 'undefined') {
-                    setTimeout(() => {
-                      ScrollTrigger.refresh();
-                    }, 150);
-                  }
-                });
+                ensureLenisRunning();
+                unlockScrollAfterLenisReady();
+                if (typeof ScrollTrigger !== 'undefined') {
+                  setTimeout(() => {
+                    ScrollTrigger.refresh();
+                  }, 150);
+                }
               });
             });
           }, 300);
@@ -2023,17 +2026,12 @@ document.addEventListener("DOMContentLoaded", () => {
   if (namespace === 'home') {
     setTimeout(() => {
       if (!isTransitioning) {
-        const loadPromise = preloadHomePlanes();
-        const overlay = getTransitionOverlay();
-        gsap.set(overlay, { autoAlpha: 1, visibility: 'visible', pointerEvents: 'none' });
         initHomeAnimations();
-        hideOverlayAfterLoad(loadPromise, () => {
-          ensureLenisRunning();
-          unlockScrollAfterLenisReady();
-          if (typeof ScrollTrigger !== 'undefined') {
-            ScrollTrigger.refresh();
-          }
-        });
+        ensureLenisRunning();
+        unlockScrollAfterLenisReady();
+        if (typeof ScrollTrigger !== 'undefined') {
+          ScrollTrigger.refresh();
+        }
       }
     }, 400);
   }

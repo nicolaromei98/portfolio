@@ -947,7 +947,7 @@ function destroyLenisSmoothScroll() {
 function initGlobalParallax() {
   // Destroy existing parallax context
   if (parallaxContext) {
-    parallaxContext.revert();
+    parallaxContext();
     parallaxContext = null;
   }
 
@@ -955,55 +955,59 @@ function initGlobalParallax() {
     return;
   }
 
+  const triggersCreated = [];
+
   const setupParallax = () => {
-    parallaxContext = gsap.context(() => {
-      document.querySelectorAll('[data-parallax="trigger"]').forEach((trigger) => {
-        const disable = trigger.getAttribute("data-parallax-disable");
-        const isMobile = window.matchMedia("(max-width:479px)").matches;
-        const isMobileLandscape = window.matchMedia("(max-width:767px)").matches;
-        const isTablet = window.matchMedia("(max-width:991px)").matches;
+    document.querySelectorAll('[data-parallax="trigger"]').forEach((trigger) => {
+      const disable = trigger.getAttribute("data-parallax-disable");
+      const isMobile = window.matchMedia("(max-width:479px)").matches;
+      const isMobileLandscape = window.matchMedia("(max-width:767px)").matches;
+      const isTablet = window.matchMedia("(max-width:991px)").matches;
 
-        if (
-          (disable === "mobile" && isMobile) ||
-          (disable === "mobileLandscape" && isMobileLandscape) ||
-          (disable === "tablet" && isTablet)
-        ) {
-          return;
+      if (
+        (disable === "mobile" && isMobile) ||
+        (disable === "mobileLandscape" && isMobileLandscape) ||
+        (disable === "tablet" && isTablet)
+      ) {
+        return;
+      }
+
+      const target = trigger.querySelector('[data-parallax="target"]') || trigger;
+      const direction = trigger.getAttribute("data-parallax-direction") || "vertical";
+      const prop = direction === "horizontal" ? "xPercent" : "yPercent";
+      const scrubAttr = trigger.getAttribute("data-parallax-scrub");
+      const scrub = scrubAttr ? parseFloat(scrubAttr) : true;
+      const startAttr = trigger.getAttribute("data-parallax-start");
+      const startVal = startAttr !== null ? parseFloat(startAttr) : 20;
+      const endAttr = trigger.getAttribute("data-parallax-end");
+      const endVal = endAttr !== null ? parseFloat(endAttr) : -20;
+      const scrollStartRaw = trigger.getAttribute("data-parallax-scroll-start") || "top bottom";
+      const scrollStart = `clamp(${scrollStartRaw})`;
+      const scrollEndRaw = trigger.getAttribute("data-parallax-scroll-end") || "bottom top";
+      const scrollEnd = `clamp(${scrollEndRaw})`;
+
+      const tween = gsap.fromTo(
+        target,
+        { [prop]: startVal },
+        {
+          [prop]: endVal,
+          ease: "none",
+          scrollTrigger: {
+            trigger,
+            start: scrollStart,
+            end: scrollEnd,
+            scrub,
+          },
         }
+      );
 
-        const target = trigger.querySelector('[data-parallax="target"]') || trigger;
-        const direction = trigger.getAttribute("data-parallax-direction") || "vertical";
-        const prop = direction === "horizontal" ? "xPercent" : "yPercent";
-        const scrubAttr = trigger.getAttribute("data-parallax-scrub");
-        const scrub = scrubAttr ? parseFloat(scrubAttr) : true;
-        const startAttr = trigger.getAttribute("data-parallax-start");
-        const startVal = startAttr !== null ? parseFloat(startAttr) : 20;
-        const endAttr = trigger.getAttribute("data-parallax-end");
-        const endVal = endAttr !== null ? parseFloat(endAttr) : -20;
-        const scrollStartRaw = trigger.getAttribute("data-parallax-scroll-start") || "top bottom";
-        const scrollStart = `clamp(${scrollStartRaw})`;
-        const scrollEndRaw = trigger.getAttribute("data-parallax-scroll-end") || "bottom top";
-        const scrollEnd = `clamp(${scrollEndRaw})`;
-
-        gsap.fromTo(
-          target,
-          { [prop]: startVal },
-          {
-            [prop]: endVal,
-            ease: "none",
-            scrollTrigger: {
-              trigger,
-              start: scrollStart,
-              end: scrollEnd,
-              scrub,
-            },
-          }
-        );
-      });
+      if (tween && tween.scrollTrigger) {
+        triggersCreated.push(tween.scrollTrigger);
+      }
     });
   };
 
-  // Use matchMedia if available for responsive contexts, otherwise fallback
+  // Responsive setup when matchMedia exists, otherwise single pass
   if (typeof gsap.matchMedia === 'function') {
     const mm = gsap.matchMedia();
     mm.add(
@@ -1016,16 +1020,23 @@ function initGlobalParallax() {
       () => {
         setupParallax();
         return () => {
-          if (parallaxContext) {
-            parallaxContext.revert();
-            parallaxContext = null;
-          }
+          triggersCreated.forEach(t => t.kill());
+          triggersCreated.length = 0;
         };
       }
     );
+    // Keep a cleanup that also clears matchMedia contexts
+    parallaxContext = () => {
+      triggersCreated.forEach(t => t.kill());
+      triggersCreated.length = 0;
+      mm.revert && mm.revert();
+    };
   } else {
-    // Fallback for older GSAP versions
     setupParallax();
+    parallaxContext = () => {
+      triggersCreated.forEach(t => t.kill());
+      triggersCreated.length = 0;
+    };
   }
 }
 

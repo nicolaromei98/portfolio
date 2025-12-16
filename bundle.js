@@ -62,8 +62,14 @@
   }
 
   function startLenisIfNeeded() {
+    if (!lenisInstance) {
+      initLenisSmoothScroll();
+    }
     if (lenisInstance && typeof lenisInstance.start === 'function') {
       lenisInstance.start();
+      if (typeof lenisInstance.raf === 'function') {
+        lenisInstance.raf(performance.now());
+      }
     }
   }
 

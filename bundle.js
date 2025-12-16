@@ -21,6 +21,26 @@
   let homeTimeCleanup = null;
   let isTransitioning = false; // Flag to prevent double initialization
 
+  function getHomeOverlay() {
+    let overlay = document.getElementById('home-preload-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'home-preload-overlay';
+      overlay.style.position = 'fixed';
+      overlay.style.top = '0';
+      overlay.style.left = '0';
+      overlay.style.width = '100%';
+      overlay.style.height = '100%';
+      overlay.style.pointerEvents = 'none';
+      overlay.style.background = '#E7E7E7';
+      overlay.style.zIndex = '9998';
+      overlay.style.opacity = '1';
+      overlay.style.visibility = 'visible';
+      document.body.appendChild(overlay);
+    }
+    return overlay;
+  }
+
   function unlockScrollAfterLenisReady() {
     const finish = () => unlockScroll();
     if (!lenisInstance) {
@@ -1102,6 +1122,7 @@ function initHomeCanvas() {
 
   const gridEl = document.querySelector('.js-grid');
   if (!gridEl) return;
+  const homeOverlay = getHomeOverlay();
 
   let ww = window.innerWidth;
   let wh = window.innerHeight;
@@ -1416,11 +1437,17 @@ void main() {
       });
     }
 
-    const overlay = getTransitionOverlay();
-    gsap.set(overlay, { autoAlpha: 1, visibility: 'visible' });
-    gsap.to(overlay, { autoAlpha: 0, duration: 0.35, ease: "power2.out", onComplete: () => {
-      overlay.style.visibility = 'hidden';
-    }});
+    if (homeOverlay) {
+      gsap.set(homeOverlay, { autoAlpha: 1, visibility: 'visible' });
+      gsap.to(homeOverlay, {
+        autoAlpha: 0,
+        duration: 0.35,
+        ease: "power2.out",
+        onComplete: () => {
+          homeOverlay.style.visibility = 'hidden';
+        }
+      });
+    }
 
     homeCanvasCleanup = () => {
       preloadCancelled = true;
@@ -1440,6 +1467,9 @@ void main() {
         if (core.el) {
           core.el.style.touchAction = '';
         }
+      }
+      if (homeOverlay && homeOverlay.parentNode) {
+        homeOverlay.parentNode.removeChild(homeOverlay);
       }
     };
   });

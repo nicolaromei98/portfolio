@@ -21,6 +21,26 @@
   let homeTimeCleanup = null;
   let isTransitioning = false; // Flag to prevent double initialization
 
+  function getTransitionOverlay() {
+    let overlay = document.getElementById('barba-transition-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'barba-transition-overlay';
+      overlay.style.position = 'fixed';
+      overlay.style.top = '0';
+      overlay.style.left = '0';
+      overlay.style.width = '100%';
+      overlay.style.height = '100%';
+      overlay.style.pointerEvents = 'none';
+      overlay.style.background = '#E7E7E7';
+      overlay.style.zIndex = '9999';
+      overlay.style.opacity = '0';
+      overlay.style.visibility = 'hidden';
+      document.body.appendChild(overlay);
+    }
+    return overlay;
+  }
+
   // ============================================================================
   // UTILITY FUNCTIONS
   // ============================================================================
@@ -1726,15 +1746,10 @@ function setupBarbaTransitions() {
       {
         name: "main-transition",
         leave(data) {
+          const overlay = getTransitionOverlay();
           const tl = gsap.timeline();
-          const pageWrapper = data.current.container.closest(".page-wrapper");
-          if (pageWrapper) {
-            tl.to(pageWrapper, {
-              backgroundColor: "#E7E7E7",
-              duration: 0.35,
-              ease: "power2.out"
-            }, 0);
-          }
+          tl.set(overlay, { autoAlpha: 0, visibility: 'visible' });
+          tl.to(overlay, { autoAlpha: 1, duration: 0.35, ease: "power2.out" }, 0);
           tl.to(data.current.container, {
             autoAlpha: 0,
             duration: 0.35,
@@ -1762,7 +1777,13 @@ function setupBarbaTransitions() {
           });
           
           // Play transition animation
+          const overlay = getTransitionOverlay();
+          gsap.set(overlay, { autoAlpha: 1, visibility: 'visible' });
           const tl = playMainTransition(data);
+          tl.to(overlay, { autoAlpha: 0, duration: 0.4, ease: "power2.out" }, 0.1)
+            .add(() => {
+              overlay.style.visibility = 'hidden';
+            });
           
           return tl;
         },

@@ -1842,10 +1842,16 @@ function setupBarbaTransitions() {
           const overlay = getTransitionOverlay();
           gsap.set(overlay, { autoAlpha: 1, visibility: 'visible' });
           const tl = playMainTransition(data);
-          tl.to(overlay, { autoAlpha: 0, duration: 0.4, ease: "power2.out" }, 0.1)
-            .add(() => {
-              overlay.style.visibility = 'hidden';
-            });
+          if (data.next && data.next.namespace === 'home') {
+            tl.add(() => {
+              // keep overlay visible; will be faded in home afterEnter
+            }, 0);
+          } else {
+            tl.to(overlay, { autoAlpha: 0, duration: 0.4, ease: "power2.out" }, 0.1)
+              .add(() => {
+                overlay.style.visibility = 'hidden';
+              });
+          }
           
           return tl;
         },
@@ -1966,11 +1972,12 @@ function setupBarbaTransitions() {
                   }, 150);
                 }
                 const overlay = getTransitionOverlay();
-                const target = data.next && data.next.container ? data.next.container : document.querySelector('[data-barba="container"]');
+                const target = document.querySelector('[data-barba="container"]');
+                gsap.set(overlay, { autoAlpha: 1, visibility: 'visible' });
                 waitForContent(target).then(() => {
                   gsap.to(overlay, {
                     autoAlpha: 0,
-                    duration: 0.6,
+                    duration: 0.8,
                     ease: "power2.out",
                     onComplete: () => {
                       overlay.style.visibility = 'hidden';
@@ -2034,6 +2041,19 @@ document.addEventListener("DOMContentLoaded", () => {
         if (typeof ScrollTrigger !== 'undefined') {
           ScrollTrigger.refresh();
         }
+        const overlay = getTransitionOverlay();
+        const target = document.querySelector('[data-barba="container"]');
+        gsap.set(overlay, { autoAlpha: 1, visibility: 'visible' });
+        waitForContent(target).then(() => {
+          gsap.to(overlay, {
+            autoAlpha: 0,
+            duration: 0.8,
+            ease: "power2.out",
+            onComplete: () => {
+              overlay.style.visibility = 'hidden';
+            }
+          });
+        });
       }
     }, 400);
   }

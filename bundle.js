@@ -1,11 +1,3 @@
-/**
- * Animations & Transitions Bundle
- * Single file bundle for Webflow integration via CDN
- * 
- * Usage:
- * <script src="https://cdn.jsdelivr.net/gh/yourusername/yourrepo@main/bundle.js"></script>
- */
-
 (function() {
   'use strict';
 
@@ -691,114 +683,6 @@ function destroyPixelateImageRenderEffect() {
     }
   });
   pixelateInstances = [];
-}
-
-// ================== mwg_effect005 EFFECT (NO ScrollTrigger) ==================
-function initMWGEffect005NoST() {
-  if (typeof gsap === 'undefined') return;
-
-  // Clean previous
-  destroyMWGEffect005NoST();
-
-  const scope = document.querySelector('.mwg_effect005');
-  if (!scope) return;
-  const paragraph = scope.querySelector('.paragraph');
-  if (paragraph && !paragraph.querySelector('.word')) {
-    const text = (paragraph.textContent || '').trim();
-    paragraph.innerHTML = text
-      .split(/\s+/)
-      .map((word) => `<span class="word">${word}</span>`)
-      .join(' ');
-  }
-
-  const pinHeight = scope.querySelector('.pin-height');
-  const container = scope.querySelector('.container');
-  const words = scope.querySelectorAll('.word');
-  if (!(pinHeight && container && words.length)) return;
-
-  // Sticky pin
-  container.style.position = 'sticky';
-  container.style.top = '0';
-
-  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
-  const easeInOut4 = (p) =>
-    p < 0.5 ? 8 * p * p * p * p : 1 - Math.pow(-2 * p + 2, 4) / 2;
-  const getTranslateX = (el) => {
-    const t = getComputedStyle(el).transform;
-    if (!t || t === 'none') return 0;
-    if (t.startsWith('matrix(')) return parseFloat(t.split(',')[4]) || 0;
-    if (t.startsWith('matrix3d(')) return parseFloat(t.split(',')[12]) || 0;
-    return 0;
-  };
-
-  const baseX = Array.from(words, (el) => getTranslateX(el));
-  baseX.forEach((x, i) => gsap.set(words[i], { x }));
-  const setX = Array.from(words, (el) => gsap.quickSetter(el, 'x', 'px'));
-  const setO = Array.from(words, (el) => gsap.quickSetter(el, 'opacity'));
-
-  let startY = 0;
-  let endY = 0;
-  let range = 1;
-  let ticking = false;
-
-  function measure() {
-    const rect = pinHeight.getBoundingClientRect();
-    const y = window.scrollY;
-    startY = y + rect.top - window.innerHeight * 0.7; // start: top 70%
-    endY = y + rect.bottom - window.innerHeight; // end: bottom bottom
-    range = Math.max(1, endY - startY);
-  }
-
-  function update() {
-    ticking = false;
-    const t = clamp01((window.scrollY - startY) / range);
-    const n = words.length;
-    const stagger = 0.02;
-    const totalStagger = stagger * (n - 1);
-    const animWindow = Math.max(0.0001, 1 - totalStagger);
-
-    for (let i = 0; i < n; i++) {
-      const localStart = i * stagger;
-      const p = clamp01((t - localStart) / animWindow);
-      const eased = easeInOut4(p);
-      setX[i](baseX[i] * (1 - eased));
-      setO[i](eased);
-    }
-  }
-
-  function onScroll() {
-    if (ticking) return;
-    ticking = true;
-    requestAnimationFrame(update);
-  }
-
-  function onResize() {
-    measure();
-    for (let i = 0; i < words.length; i++) {
-      baseX[i] = getTranslateX(words[i]);
-      gsap.set(words[i], { x: baseX[i] });
-    }
-    update();
-  }
-
-  measure();
-  update();
-
-  window.addEventListener('scroll', onScroll, { passive: true });
-  window.addEventListener('resize', onResize);
-
-  mwgEffect005Cleanup = () => {
-    window.removeEventListener('scroll', onScroll, { passive: true });
-    window.removeEventListener('resize', onResize);
-    gsap.set(words, { clearProps: 'all' });
-  };
-}
-
-function destroyMWGEffect005NoST() {
-  if (mwgEffect005Cleanup) {
-    mwgEffect005Cleanup();
-    mwgEffect005Cleanup = null;
-  }
 }
 
 // ================== mwg_effect005 EFFECT (NO ScrollTrigger) ==================
@@ -1880,7 +1764,7 @@ function setupBarbaTransitions() {
               gsap.set(data.next.container, {
                 position: "relative",
                 zIndex: "auto",
-                clearProps: "top,left,width"
+                clearProps: "position,top,left,width,zIndex"
               });
               
               // Unlock page wrapper

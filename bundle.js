@@ -21,7 +21,7 @@
   let homeTimeCleanup = null;
   let isTransitioning = false; // Flag to prevent double initialization
 
-  function waitForNextContent(container) {
+  function waitForContent(container) {
     return new Promise((resolve) => {
       if (!container) {
         resolve();
@@ -48,9 +48,7 @@
           img.addEventListener('error', finish, { once: true });
         }
       });
-      setTimeout(() => {
-        resolve();
-      }, 1200);
+      setTimeout(resolve, 1200);
     });
   }
 
@@ -1844,6 +1842,10 @@ function setupBarbaTransitions() {
           const overlay = getTransitionOverlay();
           gsap.set(overlay, { autoAlpha: 1, visibility: 'visible' });
           const tl = playMainTransition(data);
+          tl.to(overlay, { autoAlpha: 0, duration: 0.4, ease: "power2.out" }, 0.1)
+            .add(() => {
+              overlay.style.visibility = 'hidden';
+            });
           
           return tl;
         },
@@ -1964,8 +1966,8 @@ function setupBarbaTransitions() {
                   }, 150);
                 }
                 const overlay = getTransitionOverlay();
-                const target = document.querySelector('[data-barba="container"]');
-                waitForNextContent(target).then(() => {
+                const target = data.next && data.next.container ? data.next.container : document.querySelector('[data-barba="container"]');
+                waitForContent(target).then(() => {
                   gsap.to(overlay, {
                     autoAlpha: 0,
                     duration: 0.35,
@@ -2025,24 +2027,13 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   if (namespace === 'home') {
     setTimeout(() => {
+      if (!isTransitioning) {
         initHomeAnimations();
         ensureLenisRunning();
         unlockScrollAfterLenisReady();
         if (typeof ScrollTrigger !== 'undefined') {
           ScrollTrigger.refresh();
         }
-        const overlay = getTransitionOverlay();
-        const target = document.querySelector('[data-barba="container"]');
-        waitForNextContent(target).then(() => {
-          gsap.to(overlay, {
-            autoAlpha: 0,
-            duration: 0.35,
-            ease: "power2.out",
-            onComplete: () => {
-              overlay.style.visibility = 'hidden';
-            }
-          });
-        });
       }
     }, 400);
   }

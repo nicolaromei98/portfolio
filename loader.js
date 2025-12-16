@@ -1,8 +1,15 @@
 (() => {
   const STORAGE_KEY = "preloader_seen_session";
-  const MIN_SHOW_MS = 350;    // rapidissimo, evita flash
-  const MAX_SHOW_MS = 2200;   // safety cap: non blocca mai troppo
 
+  // =========================
+  // CONFIG
+  // =========================
+  const DURATION_MS = 3800; // 3–4s (es. 3200–4200)
+  const HOLD_PERCENT = 92;  // dove “aspetta” se il contenuto è già pronto
+
+  // =========================
+  // ELEMENTS
+  // =========================
   const preloader = document.querySelector(".preloader");
   if (!preloader) return;
 
@@ -11,14 +18,18 @@
   const lineFill = preloader.querySelector(".line__animate");
   if (!countEl || !lineWrap || !lineFill) return;
 
-  // Solo prima volta per sessione (finché il tab/browser resta aperto)
+  // =========================
+  // SESSION (solo prima volta)
+  // =========================
   if (sessionStorage.getItem(STORAGE_KEY) === "1") {
     preloader.style.display = "none";
     preloader.style.opacity = "0";
     return;
   }
 
-  // Init
+  // =========================
+  // INIT
+  // =========================
   preloader.style.display = "flex";
   preloader.style.opacity = "1";
 
@@ -32,68 +43,47 @@
     lineFill.style.transform = "scaleX(0)";
     countEl.style.opacity = "1";
     lineWrap.style.opacity = "1";
-    countEl.style.transform = "translateY(0px)";
-    lineWrap.style.transform = "translateY(0px)";
   }
 
-  // Gate veloce: DOM ready
-  const domReady =
-    document.readyState !== "loading"
-      ? Promise.resolve()
-      : new Promise((res) =>
-          document.addEventListener("DOMContentLoaded", res, { once: true })
-        );
+  // =========================
+  // CONTENT READY (soft gate)
+  // =========================
+  let contentReady = false;
 
-  // Traccia SOLO immagini sopra il fold (più veloce, più UX-friendly)
-  const imgs = Array.from(document.images || []).filter((img) => {
-    const r = img.getBoundingClientRect();
-    return r.top < window.innerHeight * 1.2;
-  });
-
-  let done = 0;
-  const total = Math.max(1, imgs.length) + 1; // +1 per domReady
-
-  const markDone = () => {
-    done = Math.min(total, done + 1);
-  };
-
-  domReady.then(markDone);
-
-  if (imgs.length) {
-    imgs.forEach((img) => {
-      if (img.complete && img.naturalWidth > 0) {
-        markDone();
-      } else {
-        const onDone = () => markDone();
-        img.addEventListener("load", onDone, { once: true });
-        img.addEventListener("error", onDone, { once: true });
-      }
-    });
+  if (document.readyState !== "loading") {
+    contentReady = true;
+  } else {
+    document.addEventListener("DOMContentLoaded", () => {
+      contentReady = true;
+    }, { once: true });
   }
 
-  // Sblocco extra se qualche immagine tarda troppo (non bloccare mai UX)
-  const earlyReleaseTimer = setTimeout(markDone, 550);
-
-  // Smooth progress loop
-  const tStart = performance.now();
+  // =========================
+  // TIMED PROGRESS
+  // =========================
+  const start = performance.now();
   let displayed = 0;
   let finished = false;
 
   const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
   const lerp = (a, b, t) => a + (b - a) * t;
 
-  function tick() {
+  function tick(now) {
     if (finished) return;
 
-    const now = performance.now();
-    const elapsed = now - tStart;
+    const elapsed = now - start;
+    const t = clamp(elapsed / DURATION_MS, 0, 1);
 
-    const rawTarget = (done / total) * 100; // progress reale (veloce)
-    const timeGate = clamp((elapsed / MIN_SHOW_MS) * 100, 0, 100);
+    // progress guidato dal tempo
+    let target = t * 100;
 
-    // Lascia correre: sempre fluido, ma non “spara” a 100 subito
-    const target = clamp(Math.max(rawTarget, timeGate), 0, 99.5);
-    displayed = lerp(displayed, target, 0.12);
+    // se il contenuto è già pronto, non fermarti
+    // se NON è pronto, fermati elegantemente prima del 100
+    if (!contentReady) {
+      target = Math.min(target, HOLD_PERCENT);
+    }
+
+    displayed = lerp(displayed, target, 0.1);
 
     const pct = Math.floor(displayed);
     countEl.textContent = pct;
@@ -102,11 +92,8 @@
     if (hasGSAP) gsap.set(lineFill, { scaleX });
     else lineFill.style.transform = `scaleX(${scaleX})`;
 
-    const allDone = done >= total && elapsed >= MIN_SHOW_MS;
-    const safety = elapsed >= MAX_SHOW_MS;
-
-    if (allDone || safety) {
-      clearTimeout(earlyReleaseTimer);
+    // fine naturale del timer
+    if (elapsed >= DURATION_MS) {
       finish();
       return;
     }
@@ -114,6 +101,9 @@
     requestAnimationFrame(tick);
   }
 
+  // =========================
+  // FINISH (smooth dissolve)
+  // =========================
   function finish() {
     finished = true;
     countEl.textContent = "100";
@@ -128,34 +118,26 @@
             opacity: 0,
             y: -6,
             duration: 0.55,
-            ease: "power3.out",
+            ease: "power3.out"
           },
-          "+=0.10"
+          "+=0.12"
         )
         .to(
           preloader,
           {
             opacity: 0,
             duration: 0.9,
-            ease: "power2.out",
+            ease: "power2.out"
           },
-          "<+=0.10"
+          "<+=0.1"
         )
         .set(preloader, { display: "none" });
+
     } else {
-      // Fallback smooth senza GSAP
       lineFill.style.transform = "scaleX(1)";
-
-      lineWrap.style.willChange = "opacity, transform";
-      countEl.style.willChange = "opacity, transform";
-      preloader.style.willChange = "opacity";
-
-      const e1 = "cubic-bezier(.16,1,.3,1)";
-      const e2 = "cubic-bezier(.22,1,.36,1)";
-
-      lineWrap.style.transition = `opacity 550ms ${e1}, transform 550ms ${e1}`;
-      countEl.style.transition = `opacity 550ms ${e1}, transform 550ms ${e1}`;
-      preloader.style.transition = `opacity 900ms ${e2}`;
+      lineWrap.style.transition = "opacity 550ms ease, transform 550ms ease";
+      countEl.style.transition = "opacity 550ms ease, transform 550ms ease";
+      preloader.style.transition = "opacity 900ms ease";
 
       setTimeout(() => {
         lineWrap.style.opacity = "0";
@@ -165,11 +147,9 @@
 
         setTimeout(() => {
           preloader.style.opacity = "0";
-          setTimeout(() => {
-            preloader.style.display = "none";
-          }, 920);
+          setTimeout(() => preloader.style.display = "none", 920);
         }, 120);
-      }, 100);
+      }, 120);
     }
 
     sessionStorage.setItem(STORAGE_KEY, "1");

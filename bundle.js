@@ -1873,18 +1873,6 @@ function setupBarbaTransitions() {
               setTimeout(() => {
                 resetWebflow(data);
               }, 100);
-              
-              const overlay = getTransitionOverlay();
-              waitForNextContent(data.next.container).then(() => {
-                gsap.to(overlay, {
-                  autoAlpha: 0,
-                  duration: 0.35,
-                  ease: "power2.out",
-                  onComplete: () => {
-                    overlay.style.visibility = 'hidden';
-                  }
-                });
-              });
             });
           });
         },
@@ -1975,6 +1963,18 @@ function setupBarbaTransitions() {
                     ScrollTrigger.refresh();
                   }, 150);
                 }
+                const overlay = getTransitionOverlay();
+                waitForNextContent(document.querySelector('[data-barba-namespace="home"]')).
+                  then(() => {
+                    gsap.to(overlay, {
+                      autoAlpha: 0,
+                      duration: 0.35,
+                      ease: "power2.out",
+                      onComplete: () => {
+                        overlay.style.visibility = 'hidden';
+                      }
+                    });
+                  });
               });
             });
           }, 300);
@@ -2032,6 +2032,18 @@ document.addEventListener("DOMContentLoaded", () => {
         if (typeof ScrollTrigger !== 'undefined') {
           ScrollTrigger.refresh();
         }
+        const overlay = getTransitionOverlay();
+        waitForNextContent(document.querySelector('[data-barba-namespace="home"]')).
+          then(() => {
+            gsap.to(overlay, {
+              autoAlpha: 0,
+              duration: 0.35,
+              ease: "power2.out",
+              onComplete: () => {
+                overlay.style.visibility = 'hidden';
+              }
+            });
+          });
       }
     }, 400);
   }

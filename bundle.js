@@ -92,16 +92,18 @@
     overlay.style.visibility = 'visible';
     overlay.style.opacity = '1';
     overlay.style.pointerEvents = 'none';
-    Promise.resolve(promise).then(() => {
-      gsap.to(overlay, {
-        autoAlpha: 0,
-        duration: 0.4,
-        ease: "power2.out",
-        onComplete: () => {
-          overlay.style.visibility = 'hidden';
-        }
+    Promise.resolve(promise)
+      .then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+      .then(() => {
+        gsap.to(overlay, {
+          autoAlpha: 0,
+          duration: 0.4,
+          ease: "power2.out",
+          onComplete: () => {
+            overlay.style.visibility = 'hidden';
+          }
+        });
       });
-    });
   }
 
   // ============================================================================

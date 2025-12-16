@@ -21,36 +21,6 @@
   let homeTimeCleanup = null;
   let isTransitioning = false; // Flag to prevent double initialization
 
-  function preloadHomePlanes() {
-    const planeEls = Array.from(document.querySelectorAll('.js-plane'));
-    const sources = planeEls.map(el => el.dataset.src).filter(Boolean);
-    if (!sources.length) return Promise.resolve();
-    return Promise.all(sources.map(src => new Promise(resolve => {
-      const img = new Image();
-      const done = () => resolve();
-      img.onload = done;
-      img.onerror = done;
-      img.src = src;
-    })));
-  }
-
-  function hideOverlayAfterLoad(promise) {
-    const overlay = getTransitionOverlay();
-    gsap.set(overlay, { autoAlpha: 1, visibility: 'visible', pointerEvents: 'none' });
-    Promise.resolve(promise)
-      .then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
-      .then(() => {
-        gsap.to(overlay, {
-          autoAlpha: 0,
-          duration: 0.4,
-          ease: "power2.out",
-          onComplete: () => {
-            overlay.style.visibility = 'hidden';
-          }
-        });
-      });
-  }
-
   function unlockScrollAfterLenisReady() {
     const finish = () => unlockScroll();
     if (!lenisInstance) {
@@ -94,7 +64,7 @@
       overlay.style.height = '100%';
       overlay.style.pointerEvents = 'none';
       overlay.style.background = '#E7E7E7';
-      overlay.style.zIndex = '2147483647';
+      overlay.style.zIndex = '9999';
       overlay.style.opacity = '0';
       overlay.style.visibility = 'hidden';
       document.body.appendChild(overlay);
@@ -1956,9 +1926,6 @@ function setupBarbaTransitions() {
           setTimeout(() => {
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
-                const loadPromise = preloadHomePlanes();
-                const overlay = getTransitionOverlay();
-                gsap.set(overlay, { autoAlpha: 1, visibility: 'visible', pointerEvents: 'none' });
                 initHomeAnimations();
                 ensureLenisRunning();
                 unlockScrollAfterLenisReady();
@@ -1967,7 +1934,6 @@ function setupBarbaTransitions() {
                     ScrollTrigger.refresh();
                   }, 150);
                 }
-                hideOverlayAfterLoad(loadPromise);
               });
             });
           }, 300);
@@ -2019,16 +1985,12 @@ document.addEventListener("DOMContentLoaded", () => {
   if (namespace === 'home') {
     setTimeout(() => {
       if (!isTransitioning) {
-        const loadPromise = preloadHomePlanes();
-        const overlay = getTransitionOverlay();
-        gsap.set(overlay, { autoAlpha: 1, visibility: 'visible', pointerEvents: 'none' });
         initHomeAnimations();
         ensureLenisRunning();
         unlockScrollAfterLenisReady();
         if (typeof ScrollTrigger !== 'undefined') {
           ScrollTrigger.refresh();
         }
-        hideOverlayAfterLoad(loadPromise);
       }
     }, 400);
   }

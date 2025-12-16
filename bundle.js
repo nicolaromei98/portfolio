@@ -122,8 +122,9 @@ class Sketch {
     this.fragment = opts.fragment;
     this.uniforms = opts.uniforms;
     this.renderer = new THREE.WebGLRenderer();
-    this.width = window.innerWidth;
-    this.height = window.innerHeight;
+    // Use container dimensions instead of window to avoid overflow/misalignment
+    this.width = (document.getElementById("slider")?.offsetWidth) || window.innerWidth;
+    this.height = (document.getElementById("slider")?.offsetHeight) || window.innerHeight;
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(this.width, this.height);
     this.renderer.setClearColor(0xeeeeee, 1);
@@ -151,10 +152,23 @@ class Sketch {
     this.images = JSON.parse(this.container.getAttribute('data-images'));
     this.width = this.container.offsetWidth;
     this.height = this.container.offsetHeight;
+    // Ensure the container can anchor the canvas
+    if (getComputedStyle(this.container).position === 'static') {
+      this.container.style.position = 'relative';
+    }
+
+    // Attach renderer canvas and make it fit the container
+    this.renderer.domElement.style.position = 'absolute';
+    this.renderer.domElement.style.top = '0';
+    this.renderer.domElement.style.left = '0';
+    this.renderer.domElement.style.width = '100%';
+    this.renderer.domElement.style.height = '100%';
+    this.renderer.domElement.style.display = 'block';
+    this.renderer.domElement.style.pointerEvents = 'none';
     this.container.appendChild(this.renderer.domElement);
     this.camera = new THREE.PerspectiveCamera(
       70,
-      window.innerWidth / window.innerHeight,
+      this.width / this.height,
       0.001,
       1000
     );
@@ -231,6 +245,9 @@ class Sketch {
     this.width = this.container.offsetWidth;
     this.height = this.container.offsetHeight;
     this.renderer.setSize(this.width, this.height);
+    // Keep canvas CSS size in sync
+    this.renderer.domElement.style.width = '100%';
+    this.renderer.domElement.style.height = '100%';
     this.camera.aspect = this.width / this.height;
     
     if (this.textures[0]) {

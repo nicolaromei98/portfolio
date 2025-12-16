@@ -61,6 +61,12 @@
     }
   }
 
+  function startLenisIfNeeded() {
+    if (lenisInstance && typeof lenisInstance.start === 'function') {
+      lenisInstance.start();
+    }
+  }
+
 function resetWebflow(data) {
   const parser = new DOMParser();
   const dom = parser.parseFromString(data.next.html, "text/html");
@@ -1816,6 +1822,14 @@ function setupBarbaTransitions() {
               setTimeout(() => {
                 resetWebflow(data);
               }, 100);
+                
+                // Ensure Lenis is running after enter
+                startLenisIfNeeded();
+                if (typeof ScrollTrigger !== 'undefined') {
+                  setTimeout(() => {
+                    ScrollTrigger.refresh();
+                  }, 120);
+                }
             });
           });
         },
@@ -1928,6 +1942,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Only initialize if we're not in a transition
       if (!isTransitioning) {
         initProjectTemplateAnimations();
+        startLenisIfNeeded();
         if (typeof ScrollTrigger !== 'undefined') {
           ScrollTrigger.refresh();
         }
@@ -1938,6 +1953,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setTimeout(() => {
       if (!isTransitioning) {
         initAboutAnimations();
+        startLenisIfNeeded();
         if (typeof ScrollTrigger !== 'undefined') {
           ScrollTrigger.refresh();
         }
@@ -1948,6 +1964,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setTimeout(() => {
       if (!isTransitioning) {
         initHomeAnimations();
+        startLenisIfNeeded();
         if (typeof ScrollTrigger !== 'undefined') {
           ScrollTrigger.refresh();
         }

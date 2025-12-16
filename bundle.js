@@ -77,7 +77,7 @@ function playMainTransition(data) {
 
   // Set initial state of next page explicitly
   gsap.set(data.next.container, {
-    opacity: 0,
+    autoAlpha: 0,
     y: 0,
     x: 0,
     rotation: 0
@@ -90,15 +90,20 @@ function playMainTransition(data) {
   }
 
   tl.to(data.current.container, {
-    opacity: 0,
+    autoAlpha: 0,
     duration: 0.35,
     ease: "power1.out"
   })
   .to(data.next.container, {
-    opacity: 1,
+    autoAlpha: 1,
     duration: 0.55,
     ease: "power1.out"
-  }, "-=0.05");
+  }, "-=0.05")
+  .add(() => {
+    if (pageWrapper) {
+      gsap.set(pageWrapper, { clearProps: "backgroundColor" });
+    }
+  });
 
   return tl;
 }

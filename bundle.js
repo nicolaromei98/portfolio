@@ -27,8 +27,8 @@
   let aboutSliderCleanup = null;
   let homeCanvasCleanup = null;
   let homeTimeCleanup = null;
+  let homeTextureCache = new Map();
   let isTransitioning = false; // Flag to prevent double initialization
-  const homeTextureCache = new Map();
 
   // ============================================================================
   // UTILITY FUNCTIONS
@@ -1428,24 +1428,32 @@ function initHomeCanvas() {
   };
 
   const loader = new THREE.TextureLoader();
-  loader.setCrossOrigin('anonymous');
 
-  const loadTexture = (url) => {
-    if (!url) return Promise.reject(new Error('Missing data-src'));
-    if (homeTextureCache.has(url)) {
-      return Promise.resolve(homeTextureCache.get(url));
-    }
-    return new Promise((resolve, reject) => {
-      loader.load(
-        url,
-        (texture) => {
-          homeTextureCache.set(url, texture);
-          resolve(texture);
-        },
-        undefined,
-        reject
-      );
+  // Preload textures to avoid white flashes and delays
+  const planesEls = [...document.querySelectorAll('.js-plane')];
+  const urls = planesEls
+    .map(el => el.getAttribute('data-src'))
+    .filter(Boolean);
+
+  const preloadTextures = (sources) => {
+    const unique = [...new Set(sources)];
+    const promises = unique.map(src => {
+      if (homeTextureCache.has(src)) return Promise.resolve(homeTextureCache.get(src));
+      return new Promise((resolve, reject) => {
+        loader.load(
+          src,
+          (tex) => {
+            tex.minFilter = THREE.LinearFilter;
+            tex.generateMipmaps = false;
+            homeTextureCache.set(src, tex);
+            resolve(tex);
+          },
+          undefined,
+          (err) => reject(err)
+        );
+      });
     });
+    return Promise.all(promises);
   };
 
   const vertexShader = `
@@ -1509,12 +1517,11 @@ void main() {
   const baseMaterial = new THREE.ShaderMaterial({ fragmentShader, vertexShader });
 
   class Plane extends THREE.Object3D {
-    init(el, i, onReady) {
+    init(el, i) {
       this.el = el;
       this.x = 0;
       this.y = 0;
       this.my = 1 - ((i % 5) * 0.1);
-      this.onReady = onReady;
       this.geometry = geometry;
       this.material = baseMaterial.clone();
       this.material.uniforms = {
@@ -1525,37 +1532,24 @@ void main() {
         u_viewSize: { value: new THREE.Vector2(ww, wh) } 
       };
       const src = this.el.dataset.src;
-      // Placeholder: show the same image as background until texture is ready
-      if (src) {
-        this.el.style.backgroundImage = `url(${src})`;
-        this.el.style.backgroundSize = 'cover';
-        this.el.style.backgroundPosition = 'center';
-      }
-      const applyTexture = (texture) => {
-        texture.minFilter = THREE.LinearFilter;
-        texture.generateMipmaps = false;
-        const { naturalWidth, naturalHeight } = texture.image;
+      const cached = src && homeTextureCache.get(src);
+      if (cached && cached.image) {
+        const { naturalWidth, naturalHeight } = cached.image;
         const { u_size, u_texture } = this.material.uniforms;
-        u_texture.value = texture;
-        u_size.value.x = naturalWidth || texture.image.width || 1;
-        u_size.value.y = naturalHeight || texture.image.height || 1;
-        // Remove placeholder once texture is applied
-        this.el.style.backgroundImage = '';
-        this.el.style.backgroundSize = '';
-        this.el.style.backgroundPosition = '';
-        if (typeof this.onReady === 'function') {
-          this.onReady();
-        }
-      };
-
-      if (src) {
-        if (homeTextureCache.has(src)) {
-          applyTexture(homeTextureCache.get(src));
-        } else {
-          loadTexture(src).then(applyTexture).catch(() => {});
-        }
+        u_texture.value = cached;
+        u_size.value.x = naturalWidth;
+        u_size.value.y = naturalHeight;
+      } else if (src) {
+        this.texture = loader.load(src, (texture) => {
+          texture.minFilter = THREE.LinearFilter;
+          texture.generateMipmaps = false;
+          const { naturalWidth, naturalHeight } = texture.image;
+          const { u_size, u_texture } = this.material.uniforms;
+          u_texture.value = texture;
+          u_size.value.x = naturalWidth;
+          u_size.value.y = naturalHeight;
+        });
       }
-
       this.mesh = new THREE.Mesh(this.geometry, this.material);
       this.add(this.mesh);
       this.resize();
@@ -1620,8 +1614,6 @@ void main() {
       this.renderer.setPixelRatio(gsap.utils.clamp(1, 1.5, window.devicePixelRatio));
 
       this.renderer.setClearColor(0xE7E7E7, 1);
-      // Start hidden to show placeholders underneath, fade in when textures are ready
-      this.renderer.domElement.style.opacity = '0';
 
       document.body.appendChild(this.renderer.domElement);
 
@@ -1645,17 +1637,9 @@ void main() {
 
     addPlanes() {
       const planes = [...document.querySelectorAll('.js-plane')];
-      let loaded = 0;
-      const total = planes.length || 1;
-      const onPlaneReady = () => {
-        loaded += 1;
-        if (loaded >= total) {
-          gsap.to(this.renderer.domElement, { opacity: 1, duration: 0.35, ease: 'power2.out' });
-        }
-      };
       this.planes = planes.map((el, i) => {
         const plane = new Plane();
-        plane.init(el, i, onPlaneReady);
+        plane.init(el, i);
         this.scene.add(plane);
         return plane;
       });
@@ -1752,47 +1736,49 @@ void main() {
       if (this.planes) {
         this.planes.forEach(plane => plane.resize());
       }
-      // Keep camera and renderer in sync with viewport
-      this.camera.left = ww / -2;
-      this.camera.right = ww / 2;
-      this.camera.top = wh / 2;
-      this.camera.bottom = wh / -2;
-      this.camera.updateProjectionMatrix();
-      this.renderer.setSize(ww, wh);
     }
   }
 
-  const core = new Core();
+  // Preload textures first, then build the Core to avoid white flashes
+  const startCore = () => {
+    const core = new Core();
 
-  // Reload only on width change (mobile rotate)
-  let windowWidth = window.innerWidth;
-  const onWinResize = () => {
-    if (windowWidth !== window.innerWidth) {
-      windowWidth = window.innerWidth;
-      location.reload();
-    }
-  };
-  window.addEventListener('resize', onWinResize);
+    // Reload only on width change (mobile rotate)
+    let windowWidth = window.innerWidth;
+    const onWinResize = () => {
+      if (windowWidth !== window.innerWidth) {
+        windowWidth = window.innerWidth;
+        location.reload();
+      }
+    };
+    window.addEventListener('resize', onWinResize);
 
-  homeCanvasCleanup = () => {
-    window.removeEventListener('resize', onWinResize);
-    if (core) {
-      gsap.ticker.remove(core.tick);
-      window.removeEventListener('mousemove', core.onMouseMove);
-      window.removeEventListener('mousedown', core.onMouseDown);
-      window.removeEventListener('mouseup', core.onMouseUp);
-      window.removeEventListener('wheel', core.onWheel);
-      window.removeEventListener('touchstart', core.onTouchStart);
-      window.removeEventListener('touchmove', core.onTouchMove);
-      window.removeEventListener('touchend', core.onTouchEnd);
-      if (core.renderer && core.renderer.domElement && core.renderer.domElement.parentNode) {
-        core.renderer.domElement.parentNode.removeChild(core.renderer.domElement);
+    homeCanvasCleanup = () => {
+      window.removeEventListener('resize', onWinResize);
+      if (core) {
+        gsap.ticker.remove(core.tick);
+        window.removeEventListener('mousemove', core.onMouseMove);
+        window.removeEventListener('mousedown', core.onMouseDown);
+        window.removeEventListener('mouseup', core.onMouseUp);
+        window.removeEventListener('wheel', core.onWheel);
+        window.removeEventListener('touchstart', core.onTouchStart);
+        window.removeEventListener('touchmove', core.onTouchMove);
+        window.removeEventListener('touchend', core.onTouchEnd);
+        if (core.renderer && core.renderer.domElement && core.renderer.domElement.parentNode) {
+          core.renderer.domElement.parentNode.removeChild(core.renderer.domElement);
+        }
+        if (core.el) {
+          core.el.style.touchAction = '';
+        }
       }
-      if (core.el) {
-        core.el.style.touchAction = '';
-      }
-    }
+    };
   };
+
+  if (urls.length) {
+    preloadTextures(urls).then(startCore).catch(startCore);
+  } else {
+    startCore();
+  }
 }
 
 function destroyHomeCanvas() {

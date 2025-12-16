@@ -1,11 +1,12 @@
+
 (() => {
   const STORAGE_KEY = "preloader_seen_session";
 
   // =========================
   // CONFIG
   // =========================
-  const DURATION_MS = 3800; // 3–4s (es. 3200–4200)
-  const HOLD_PERCENT = 92;  // dove “aspetta” se il contenuto è già pronto
+  const DURATION_MS = 3000; // 3 secondi
+  const HOLD_PERCENT = 92;  // attesa elegante
 
   // =========================
   // ELEMENTS
@@ -37,7 +38,7 @@
 
   if (hasGSAP) {
     gsap.set(lineFill, { scaleX: 0, transformOrigin: "left center" });
-    gsap.set([countEl, lineWrap], { opacity: 1, y: 0 });
+    gsap.set([countEl, lineWrap], { opacity: 1 });
   } else {
     lineFill.style.transformOrigin = "left center";
     lineFill.style.transform = "scaleX(0)";
@@ -53,13 +54,15 @@
   if (document.readyState !== "loading") {
     contentReady = true;
   } else {
-    document.addEventListener("DOMContentLoaded", () => {
-      contentReady = true;
-    }, { once: true });
+    document.addEventListener(
+      "DOMContentLoaded",
+      () => (contentReady = true),
+      { once: true }
+    );
   }
 
   // =========================
-  // TIMED PROGRESS
+  // TIMED PROGRESS (3s)
   // =========================
   const start = performance.now();
   let displayed = 0;
@@ -74,14 +77,8 @@
     const elapsed = now - start;
     const t = clamp(elapsed / DURATION_MS, 0, 1);
 
-    // progress guidato dal tempo
     let target = t * 100;
-
-    // se il contenuto è già pronto, non fermarti
-    // se NON è pronto, fermati elegantemente prima del 100
-    if (!contentReady) {
-      target = Math.min(target, HOLD_PERCENT);
-    }
+    if (!contentReady) target = Math.min(target, HOLD_PERCENT);
 
     displayed = lerp(displayed, target, 0.1);
 
@@ -92,7 +89,6 @@
     if (hasGSAP) gsap.set(lineFill, { scaleX });
     else lineFill.style.transform = `scaleX(${scaleX})`;
 
-    // fine naturale del timer
     if (elapsed >= DURATION_MS) {
       finish();
       return;
@@ -102,54 +98,35 @@
   }
 
   // =========================
-  // FINISH (smooth dissolve)
+  // FINISH (soft fade only)
   // =========================
   function finish() {
     finished = true;
     countEl.textContent = "100";
 
     if (hasGSAP) {
-      const tl = gsap.timeline({ defaults: { ease: "expo.out" } });
+      const tl = gsap.timeline({ defaults: { ease: "power2.out" } });
 
-      tl.to(lineFill, { scaleX: 1, duration: 0.25 })
-        .to(
-          [lineWrap, countEl],
-          {
-            opacity: 0,
-            y: -6,
-            duration: 0.55,
-            ease: "power3.out"
-          },
-          "+=0.12"
-        )
-        .to(
-          preloader,
-          {
-            opacity: 0,
-            duration: 0.9,
-            ease: "power2.out"
-          },
-          "<+=0.1"
-        )
+      tl.to(lineFill, { scaleX: 1, duration: 0.2 })
+        .to([lineWrap, countEl], { opacity: 0, duration: 0.6 }, "+=0.15")
+        .to(preloader, { opacity: 0, duration: 1.0 }, "<+=0.1")
         .set(preloader, { display: "none" });
 
     } else {
       lineFill.style.transform = "scaleX(1)";
-      lineWrap.style.transition = "opacity 550ms ease, transform 550ms ease";
-      countEl.style.transition = "opacity 550ms ease, transform 550ms ease";
-      preloader.style.transition = "opacity 900ms ease";
+      lineWrap.style.transition = "opacity 600ms ease";
+      countEl.style.transition = "opacity 600ms ease";
+      preloader.style.transition = "opacity 1000ms ease";
 
       setTimeout(() => {
         lineWrap.style.opacity = "0";
         countEl.style.opacity = "0";
-        lineWrap.style.transform = "translateY(-6px)";
-        countEl.style.transform = "translateY(-6px)";
 
         setTimeout(() => {
           preloader.style.opacity = "0";
-          setTimeout(() => preloader.style.display = "none", 920);
-        }, 120);
-      }, 120);
+          setTimeout(() => (preloader.style.display = "none"), 1020);
+        }, 150);
+      }, 150);
     }
 
     sessionStorage.setItem(STORAGE_KEY, "1");

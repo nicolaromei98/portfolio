@@ -1509,11 +1509,12 @@ void main() {
   const baseMaterial = new THREE.ShaderMaterial({ fragmentShader, vertexShader });
 
   class Plane extends THREE.Object3D {
-    init(el, i) {
+    init(el, i, onReady) {
       this.el = el;
       this.x = 0;
       this.y = 0;
       this.my = 1 - ((i % 5) * 0.1);
+      this.onReady = onReady;
       this.geometry = geometry;
       this.material = baseMaterial.clone();
       this.material.uniforms = {
@@ -1524,6 +1525,12 @@ void main() {
         u_viewSize: { value: new THREE.Vector2(ww, wh) } 
       };
       const src = this.el.dataset.src;
+      // Placeholder: show the same image as background until texture is ready
+      if (src) {
+        this.el.style.backgroundImage = `url(${src})`;
+        this.el.style.backgroundSize = 'cover';
+        this.el.style.backgroundPosition = 'center';
+      }
       const applyTexture = (texture) => {
         texture.minFilter = THREE.LinearFilter;
         texture.generateMipmaps = false;
@@ -1532,6 +1539,13 @@ void main() {
         u_texture.value = texture;
         u_size.value.x = naturalWidth || texture.image.width || 1;
         u_size.value.y = naturalHeight || texture.image.height || 1;
+        // Remove placeholder once texture is applied
+        this.el.style.backgroundImage = '';
+        this.el.style.backgroundSize = '';
+        this.el.style.backgroundPosition = '';
+        if (typeof this.onReady === 'function') {
+          this.onReady();
+        }
       };
 
       if (src) {
@@ -1606,6 +1620,8 @@ void main() {
       this.renderer.setPixelRatio(gsap.utils.clamp(1, 1.5, window.devicePixelRatio));
 
       this.renderer.setClearColor(0xE7E7E7, 1);
+      // Start hidden to show placeholders underneath, fade in when textures are ready
+      this.renderer.domElement.style.opacity = '0';
 
       document.body.appendChild(this.renderer.domElement);
 
@@ -1629,9 +1645,17 @@ void main() {
 
     addPlanes() {
       const planes = [...document.querySelectorAll('.js-plane')];
+      let loaded = 0;
+      const total = planes.length || 1;
+      const onPlaneReady = () => {
+        loaded += 1;
+        if (loaded >= total) {
+          gsap.to(this.renderer.domElement, { opacity: 1, duration: 0.35, ease: 'power2.out' });
+        }
+      };
       this.planes = planes.map((el, i) => {
         const plane = new Plane();
-        plane.init(el, i);
+        plane.init(el, i, onPlaneReady);
         this.scene.add(plane);
         return plane;
       });

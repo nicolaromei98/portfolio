@@ -94,7 +94,7 @@
       overlay.style.height = '100%';
       overlay.style.pointerEvents = 'none';
       overlay.style.background = '#E7E7E7';
-      overlay.style.zIndex = '9999';
+      overlay.style.zIndex = '2147483647';
       overlay.style.opacity = '0';
       overlay.style.visibility = 'hidden';
       document.body.appendChild(overlay);

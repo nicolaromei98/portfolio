@@ -21,27 +21,6 @@
   let homeTimeCleanup = null;
   let isTransitioning = false; // Flag to prevent double initialization
 
-  function getHomeOverlay() {
-    let overlay = document.getElementById('home-preload-overlay');
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.id = 'home-preload-overlay';
-      overlay.style.position = 'fixed';
-      overlay.style.top = '0';
-      overlay.style.left = '0';
-      overlay.style.width = '100%';
-      overlay.style.height = '100%';
-      overlay.style.pointerEvents = 'none';
-      overlay.style.background = '#E7E7E7';
-      overlay.style.zIndex = '9998';
-      overlay.style.opacity = '1';
-      overlay.style.visibility = 'visible';
-      overlay.style.transition = 'opacity 0.35s ease';
-      document.body.appendChild(overlay);
-    }
-    return overlay;
-  }
-
   function unlockScrollAfterLenisReady() {
     const finish = () => unlockScroll();
     if (!lenisInstance) {
@@ -91,6 +70,38 @@
       document.body.appendChild(overlay);
     }
     return overlay;
+  }
+
+  function preloadHomePlanes() {
+    const planeEls = Array.from(document.querySelectorAll('.js-plane'));
+    const sources = planeEls.map(el => el.dataset.src).filter(Boolean);
+    if (!sources.length) {
+      return Promise.resolve();
+    }
+    return Promise.all(sources.map(src => new Promise(resolve => {
+      const img = new Image();
+      const done = () => resolve();
+      img.onload = done;
+      img.onerror = done;
+      img.src = src;
+    })));
+  }
+
+  function hideOverlayAfterLoad(promise) {
+    const overlay = getTransitionOverlay();
+    overlay.style.visibility = 'visible';
+    overlay.style.opacity = '1';
+    overlay.style.pointerEvents = 'none';
+    Promise.resolve(promise).then(() => {
+      gsap.to(overlay, {
+        autoAlpha: 0,
+        duration: 0.4,
+        ease: "power2.out",
+        onComplete: () => {
+          overlay.style.visibility = 'hidden';
+        }
+      });
+    });
   }
 
   // ============================================================================
@@ -1117,15 +1128,8 @@ function initHomeCanvas() {
 
   if (typeof THREE === 'undefined' || typeof gsap === 'undefined') return;
 
-  const planeEls = [...document.querySelectorAll('.js-plane')];
-  const sources = planeEls.map(el => el.dataset.src).filter(Boolean);
-  if (!sources.length) return;
-
   const gridEl = document.querySelector('.js-grid');
   if (!gridEl) return;
-  const homeOverlay = getHomeOverlay();
-  homeOverlay.style.visibility = 'visible';
-  homeOverlay.style.opacity = '1';
 
   let ww = window.innerWidth;
   let wh = window.innerHeight;
@@ -1351,16 +1355,6 @@ void main() {
       );
 
       this.renderer.render(this.scene, this.camera);
-
-      if (!this.firstFrameDone) {
-        this.firstFrameDone = true;
-        if (this.homeOverlay) {
-          this.homeOverlay.style.opacity = '0';
-          setTimeout(() => {
-            this.homeOverlay.style.visibility = 'hidden';
-          }, 400);
-        }
-      }
     }
 
     onMouseMove = ({ clientX, clientY }) => {
@@ -1427,59 +1421,27 @@ void main() {
     }
   }
 
-  let preloadCancelled = false;
-  const preloadImages = (srcs) => Promise.all(
-    srcs.map(src => new Promise(resolve => {
-      const img = new Image();
-      const done = () => resolve();
-      img.onload = done;
-      img.onerror = done;
-      img.src = src;
-    }))
-  );
+  const core = new Core();
 
-  preloadImages(sources).then(() => {
-    if (preloadCancelled) return;
-    const core = new Core();
-    const canvasEl = core && core.renderer && core.renderer.domElement;
+  homeCanvasCleanup = () => {
     if (core) {
-      core.homeOverlay = homeOverlay;
-      core.firstFrameDone = false;
-    }
-    if (canvasEl) {
-      canvasEl.style.transition = 'opacity 0.35s ease';
-      canvasEl.style.opacity = '0';
-      requestAnimationFrame(() => {
-        canvasEl.style.opacity = '1';
-      });
-    }
-
-    homeCanvasCleanup = () => {
-      preloadCancelled = true;
-      if (core) {
-        gsap.ticker.remove(core.tick);
-        window.removeEventListener('mousemove', core.onMouseMove);
-        window.removeEventListener('mousedown', core.onMouseDown);
-        window.removeEventListener('mouseup', core.onMouseUp);
-        window.removeEventListener('wheel', core.onWheel, { passive: true });
-        window.removeEventListener('touchstart', core.onTouchStart);
-        window.removeEventListener('touchmove', core.onTouchMove);
-        window.removeEventListener('touchend', core.onTouchEnd);
-        window.removeEventListener('resize', core.resize);
-        if (core.renderer && core.renderer.domElement && core.renderer.domElement.parentNode) {
-          core.renderer.domElement.parentNode.removeChild(core.renderer.domElement);
-        }
-        if (core.el) {
-          core.el.style.touchAction = '';
-        }
+      gsap.ticker.remove(core.tick);
+      window.removeEventListener('mousemove', core.onMouseMove);
+      window.removeEventListener('mousedown', core.onMouseDown);
+      window.removeEventListener('mouseup', core.onMouseUp);
+      window.removeEventListener('wheel', core.onWheel, { passive: true });
+      window.removeEventListener('touchstart', core.onTouchStart);
+      window.removeEventListener('touchmove', core.onTouchMove);
+      window.removeEventListener('touchend', core.onTouchEnd);
+      window.removeEventListener('resize', core.resize);
+      if (core.renderer && core.renderer.domElement && core.renderer.domElement.parentNode) {
+        core.renderer.domElement.parentNode.removeChild(core.renderer.domElement);
       }
-      if (homeOverlay) {
-        homeOverlay.style.visibility = 'hidden';
-        homeOverlay.style.opacity = '0';
+      if (core.el) {
+        core.el.style.touchAction = '';
       }
-    };
-  });
-
+    }
+  };
 }
 
 function destroyHomeCanvas() {
@@ -1993,9 +1955,14 @@ function setupBarbaTransitions() {
         },
         afterEnter() {
           isTransitioning = false;
+          const overlay = getTransitionOverlay();
+          overlay.style.visibility = 'visible';
+          overlay.style.opacity = '1';
+          overlay.style.pointerEvents = 'none';
           setTimeout(() => {
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
+                const loadPromise = preloadHomePlanes();
                 initHomeAnimations();
                 ensureLenisRunning();
                 unlockScrollAfterLenisReady();
@@ -2004,6 +1971,7 @@ function setupBarbaTransitions() {
                     ScrollTrigger.refresh();
                   }, 150);
                 }
+                hideOverlayAfterLoad(loadPromise);
               });
             });
           }, 300);
@@ -2055,12 +2023,18 @@ document.addEventListener("DOMContentLoaded", () => {
   if (namespace === 'home') {
     setTimeout(() => {
       if (!isTransitioning) {
+        const overlay = getTransitionOverlay();
+        overlay.style.visibility = 'visible';
+        overlay.style.opacity = '1';
+        overlay.style.pointerEvents = 'none';
+        const loadPromise = preloadHomePlanes();
         initHomeAnimations();
         ensureLenisRunning();
         unlockScrollAfterLenisReady();
         if (typeof ScrollTrigger !== 'undefined') {
           ScrollTrigger.refresh();
         }
+        hideOverlayAfterLoad(loadPromise);
       }
     }, 400);
   }

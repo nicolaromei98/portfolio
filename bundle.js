@@ -955,6 +955,15 @@ function initGlobalParallax() {
     return;
   }
 
+  // Ensure ScrollTrigger is registered with GSAP (needed on some setups)
+  if (typeof gsap.registerPlugin === 'function') {
+    try {
+      gsap.registerPlugin(ScrollTrigger);
+    } catch (e) {
+      // Ignore if already registered
+    }
+  }
+
   const triggersCreated = [];
 
   const setupParallaxCore = (conditions) => {

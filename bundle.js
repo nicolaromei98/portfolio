@@ -27,7 +27,6 @@
   let aboutSliderCleanup = null;
   let homeCanvasCleanup = null;
   let homeTimeCleanup = null;
-  let homeTextureCache = new Map();
   let isTransitioning = false; // Flag to prevent double initialization
 
   // ============================================================================
@@ -83,22 +82,24 @@ function playMainTransition(data) {
     rotation: 0
   });
 
-  // Smooth fade out of current and fade in of next with a neutral background
   const pageWrapper = data.current.container.closest(".page-wrapper");
-  if (pageWrapper) {
-    gsap.set(pageWrapper, { backgroundColor: "#E7E7E7" });
-  }
 
+  // Fade out current, fade in next, with neutral background
   tl.to(data.current.container, {
     autoAlpha: 0,
-    duration: 0.35,
-    ease: "power1.out"
-  })
+    duration: 0.45,
+    ease: "power2.out"
+  }, 0)
+  .to(pageWrapper, {
+    backgroundColor: "#E7E7E7",
+    duration: 0.45,
+    ease: "power2.out"
+  }, 0)
   .to(data.next.container, {
     autoAlpha: 1,
     duration: 0.55,
-    ease: "power1.out"
-  }, "-=0.05")
+    ease: "power2.out"
+  }, 0.1)
   .add(() => {
     if (pageWrapper) {
       gsap.set(pageWrapper, { clearProps: "backgroundColor" });
@@ -1410,7 +1411,7 @@ function initHomeCanvas() {
   const gridEl = document.querySelector('.js-grid');
   if (!gridEl) return;
 
-  // Clean previous
+  // Cleanup any previous instance
   destroyHomeCanvas();
 
   let ww = window.innerWidth;
@@ -1428,33 +1429,6 @@ function initHomeCanvas() {
   };
 
   const loader = new THREE.TextureLoader();
-
-  // Preload textures to avoid white flashes and delays
-  const planesEls = [...document.querySelectorAll('.js-plane')];
-  const urls = planesEls
-    .map(el => el.getAttribute('data-src'))
-    .filter(Boolean);
-
-  const preloadTextures = (sources) => {
-    const unique = [...new Set(sources)];
-    const promises = unique.map(src => {
-      if (homeTextureCache.has(src)) return Promise.resolve(homeTextureCache.get(src));
-      return new Promise((resolve, reject) => {
-        loader.load(
-          src,
-          (tex) => {
-            tex.minFilter = THREE.LinearFilter;
-            tex.generateMipmaps = false;
-            homeTextureCache.set(src, tex);
-            resolve(tex);
-          },
-          undefined,
-          (err) => reject(err)
-        );
-      });
-    });
-    return Promise.all(promises);
-  };
 
   const vertexShader = `
 precision mediump float;
@@ -1531,25 +1505,15 @@ void main() {
         u_velo: { value: new THREE.Vector2(0, 0) },
         u_viewSize: { value: new THREE.Vector2(ww, wh) } 
       };
-      const src = this.el.dataset.src;
-      const cached = src && homeTextureCache.get(src);
-      if (cached && cached.image) {
-        const { naturalWidth, naturalHeight } = cached.image;
+      this.texture = loader.load(this.el.dataset.src, (texture) => {
+        texture.minFilter = THREE.LinearFilter;
+        texture.generateMipmaps = false;
+        const { naturalWidth, naturalHeight } = texture.image;
         const { u_size, u_texture } = this.material.uniforms;
-        u_texture.value = cached;
+        u_texture.value = texture;
         u_size.value.x = naturalWidth;
         u_size.value.y = naturalHeight;
-      } else if (src) {
-        this.texture = loader.load(src, (texture) => {
-          texture.minFilter = THREE.LinearFilter;
-          texture.generateMipmaps = false;
-          const { naturalWidth, naturalHeight } = texture.image;
-          const { u_size, u_texture } = this.material.uniforms;
-          u_texture.value = texture;
-          u_size.value.x = naturalWidth;
-          u_size.value.y = naturalHeight;
-        });
-      }
+      });
       this.mesh = new THREE.Mesh(this.geometry, this.material);
       this.add(this.mesh);
       this.resize();
@@ -1739,7 +1703,6 @@ void main() {
     }
   }
 
-  // Preload textures first, then build the Core to avoid white flashes
   const startCore = () => {
     const core = new Core();
 
@@ -1774,11 +1737,7 @@ void main() {
     };
   };
 
-  if (urls.length) {
-    preloadTextures(urls).then(startCore).catch(startCore);
-  } else {
-    startCore();
-  }
+  startCore();
 }
 
 function destroyHomeCanvas() {
@@ -1996,11 +1955,6 @@ function setupBarbaTransitions() {
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
                 initHomeAnimations();
-                if (typeof ScrollTrigger !== 'undefined') {
-                  setTimeout(() => {
-                    ScrollTrigger.refresh();
-                  }, 150);
-                }
               });
             });
           }, 300);
@@ -2049,9 +2003,6 @@ document.addEventListener("DOMContentLoaded", () => {
     setTimeout(() => {
       if (!isTransitioning) {
         initHomeAnimations();
-        if (typeof ScrollTrigger !== 'undefined') {
-          ScrollTrigger.refresh();
-        }
       }
     }, 400);
   }

@@ -1416,6 +1416,12 @@ void main() {
       });
     }
 
+    const overlay = getTransitionOverlay();
+    gsap.set(overlay, { autoAlpha: 1, visibility: 'visible' });
+    gsap.to(overlay, { autoAlpha: 0, duration: 0.35, ease: "power2.out", onComplete: () => {
+      overlay.style.visibility = 'hidden';
+    }});
+
     homeCanvasCleanup = () => {
       preloadCancelled = true;
       if (core) {

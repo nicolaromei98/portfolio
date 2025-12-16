@@ -1,3 +1,179 @@
+(() => {
+  const STORAGE_KEY = "preloader_seen_session";
+  const MIN_SHOW_MS = 350;    // rapidissimo, evita flash
+  const MAX_SHOW_MS = 2200;   // safety cap: non blocca mai troppo
 
-(()=>{let e="preloader_seen_session",t=document.querySelector(".preloader");if(!t)return;let n=t.querySelector("[data-count]"),o=t.querySelector(".preloader__line"),r=t.querySelector(".line__animate");if(!n||!o||!r)return;if("1"===sessionStorage.getItem(e)){t.style.display="none",t.style.opacity="0";return}t.style.display="flex",t.style.opacity="1";let l=!!window.gsap;l?(gsap.set(r,{scaleX:0,transformOrigin:"left center"}),gsap.set([n,o],{opacity:1})):(r.style.transformOrigin="left center",r.style.transform="scaleX(0)",n.style.opacity="1",o.style.opacity="1");let a=performance.now(),i=0,s=!1,$="loading"!==document.readyState?Promise.resolve():new Promise(e=>document.addEventListener("DOMContentLoaded",e,{once:!0})),y=Array.from(document.images||[]).filter(e=>{let t=e.getBoundingClientRect();return t.top<1.2*window.innerHeight}),c=0,d=Math.max(1,y.length)+1;function p(){c=Math.min(d,c+1)}$.then(()=>p()),y.length&&y.forEach(e=>{if(e.complete&&e.naturalWidth>0)p();else{let t=()=>{p(),e.removeEventListener("load",t),e.removeEventListener("error",t)};e.addEventListener("load",t,{once:!0}),e.addEventListener("error",t,{once:!0})}});let f=setTimeout(()=>p(),550),_=(e,t,n)=>Math.min(n,Math.max(t,e)),m=(e,t,n)=>e+(t-e)*n;function u(){if(s)return;let e=performance.now(),t=e-a,o=c/d*100,$=_(t/350*100,0,100),y=_(Math.max(o,$),0,99.5);i=m(i,y,.12);let p=Math.floor(i);n.textContent=p;let v=p/100;l?gsap.set(r,{scaleX:v}):r.style.transform=`scaleX(${v})`;let h=c>=d;if(h&&t>=350||t>=2200){clearTimeout(f),g();return}requestAnimationFrame(u)}function g(){if(s=!0,n.textContent="100",l){let a=gsap.timeline({defaults:{ease:"power2.out"}});a.to(r,{scaleX:1,duration:.18}).to([o,n],{opacity:0,duration:.28},"+=0.10").to(t,{opacity:0,duration:.45},"<+=0.06").set(t,{display:"none"})}else r.style.transform="scaleX(1)",o.style.transition="opacity 280ms ease",n.style.transition="opacity 280ms ease",t.style.transition="opacity 450ms ease",setTimeout(()=>{o.style.opacity="0",n.style.opacity="0",setTimeout(()=>{t.style.opacity="0",setTimeout(()=>t.style.display="none",470)},120)},120);sessionStorage.setItem(e,"1")}requestAnimationFrame(u)})();
+  const preloader = document.querySelector(".preloader");
+  if (!preloader) return;
 
+  const countEl = preloader.querySelector("[data-count]");
+  const lineWrap = preloader.querySelector(".preloader__line");
+  const lineFill = preloader.querySelector(".line__animate");
+  if (!countEl || !lineWrap || !lineFill) return;
+
+  // Solo prima volta per sessione (finché il tab/browser resta aperto)
+  if (sessionStorage.getItem(STORAGE_KEY) === "1") {
+    preloader.style.display = "none";
+    preloader.style.opacity = "0";
+    return;
+  }
+
+  // Init
+  preloader.style.display = "flex";
+  preloader.style.opacity = "1";
+
+  const hasGSAP = !!window.gsap;
+
+  if (hasGSAP) {
+    gsap.set(lineFill, { scaleX: 0, transformOrigin: "left center" });
+    gsap.set([countEl, lineWrap], { opacity: 1, y: 0 });
+  } else {
+    lineFill.style.transformOrigin = "left center";
+    lineFill.style.transform = "scaleX(0)";
+    countEl.style.opacity = "1";
+    lineWrap.style.opacity = "1";
+    countEl.style.transform = "translateY(0px)";
+    lineWrap.style.transform = "translateY(0px)";
+  }
+
+  // Gate veloce: DOM ready
+  const domReady =
+    document.readyState !== "loading"
+      ? Promise.resolve()
+      : new Promise((res) =>
+          document.addEventListener("DOMContentLoaded", res, { once: true })
+        );
+
+  // Traccia SOLO immagini sopra il fold (più veloce, più UX-friendly)
+  const imgs = Array.from(document.images || []).filter((img) => {
+    const r = img.getBoundingClientRect();
+    return r.top < window.innerHeight * 1.2;
+  });
+
+  let done = 0;
+  const total = Math.max(1, imgs.length) + 1; // +1 per domReady
+
+  const markDone = () => {
+    done = Math.min(total, done + 1);
+  };
+
+  domReady.then(markDone);
+
+  if (imgs.length) {
+    imgs.forEach((img) => {
+      if (img.complete && img.naturalWidth > 0) {
+        markDone();
+      } else {
+        const onDone = () => markDone();
+        img.addEventListener("load", onDone, { once: true });
+        img.addEventListener("error", onDone, { once: true });
+      }
+    });
+  }
+
+  // Sblocco extra se qualche immagine tarda troppo (non bloccare mai UX)
+  const earlyReleaseTimer = setTimeout(markDone, 550);
+
+  // Smooth progress loop
+  const tStart = performance.now();
+  let displayed = 0;
+  let finished = false;
+
+  const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  function tick() {
+    if (finished) return;
+
+    const now = performance.now();
+    const elapsed = now - tStart;
+
+    const rawTarget = (done / total) * 100; // progress reale (veloce)
+    const timeGate = clamp((elapsed / MIN_SHOW_MS) * 100, 0, 100);
+
+    // Lascia correre: sempre fluido, ma non “spara” a 100 subito
+    const target = clamp(Math.max(rawTarget, timeGate), 0, 99.5);
+    displayed = lerp(displayed, target, 0.12);
+
+    const pct = Math.floor(displayed);
+    countEl.textContent = pct;
+
+    const scaleX = pct / 100;
+    if (hasGSAP) gsap.set(lineFill, { scaleX });
+    else lineFill.style.transform = `scaleX(${scaleX})`;
+
+    const allDone = done >= total && elapsed >= MIN_SHOW_MS;
+    const safety = elapsed >= MAX_SHOW_MS;
+
+    if (allDone || safety) {
+      clearTimeout(earlyReleaseTimer);
+      finish();
+      return;
+    }
+
+    requestAnimationFrame(tick);
+  }
+
+  function finish() {
+    finished = true;
+    countEl.textContent = "100";
+
+    if (hasGSAP) {
+      const tl = gsap.timeline({ defaults: { ease: "expo.out" } });
+
+      tl.to(lineFill, { scaleX: 1, duration: 0.25 })
+        .to(
+          [lineWrap, countEl],
+          {
+            opacity: 0,
+            y: -6,
+            duration: 0.55,
+            ease: "power3.out",
+          },
+          "+=0.10"
+        )
+        .to(
+          preloader,
+          {
+            opacity: 0,
+            duration: 0.9,
+            ease: "power2.out",
+          },
+          "<+=0.10"
+        )
+        .set(preloader, { display: "none" });
+    } else {
+      // Fallback smooth senza GSAP
+      lineFill.style.transform = "scaleX(1)";
+
+      lineWrap.style.willChange = "opacity, transform";
+      countEl.style.willChange = "opacity, transform";
+      preloader.style.willChange = "opacity";
+
+      const e1 = "cubic-bezier(.16,1,.3,1)";
+      const e2 = "cubic-bezier(.22,1,.36,1)";
+
+      lineWrap.style.transition = `opacity 550ms ${e1}, transform 550ms ${e1}`;
+      countEl.style.transition = `opacity 550ms ${e1}, transform 550ms ${e1}`;
+      preloader.style.transition = `opacity 900ms ${e2}`;
+
+      setTimeout(() => {
+        lineWrap.style.opacity = "0";
+        countEl.style.opacity = "0";
+        lineWrap.style.transform = "translateY(-6px)";
+        countEl.style.transform = "translateY(-6px)";
+
+        setTimeout(() => {
+          preloader.style.opacity = "0";
+          setTimeout(() => {
+            preloader.style.display = "none";
+          }, 920);
+        }, 120);
+      }, 100);
+    }
+
+    sessionStorage.setItem(STORAGE_KEY, "1");
+  }
+
+  requestAnimationFrame(tick);
+})();

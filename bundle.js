@@ -42,27 +42,6 @@
     return overlay;
   }
 
-  function getHomeOverlay() {
-    let overlay = document.getElementById('home-preload-overlay');
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.id = 'home-preload-overlay';
-      overlay.style.position = 'fixed';
-      overlay.style.top = '0';
-      overlay.style.left = '0';
-      overlay.style.width = '100%';
-      overlay.style.height = '100%';
-      overlay.style.pointerEvents = 'none';
-      overlay.style.background = '#E7E7E7';
-      overlay.style.zIndex = '9998';
-      overlay.style.opacity = '1';
-      overlay.style.visibility = 'visible';
-      overlay.style.transition = 'opacity 0.35s ease';
-      document.body.appendChild(overlay);
-    }
-    return overlay;
-  }
-
   function unlockScrollAfterLenisReady() {
     const finish = () => unlockScroll();
     if (!lenisInstance) {
@@ -1145,6 +1124,8 @@ function initHomeCanvas() {
   const gridEl = document.querySelector('.js-grid');
   if (!gridEl) return;
   const homeOverlay = getHomeOverlay();
+  homeOverlay.style.visibility = 'visible';
+  homeOverlay.style.opacity = '1';
 
   let ww = window.innerWidth;
   let wh = window.innerHeight;
@@ -1319,7 +1300,6 @@ void main() {
       }
       document.body.appendChild(canvasEl);
 
-      this.firstFrameDone = false;
       this.addPlanes();
       this.addEvents();
       this.resize();
@@ -1374,10 +1354,10 @@ void main() {
 
       if (!this.firstFrameDone) {
         this.firstFrameDone = true;
-        if (homeOverlay) {
-          homeOverlay.style.opacity = '0';
+        if (this.homeOverlay) {
+          this.homeOverlay.style.opacity = '0';
           setTimeout(() => {
-            homeOverlay.style.visibility = 'hidden';
+            this.homeOverlay.style.visibility = 'hidden';
           }, 400);
         }
       }
@@ -1461,6 +1441,19 @@ void main() {
   preloadImages(sources).then(() => {
     if (preloadCancelled) return;
     const core = new Core();
+    const canvasEl = core && core.renderer && core.renderer.domElement;
+    if (core) {
+      core.homeOverlay = homeOverlay;
+      core.firstFrameDone = false;
+    }
+    if (canvasEl) {
+      canvasEl.style.transition = 'opacity 0.35s ease';
+      canvasEl.style.opacity = '0';
+      requestAnimationFrame(() => {
+        canvasEl.style.opacity = '1';
+      });
+    }
+
     homeCanvasCleanup = () => {
       preloadCancelled = true;
       if (core) {
@@ -1480,8 +1473,9 @@ void main() {
           core.el.style.touchAction = '';
         }
       }
-      if (homeOverlay && homeOverlay.parentNode) {
-        homeOverlay.parentNode.removeChild(homeOverlay);
+      if (homeOverlay) {
+        homeOverlay.style.visibility = 'hidden';
+        homeOverlay.style.opacity = '0';
       }
     };
   });

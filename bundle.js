@@ -28,6 +28,7 @@
   let homeCanvasCleanup = null;
   let homeTimeCleanup = null;
   let isTransitioning = false; // Flag to prevent double initialization
+  const homeTextureCache = new Map();
 
   // ============================================================================
   // UTILITY FUNCTIONS
@@ -1427,6 +1428,25 @@ function initHomeCanvas() {
   };
 
   const loader = new THREE.TextureLoader();
+  loader.setCrossOrigin('anonymous');
+
+  const loadTexture = (url) => {
+    if (!url) return Promise.reject(new Error('Missing data-src'));
+    if (homeTextureCache.has(url)) {
+      return Promise.resolve(homeTextureCache.get(url));
+    }
+    return new Promise((resolve, reject) => {
+      loader.load(
+        url,
+        (texture) => {
+          homeTextureCache.set(url, texture);
+          resolve(texture);
+        },
+        undefined,
+        reject
+      );
+    });
+  };
 
   const vertexShader = `
 precision mediump float;
@@ -1503,15 +1523,25 @@ void main() {
         u_velo: { value: new THREE.Vector2(0, 0) },
         u_viewSize: { value: new THREE.Vector2(ww, wh) } 
       };
-      this.texture = loader.load(this.el.dataset.src, (texture) => {
+      const src = this.el.dataset.src;
+      const applyTexture = (texture) => {
         texture.minFilter = THREE.LinearFilter;
         texture.generateMipmaps = false;
         const { naturalWidth, naturalHeight } = texture.image;
         const { u_size, u_texture } = this.material.uniforms;
         u_texture.value = texture;
-        u_size.value.x = naturalWidth;
-        u_size.value.y = naturalHeight;
-      });
+        u_size.value.x = naturalWidth || texture.image.width || 1;
+        u_size.value.y = naturalHeight || texture.image.height || 1;
+      };
+
+      if (src) {
+        if (homeTextureCache.has(src)) {
+          applyTexture(homeTextureCache.get(src));
+        } else {
+          loadTexture(src).then(applyTexture).catch(() => {});
+        }
+      }
+
       this.mesh = new THREE.Mesh(this.geometry, this.material);
       this.add(this.mesh);
       this.resize();
@@ -1698,6 +1728,13 @@ void main() {
       if (this.planes) {
         this.planes.forEach(plane => plane.resize());
       }
+      // Keep camera and renderer in sync with viewport
+      this.camera.left = ww / -2;
+      this.camera.right = ww / 2;
+      this.camera.top = wh / 2;
+      this.camera.bottom = wh / -2;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(ww, wh);
     }
   }
 

@@ -2023,18 +2023,12 @@ document.addEventListener("DOMContentLoaded", () => {
   if (namespace === 'home') {
     setTimeout(() => {
       if (!isTransitioning) {
-        const overlay = getTransitionOverlay();
-        overlay.style.visibility = 'visible';
-        overlay.style.opacity = '1';
-        overlay.style.pointerEvents = 'none';
-        const loadPromise = preloadHomePlanes();
         initHomeAnimations();
         ensureLenisRunning();
         unlockScrollAfterLenisReady();
         if (typeof ScrollTrigger !== 'undefined') {
           ScrollTrigger.refresh();
         }
-        hideOverlayAfterLoad(loadPromise);
       }
     }, 400);
   }

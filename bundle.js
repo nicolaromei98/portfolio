@@ -36,6 +36,28 @@
       overlay.style.zIndex = '9998';
       overlay.style.opacity = '1';
       overlay.style.visibility = 'visible';
+      overlay.style.transition = 'opacity 0.35s ease';
+      document.body.appendChild(overlay);
+    }
+    return overlay;
+  }
+
+  function getHomeOverlay() {
+    let overlay = document.getElementById('home-preload-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'home-preload-overlay';
+      overlay.style.position = 'fixed';
+      overlay.style.top = '0';
+      overlay.style.left = '0';
+      overlay.style.width = '100%';
+      overlay.style.height = '100%';
+      overlay.style.pointerEvents = 'none';
+      overlay.style.background = '#E7E7E7';
+      overlay.style.zIndex = '9998';
+      overlay.style.opacity = '1';
+      overlay.style.visibility = 'visible';
+      overlay.style.transition = 'opacity 0.35s ease';
       document.body.appendChild(overlay);
     }
     return overlay;
@@ -1297,6 +1319,7 @@ void main() {
       }
       document.body.appendChild(canvasEl);
 
+      this.firstFrameDone = false;
       this.addPlanes();
       this.addEvents();
       this.resize();
@@ -1348,6 +1371,16 @@ void main() {
       );
 
       this.renderer.render(this.scene, this.camera);
+
+      if (!this.firstFrameDone) {
+        this.firstFrameDone = true;
+        if (homeOverlay) {
+          homeOverlay.style.opacity = '0';
+          setTimeout(() => {
+            homeOverlay.style.visibility = 'hidden';
+          }, 400);
+        }
+      }
     }
 
     onMouseMove = ({ clientX, clientY }) => {
@@ -1428,27 +1461,6 @@ void main() {
   preloadImages(sources).then(() => {
     if (preloadCancelled) return;
     const core = new Core();
-    const canvasEl = core && core.renderer && core.renderer.domElement;
-    if (canvasEl) {
-      canvasEl.style.transition = 'opacity 0.35s ease';
-      canvasEl.style.opacity = '0';
-      requestAnimationFrame(() => {
-        canvasEl.style.opacity = '1';
-      });
-    }
-
-    if (homeOverlay) {
-      gsap.set(homeOverlay, { autoAlpha: 1, visibility: 'visible' });
-      gsap.to(homeOverlay, {
-        autoAlpha: 0,
-        duration: 0.35,
-        ease: "power2.out",
-        onComplete: () => {
-          homeOverlay.style.visibility = 'hidden';
-        }
-      });
-    }
-
     homeCanvasCleanup = () => {
       preloadCancelled = true;
       if (core) {

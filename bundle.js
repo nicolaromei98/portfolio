@@ -1970,7 +1970,7 @@ function setupBarbaTransitions() {
                 waitForContent(target).then(() => {
                   gsap.to(overlay, {
                     autoAlpha: 0,
-                    duration: 0.35,
+                    duration: 0.6,
                     ease: "power2.out",
                     onComplete: () => {
                       overlay.style.visibility = 'hidden';

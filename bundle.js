@@ -1428,7 +1428,6 @@ function initHomeCanvas() {
   const gridEl = document.querySelector('.js-grid');
   if (!gridEl) return;
 
-  // Cleanup any previous instance
   destroyHomeCanvas();
 
   let ww = window.innerWidth;
@@ -1505,7 +1504,7 @@ void main() {
 `;
 
   const geometry = new THREE.PlaneBufferGeometry(1, 1, 32, 32);
-  const baseMaterial = new THREE.ShaderMaterial({ fragmentShader, vertexShader });
+  const material = new THREE.ShaderMaterial({ fragmentShader, vertexShader });
 
   class Plane extends THREE.Object3D {
     init(el, i) {
@@ -1514,7 +1513,7 @@ void main() {
       this.y = 0;
       this.my = 1 - ((i % 5) * 0.1);
       this.geometry = geometry;
-      this.material = baseMaterial.clone();
+      this.material = material.clone();
       this.material.uniforms = {
         u_texture: { value: 0 },
         u_res: { value: new THREE.Vector2(1, 1) },
@@ -1581,15 +1580,8 @@ void main() {
 
       this.el = gridEl;
       this.el.style.touchAction = 'none';
-      if (getComputedStyle(this.el).position === 'static') {
-        this.el.style.position = 'relative';
-      }
 
       this.scene = new THREE.Scene();
-
-      const rect = this.el.getBoundingClientRect();
-      ww = rect.width || ww;
-      wh = rect.height || wh;
 
       this.camera = new THREE.OrthographicCamera(
         ww / -2, ww / 2, wh / 2, wh / -2, 1, 1000
@@ -1603,16 +1595,7 @@ void main() {
 
       this.renderer.setClearColor(0xE7E7E7, 1);
 
-      // Attach canvas inside the grid and keep it behind other content
-      const canvas = this.renderer.domElement;
-      canvas.style.position = 'absolute';
-      canvas.style.inset = '0';
-      canvas.style.width = '100%';
-      canvas.style.height = '100%';
-      canvas.style.display = 'block';
-      canvas.style.pointerEvents = 'none';
-      canvas.style.zIndex = '0';
-      this.el.appendChild(canvas);
+      document.body.appendChild(this.renderer.domElement);
 
       this.addPlanes();
       this.addEvents();
@@ -1724,9 +1707,8 @@ void main() {
     }
 
     resize = () => {
-      const rect = this.el.getBoundingClientRect();
-      ww = rect.width || window.innerWidth;
-      wh = rect.height || window.innerHeight;
+      ww = window.innerWidth;
+      wh = window.innerHeight;
       const { bottom, right } = this.el.getBoundingClientRect();
       this.max.x = right;
       this.max.y = bottom;
@@ -1734,48 +1716,41 @@ void main() {
       if (this.planes) {
         this.planes.forEach(plane => plane.resize());
       }
-
       this.renderer.setSize(ww, wh);
-      this.renderer.domElement.style.width = '100%';
-      this.renderer.domElement.style.height = '100%';
     }
   }
 
-  const startCore = () => {
-    const core = new Core();
+  const core = new Core();
 
-    // Reload only on width change (mobile rotate)
-    let windowWidth = window.innerWidth;
-    const onWinResize = () => {
-      if (windowWidth !== window.innerWidth) {
-        windowWidth = window.innerWidth;
-        location.reload();
-      }
-    };
-    window.addEventListener('resize', onWinResize);
-
-    homeCanvasCleanup = () => {
-      window.removeEventListener('resize', onWinResize);
-      if (core) {
-        gsap.ticker.remove(core.tick);
-        window.removeEventListener('mousemove', core.onMouseMove);
-        window.removeEventListener('mousedown', core.onMouseDown);
-        window.removeEventListener('mouseup', core.onMouseUp);
-        window.removeEventListener('wheel', core.onWheel);
-        window.removeEventListener('touchstart', core.onTouchStart);
-        window.removeEventListener('touchmove', core.onTouchMove);
-        window.removeEventListener('touchend', core.onTouchEnd);
-        if (core.renderer && core.renderer.domElement && core.renderer.domElement.parentNode) {
-          core.renderer.domElement.parentNode.removeChild(core.renderer.domElement);
-        }
-        if (core.el) {
-          core.el.style.touchAction = '';
-        }
-      }
-    };
+  // Reload only on width change (mobile rotate)
+  let windowWidth = window.innerWidth;
+  const onWinResize = () => {
+    if (windowWidth !== window.innerWidth) {
+      windowWidth = window.innerWidth;
+      location.reload();
+    }
   };
+  window.addEventListener('resize', onWinResize);
 
-  startCore();
+  homeCanvasCleanup = () => {
+    window.removeEventListener('resize', onWinResize);
+    if (core) {
+      gsap.ticker.remove(core.tick);
+      window.removeEventListener('mousemove', core.onMouseMove);
+      window.removeEventListener('mousedown', core.onMouseDown);
+      window.removeEventListener('mouseup', core.onMouseUp);
+      window.removeEventListener('wheel', core.onWheel);
+      window.removeEventListener('touchstart', core.onTouchStart);
+      window.removeEventListener('touchmove', core.onTouchMove);
+      window.removeEventListener('touchend', core.onTouchEnd);
+      if (core.renderer && core.renderer.domElement && core.renderer.domElement.parentNode) {
+        core.renderer.domElement.parentNode.removeChild(core.renderer.domElement);
+      }
+      if (core.el) {
+        core.el.style.touchAction = '';
+      }
+    }
+  };
 }
 
 function destroyHomeCanvas() {

@@ -36,12 +36,13 @@
     );
   }
 
-  function hideOverlayAfterLoad(promise) {
+  function hideOverlayAfterLoad(promise, onReady) {
     const overlay = getTransitionOverlay();
     gsap.set(overlay, { autoAlpha: 1, visibility: 'visible', pointerEvents: 'none' });
     Promise.resolve(promise)
       .then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
       .then(() => {
+        if (typeof onReady === 'function') onReady();
         gsap.to(overlay, {
           autoAlpha: 0,
           duration: 0.4,
@@ -96,7 +97,7 @@
       overlay.style.height = '100%';
       overlay.style.pointerEvents = 'none';
       overlay.style.background = '#E7E7E7';
-      overlay.style.zIndex = '2147483647';
+      overlay.style.zIndex = '9999';
       overlay.style.opacity = '0';
       overlay.style.visibility = 'hidden';
       document.body.appendChild(overlay);
@@ -1962,13 +1963,15 @@ function setupBarbaTransitions() {
                 const overlay = getTransitionOverlay();
                 gsap.set(overlay, { autoAlpha: 1, visibility: 'visible', pointerEvents: 'none' });
                 initHomeAnimations();
-                ensureLenisRunning();
-                hideOverlayAfterLoad(loadPromise);
-                if (typeof ScrollTrigger !== 'undefined') {
-                  setTimeout(() => {
-                    ScrollTrigger.refresh();
-                  }, 150);
-                }
+                hideOverlayAfterLoad(loadPromise, () => {
+                  ensureLenisRunning();
+                  unlockScrollAfterLenisReady();
+                  if (typeof ScrollTrigger !== 'undefined') {
+                    setTimeout(() => {
+                      ScrollTrigger.refresh();
+                    }, 150);
+                  }
+                });
               });
             });
           }, 300);
@@ -2024,11 +2027,13 @@ document.addEventListener("DOMContentLoaded", () => {
         const overlay = getTransitionOverlay();
         gsap.set(overlay, { autoAlpha: 1, visibility: 'visible', pointerEvents: 'none' });
         initHomeAnimations();
-        ensureLenisRunning();
-        hideOverlayAfterLoad(loadPromise);
-        if (typeof ScrollTrigger !== 'undefined') {
-          ScrollTrigger.refresh();
-        }
+        hideOverlayAfterLoad(loadPromise, () => {
+          ensureLenisRunning();
+          unlockScrollAfterLenisReady();
+          if (typeof ScrollTrigger !== 'undefined') {
+            ScrollTrigger.refresh();
+          }
+        });
       }
     }, 400);
   }

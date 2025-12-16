@@ -1731,13 +1731,13 @@ function setupBarbaTransitions() {
           if (pageWrapper) {
             tl.to(pageWrapper, {
               backgroundColor: "#E7E7E7",
-              duration: 0.4,
+              duration: 0.35,
               ease: "power2.out"
             }, 0);
           }
           tl.to(data.current.container, {
             autoAlpha: 0,
-            duration: 0.4,
+            duration: 0.35,
             ease: "power2.out"
           }, 0);
           return tl;

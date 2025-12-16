@@ -1326,16 +1326,7 @@ void main() {
       this.renderer.setSize(ww, wh);
       this.renderer.setPixelRatio(gsap.utils.clamp(1, 1.5, window.devicePixelRatio));
       this.renderer.setClearColor(0xE7E7E7, 1);
-      // Keep canvas out of layout and beneath UI
-      const canvasEl = this.renderer.domElement;
-      canvasEl.style.position = 'fixed';
-      canvasEl.style.top = '0';
-      canvasEl.style.left = '0';
-      canvasEl.style.width = '100%';
-      canvasEl.style.height = '100%';
-      canvasEl.style.pointerEvents = 'none';
-      canvasEl.style.zIndex = '-1';
-      document.body.appendChild(canvasEl);
+      document.body.appendChild(this.renderer.domElement);
 
       this.addPlanes();
       this.addEvents();

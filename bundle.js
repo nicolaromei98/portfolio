@@ -938,7 +938,7 @@ function initGlobalParallax() {
 
 function destroyGlobalParallax() {
   if (parallaxContext) {
-    parallaxContext.revert();
+    parallaxContext();
     parallaxContext = null;
   }
 }

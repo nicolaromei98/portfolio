@@ -1405,6 +1405,7 @@ function destroyAboutAnimations() {
 // ================== HOME PAGE (Canvas + Time) ==================
 function initHomeCanvas() {
   if (typeof THREE === 'undefined' || typeof gsap === 'undefined') return;
+
   const gridEl = document.querySelector('.js-grid');
   if (!gridEl) return;
 
@@ -1416,14 +1417,17 @@ function initHomeCanvas() {
 
   const isFirefox = navigator.userAgent.indexOf('Firefox') > -1;
   const isWindows = navigator.appVersion.indexOf("Win") !== -1;
+
   const mouseMultiplier = 0.6;
   const firefoxMultiplier = 20;
+
   const multipliers = {
     mouse: isWindows ? mouseMultiplier * 2 : mouseMultiplier,
     firefox: isWindows ? firefoxMultiplier * 2 : firefoxMultiplier
   };
 
   const loader = new THREE.TextureLoader();
+
   const vertexShader = `
 precision mediump float;
 uniform vec2 u_velo;
@@ -1482,7 +1486,7 @@ void main() {
 `;
 
   const geometry = new THREE.PlaneBufferGeometry(1, 1, 32, 32);
-  const material = new THREE.ShaderMaterial({ fragmentShader, vertexShader });
+  const baseMaterial = new THREE.ShaderMaterial({ fragmentShader, vertexShader });
 
   class Plane extends THREE.Object3D {
     init(el, i) {
@@ -1491,7 +1495,7 @@ void main() {
       this.y = 0;
       this.my = 1 - ((i % 5) * 0.1);
       this.geometry = geometry;
-      this.material = material.clone();
+      this.material = baseMaterial.clone();
       this.material.uniforms = {
         u_texture: { value: 0 },
         u_res: { value: new THREE.Vector2(1, 1) },
@@ -1540,28 +1544,39 @@ void main() {
 
   class Core {
     constructor() {
-      this.tx = 0; this.ty = 0;
-      this.cx = 0; this.cy = 0;
+      this.tx = 0;
+      this.ty = 0;
+      this.cx = 0;
+      this.cy = 0;
+
       this.velo = { x: 0, y: 0 };
       this.diff = 0;
+
       this.wheel = { x: 0, y: 0 };
       this.on = { x: 0, y: 0 };
       this.max = { x: 0, y: 0 };
+
       this.isDragging = false;
+
       this.tl = gsap.timeline({ paused: true });
-      this.el = document.querySelector('.js-grid');
-      if (!this.el) return;
+
+      this.el = gridEl;
       this.el.style.touchAction = 'none';
 
       this.scene = new THREE.Scene();
-      this.camera = new THREE.OrthographicCamera(ww / -2, ww / 2, wh / 2, wh / -2, 1, 1000);
+
+      this.camera = new THREE.OrthographicCamera(
+        ww / -2, ww / 2, wh / 2, wh / -2, 1, 1000
+      );
       this.camera.lookAt(this.scene.position);
       this.camera.position.z = 1;
 
       this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       this.renderer.setSize(ww, wh);
       this.renderer.setPixelRatio(gsap.utils.clamp(1, 1.5, window.devicePixelRatio));
+
       this.renderer.setClearColor(0xE7E7E7, 1);
+
       document.body.appendChild(this.renderer.domElement);
 
       this.addPlanes();
@@ -1571,14 +1586,15 @@ void main() {
 
     addEvents() {
       gsap.ticker.add(this.tick);
+
       window.addEventListener('mousemove', this.onMouseMove);
       window.addEventListener('mousedown', this.onMouseDown);
       window.addEventListener('mouseup', this.onMouseUp);
-      window.addEventListener('wheel', this.onWheel, { passive: true });
+      window.addEventListener('wheel', this.onWheel);
+
       window.addEventListener('touchstart', this.onTouchStart, { passive: false });
       window.addEventListener('touchmove', this.onTouchMove, { passive: false });
       window.addEventListener('touchend', this.onTouchEnd);
-      window.addEventListener('resize', this.resize);
     }
 
     addPlanes() {
@@ -1594,15 +1610,27 @@ void main() {
     tick = () => {
       const xDiff = this.tx - this.cx;
       const yDiff = this.ty - this.cy;
+
       this.cx += xDiff * 0.085;
       this.cx = Math.round(this.cx * 100) / 100;
+
       this.cy += yDiff * 0.085;
       this.cy = Math.round(this.cy * 100) / 100;
-      this.diff = Math.max(Math.abs(yDiff * 0.0001), Math.abs(xDiff * 0.0001));
+
+      this.diff = Math.max(
+        Math.abs(yDiff * 0.0001), 
+        Math.abs(xDiff * 0.0001)
+      );
+
       const intensity = 0.025;
+
       this.velo.x = xDiff * intensity;
       this.velo.y = yDiff * intensity;
-      this.planes && this.planes.forEach((plane) => plane.update(this.cx, this.cy, this.max, this.velo));
+
+      this.planes.length && this.planes.forEach(plane => 
+        plane.update(this.cx, this.cy, this.max, this.velo)
+      );
+
       this.renderer.render(this.scene, this.camera);
     }
 
@@ -1611,52 +1639,65 @@ void main() {
       this.tx = this.on.x + clientX * 2.5;
       this.ty = this.on.y - clientY * 2.5;
     }
+
     onMouseDown = ({ clientX, clientY }) => {
       if (this.isDragging) return;
       this.isDragging = true;
       this.on.x = this.tx - clientX * 2.5;
       this.on.y = this.ty + clientY * 2.5;
     }
-    onMouseUp = () => { this.isDragging = false; }
+
+    onMouseUp = () => {
+      if (!this.isDragging) return;
+      this.isDragging = false;
+    }
+
     onTouchStart = (e) => {
       if (this.isDragging) return;
       this.isDragging = true;
       this.on.x = this.tx - e.touches[0].clientX * 2.5;
       this.on.y = this.ty + e.touches[0].clientY * 2.5;
     }
+
     onTouchMove = (e) => {
       if (!this.isDragging) return;
       e.preventDefault();
       this.tx = this.on.x + e.touches[0].clientX * 2.5;
       this.ty = this.on.y - e.touches[0].clientY * 2.5;
     }
-    onTouchEnd = () => { this.isDragging = false; }
+
+    onTouchEnd = () => {
+      if (!this.isDragging) return;
+      this.isDragging = false;
+    }
+
     onWheel = (e) => {
       const { mouse, firefox } = multipliers;
       this.wheel.x = e.wheelDeltaX || e.deltaX * -1;
       this.wheel.y = e.wheelDeltaY || e.deltaY * -1;
+
       if (isFirefox && e.deltaMode === 1) {
         this.wheel.x *= firefox;
         this.wheel.y *= firefox;
       }
+
       this.wheel.y *= mouse;
       this.wheel.x *= mouse;
+
       this.tx += this.wheel.x;
       this.ty -= this.wheel.y;
     }
+
     resize = () => {
       ww = window.innerWidth;
       wh = window.innerHeight;
       const { bottom, right } = this.el.getBoundingClientRect();
       this.max.x = right;
       this.max.y = bottom;
-      if (this.planes) this.planes.forEach((plane) => plane.resize());
-      this.camera.left = ww / -2;
-      this.camera.right = ww / 2;
-      this.camera.top = wh / 2;
-      this.camera.bottom = wh / -2;
-      this.camera.updateProjectionMatrix();
-      this.renderer.setSize(ww, wh);
+      
+      if (this.planes) {
+        this.planes.forEach(plane => plane.resize());
+      }
     }
   }
 
@@ -1679,21 +1720,32 @@ void main() {
       window.removeEventListener('mousemove', core.onMouseMove);
       window.removeEventListener('mousedown', core.onMouseDown);
       window.removeEventListener('mouseup', core.onMouseUp);
-      window.removeEventListener('wheel', core.onWheel, { passive: true });
+      window.removeEventListener('wheel', core.onWheel);
       window.removeEventListener('touchstart', core.onTouchStart);
       window.removeEventListener('touchmove', core.onTouchMove);
       window.removeEventListener('touchend', core.onTouchEnd);
-      window.removeEventListener('resize', core.resize);
       if (core.renderer && core.renderer.domElement && core.renderer.domElement.parentNode) {
         core.renderer.domElement.parentNode.removeChild(core.renderer.domElement);
+      }
+      if (core.el) {
+        core.el.style.touchAction = '';
       }
     }
   };
 }
 
+function destroyHomeCanvas() {
+  if (homeCanvasCleanup) {
+    homeCanvasCleanup();
+    homeCanvasCleanup = null;
+  }
+}
+
 function initHomeTime() {
   destroyHomeTime();
+
   const defaultTimezone = "Europe/Amsterdam";
+
   const createFormatter = (timezone) => new Intl.DateTimeFormat([], {
     timeZone: timezone,
     timeZoneName: 'short',
@@ -1702,6 +1754,7 @@ function initHomeTime() {
     second: '2-digit',
     hour12: false,
   });
+
   const parseFormattedTime = (formattedDateTime) => {
     const match = formattedDateTime.match(/(\d+):(\d+):(\d+)\s*([\w+]+)/);
     if (match) {
@@ -1709,6 +1762,7 @@ function initHomeTime() {
     }
     return null;
   };
+
   const updateTime = () => {
     document.querySelectorAll('[data-current-time]').forEach((element) => {
       const timezone = element.getAttribute('data-current-time') || defaultTimezone;
@@ -1729,6 +1783,7 @@ function initHomeTime() {
       }
     });
   };
+
   updateTime();
   const intervalId = setInterval(updateTime, 1000);
   homeTimeCleanup = () => clearInterval(intervalId);
@@ -1750,13 +1805,6 @@ function initHomeAnimations() {
 function destroyHomeAnimations() {
   destroyHomeCanvas();
   destroyHomeTime();
-}
-
-function destroyHomeCanvas() {
-  if (homeCanvasCleanup) {
-    homeCanvasCleanup();
-    homeCanvasCleanup = null;
-  }
 }
 
 // REMOVED: initPageAnimations() - Not used, conflicts with Barba views

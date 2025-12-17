@@ -19,57 +19,94 @@
   let aboutSliderCleanup = null;
   let homeCanvasCleanup = null;
   let homeTimeCleanup = null;
-  let isTransitioning = false; // Flag to prevent double initialization
+  let lenisRafId = null;
 
-  function waitForContent(container) {
-    return new Promise((resolve) => {
-      if (!container) {
-        resolve();
-        return;
-      }
-      const imgs = Array.from(container.querySelectorAll('img')).filter((img) => !img.complete || img.naturalWidth === 0);
-      if (!imgs.length) {
-        requestAnimationFrame(() => requestAnimationFrame(resolve));
-        return;
-      }
-      let pending = imgs.length;
-      const done = () => {
-        pending -= 1;
-        if (pending <= 0) {
-          requestAnimationFrame(() => requestAnimationFrame(resolve));
-        }
-      };
-      imgs.forEach((img) => {
-        const finish = () => done();
-        if (img.decode) {
-          img.decode().then(finish).catch(finish);
-        } else {
-          img.addEventListener('load', finish, { once: true });
-          img.addEventListener('error', finish, { once: true });
-        }
-      });
-      setTimeout(resolve, 1200);
-    });
-  }
+  function initPreloader() {
+    const STORAGE_KEY = "preloader_seen_session";
+    const preloader = document.querySelector(".preloader");
+    if (!preloader) return;
+    const countEl = preloader.querySelector("[data-count]");
+    const lineWrap = preloader.querySelector(".preloader__line");
+    const lineFill = preloader.querySelector(".line__animate");
+    if (!countEl || !lineWrap || !lineFill) return;
 
-  function unlockScrollAfterLenisReady() {
-    const finish = () => unlockScroll();
-    if (!lenisInstance) {
-      finish();
+    if (sessionStorage.getItem(STORAGE_KEY) === "1") {
+      preloader.style.display = "none";
+      preloader.style.opacity = "0";
       return;
     }
-    let attempts = 0;
-    const tick = () => {
-      attempts += 1;
-      if (typeof lenisInstance.raf === 'function') {
-        lenisInstance.raf(performance.now());
+
+    const DURATION_MS = 3000;
+    const HOLD_PERCENT = 92;
+    preloader.style.display = "flex";
+    preloader.style.opacity = "1";
+    const hasGSAP = !!window.gsap;
+    if (hasGSAP) {
+      gsap.set(lineFill, { scaleX: 0, transformOrigin: "left center" });
+      gsap.set([countEl, lineWrap], { opacity: 1 });
+    } else {
+      lineFill.style.transformOrigin = "left center";
+      lineFill.style.transform = "scaleX(0)";
+      countEl.style.opacity = "1";
+      lineWrap.style.opacity = "1";
+    }
+
+    let contentReady = document.readyState !== "loading";
+    if (!contentReady) {
+      document.addEventListener("DOMContentLoaded", () => (contentReady = true), { once: true });
+    }
+
+    const start = performance.now();
+    let displayed = 0;
+    let finished = false;
+    const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
+    const lerp = (a, b, t) => a + (b - a) * t;
+
+    function finish() {
+      finished = true;
+      countEl.textContent = "100";
+      if (hasGSAP) {
+        const tl = gsap.timeline({ defaults: { ease: "power2.out" } });
+        tl.to(lineFill, { scaleX: 1, duration: 0.2 })
+          .to([lineWrap, countEl], { opacity: 0, duration: 0.6 }, "+=0.15")
+          .to(preloader, { opacity: 0, duration: 1.0 }, "<+=0.1")
+          .set(preloader, { display: "none" });
+      } else {
+        lineFill.style.transform = "scaleX(1)";
+        lineWrap.style.transition = "opacity 600ms ease";
+        countEl.style.transition = "opacity 600ms ease";
+        preloader.style.transition = "opacity 1000ms ease";
+        setTimeout(() => {
+          lineWrap.style.opacity = "0";
+          countEl.style.opacity = "0";
+          setTimeout(() => {
+            preloader.style.opacity = "0";
+            setTimeout(() => (preloader.style.display = "none"), 1020);
+          }, 150);
+        }, 150);
       }
-      if (attempts >= 2) {
+      sessionStorage.setItem(STORAGE_KEY, "1");
+    }
+
+    function tick(now) {
+      if (finished) return;
+      const elapsed = now - start;
+      const t = clamp(elapsed / DURATION_MS, 0, 1);
+      let target = t * 100;
+      if (!contentReady) target = Math.min(target, HOLD_PERCENT);
+      displayed = lerp(displayed, target, 0.1);
+      const pct = Math.floor(displayed);
+      countEl.textContent = pct;
+      const scaleX = pct / 100;
+      if (hasGSAP) gsap.set(lineFill, { scaleX });
+      else lineFill.style.transform = `scaleX(${scaleX})`;
+      if (elapsed >= DURATION_MS) {
         finish();
         return;
       }
       requestAnimationFrame(tick);
-    };
+    }
+
     requestAnimationFrame(tick);
   }
 
@@ -81,47 +118,20 @@
     if (typeof lenisInstance.raf === 'function') {
       lenisInstance.raf(performance.now());
     }
-  }
-
-  function getTransitionOverlay() {
-    let overlay = document.getElementById('barba-transition-overlay');
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.id = 'barba-transition-overlay';
-      overlay.style.position = 'fixed';
-      overlay.style.top = '0';
-      overlay.style.left = '0';
-      overlay.style.width = '100%';
-      overlay.style.height = '100%';
-      overlay.style.pointerEvents = 'none';
-      overlay.style.background = '#E7E7E7';
-      overlay.style.zIndex = '9999';
-      overlay.style.opacity = '0';
-      overlay.style.visibility = 'hidden';
-      document.body.appendChild(overlay);
+    if (!lenisRafId) {
+      const loop = (time) => {
+        if (lenisInstance) {
+          lenisInstance.raf(time);
+        }
+        lenisRafId = requestAnimationFrame(loop);
+      };
+      lenisRafId = requestAnimationFrame(loop);
     }
-    return overlay;
   }
 
   // ============================================================================
   // UTILITY FUNCTIONS
   // ============================================================================
-
-  function lockScroll() {
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.overflow = 'hidden';
-    if (lenisInstance && typeof lenisInstance.stop === 'function') {
-      lenisInstance.stop();
-    }
-  }
-
-  function unlockScroll() {
-    document.documentElement.style.overflow = '';
-    document.body.style.overflow = '';
-    if (lenisInstance && typeof lenisInstance.start === 'function') {
-      lenisInstance.start();
-    }
-  }
 
 function resetWebflow(data) {
   const parser = new DOMParser();
@@ -144,41 +154,6 @@ function resetWebflow(data) {
   }
 }
 
-
-function playMainTransition(data) {
-  const tl = gsap.timeline();
-
-  // Set initial state of next page explicitly for a fade
-  gsap.set(data.next.container, {
-    autoAlpha: 0
-  });
-
-  const pageWrapper = data.current.container.closest(".page-wrapper");
-
-  // Smooth fade out current and fade in next, with background tint
-  tl.to(pageWrapper, {
-    backgroundColor: "#E7E7E7",
-    duration: 0.55,
-    ease: "power2.out"
-  }, 0)
-  .to(data.current.container, {
-    autoAlpha: 0,
-    duration: 0.55,
-    ease: "power2.out"
-  }, 0)
-  .to(data.next.container, {
-    autoAlpha: 1,
-    duration: 0.65,
-    ease: "power2.out"
-  }, 0.15)
-  .add(() => {
-    if (pageWrapper) {
-      gsap.set(pageWrapper, { clearProps: "backgroundColor" });
-    }
-  });
-
-  return tl;
-}
 
 
 class Sketch {
@@ -889,18 +864,22 @@ function initLenisSmoothScroll() {
   // Synchronize Lenis scrolling with GSAP's ScrollTrigger plugin
   lenisInstance.on('scroll', ScrollTrigger.update);
 
-  // Create animation loop (as per Lenis documentation)
+  // Create animation loop (single runner)
   const loop = (time) => {
     if (lenisInstance) {
       lenisInstance.raf(time);
     }
-    requestAnimationFrame(loop);
+    lenisRafId = requestAnimationFrame(loop);
   };
-  requestAnimationFrame(loop);
+  lenisRafId = requestAnimationFrame(loop);
 }
 
 function destroyLenisSmoothScroll() {
   // Destroy Lenis instance
+  if (lenisRafId) {
+    cancelAnimationFrame(lenisRafId);
+    lenisRafId = null;
+  }
   if (lenisInstance) {
     lenisInstance.destroy();
     lenisInstance = null;
@@ -1797,268 +1776,24 @@ function destroyAboutAnimations() {
   destroyLenisSmoothScroll();
 }
 
-// REMOVED: initPageAnimations() - Not used, conflicts with Barba views
-// REMOVED: destroyAllAnimations() - Conflicts with destroyProjectTemplateAnimations()
-
-function setupBarbaTransitions() {
-  // Initialize Barba with Views (recommended way)
-  barba.init({
-    preventRunning: true,
-    transitions: [
-      {
-        name: "main-transition",
-        leave(data) {
-          const overlay = getTransitionOverlay();
-          const tl = gsap.timeline();
-          tl.set(overlay, { autoAlpha: 0, visibility: 'visible' });
-          tl.to(overlay, { autoAlpha: 1, duration: 0.35, ease: "power2.out" }, 0);
-          tl.to(data.current.container, {
-            autoAlpha: 0,
-            duration: 0.35,
-            ease: "power2.out"
-          }, 0);
-          return tl;
-        },
-        enter(data) {
-          // Block scroll during transition
-          lockScroll();
-
-          // Lock page wrapper
-          const pageWrapper = document.querySelector(".page-wrapper");
-          if (pageWrapper) {
-            gsap.set(pageWrapper, { overflow: "hidden" });
-          }
-          
-          // Position next page container as fixed (Barba needs this for transitions)
-          gsap.set(data.next.container, {
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100%",
-            zIndex: 1,
-          });
-          
-          // Play transition animation
-          const overlay = getTransitionOverlay();
-          gsap.set(overlay, { autoAlpha: 1, visibility: 'visible' });
-          const tl = playMainTransition(data);
-          if (data.next && data.next.namespace === 'home') {
-            tl.add(() => {
-              // keep overlay visible; will be faded in home afterEnter
-            }, 0);
-          } else {
-            tl.to(overlay, { autoAlpha: 0, duration: 0.4, ease: "power2.out" }, 0.1)
-              .add(() => {
-                overlay.style.visibility = 'hidden';
-              });
-          }
-          
-          return tl;
-        },
-        afterEnter(data) {
-          // Wait a bit to ensure transition animation is completely finished
-          // Use requestAnimationFrame to ensure browser has painted
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              // Scroll to top first
-              window.scrollTo(0, 0);
-              
-              // Reset container position (this must happen after scroll)
-              gsap.set(data.next.container, {
-                position: "relative",
-                zIndex: "auto",
-                clearProps: "position,top,left,width,zIndex,transform"
-              });
-              
-              // Unlock page wrapper
-              const pageWrapper = document.querySelector(".page-wrapper");
-              if (pageWrapper) {
-                gsap.set(pageWrapper, { overflow: "" });
-              }
-              
-              // Reset Webflow LAST, after everything is reset
-              // This prevents Webflow re-render from causing visual jump
-              setTimeout(() => {
-                resetWebflow(data);
-              }, 100);
-            });
-          });
-        },
-        beforeLeave(data) {
-          // Set flag to indicate we're transitioning
-          isTransitioning = true;
-          // Animations are destroyed by the view's beforeEnter/afterLeave hooks
-        }
-      },
-    ],
-    views: [
-      {
-        namespace: 'project-template',
-        beforeEnter() {
-          // Destroy all animations before entering new page
-          destroyProjectTemplateAnimations();
-        },
-        afterEnter() {
-          // Reset transition flag
-          isTransitioning = false;
-          
-          // Wait for all resets to complete before initializing animations
-          // This prevents the visual "jump" that looks like animation restarting
-          setTimeout(() => {
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                // Initialize all animations (ONLY ONCE here)
-                initProjectTemplateAnimations();
-                ensureLenisRunning();
-                unlockScrollAfterLenisReady();
-                
-                // Refresh ScrollTrigger after animations are initialized
-                if (typeof ScrollTrigger !== 'undefined') {
-                  setTimeout(() => {
-                    ScrollTrigger.refresh();
-                  }, 150);
-                }
-              });
-            });
-          }, 300);
-        },
-        afterLeave() {
-          // Clean up when leaving the namespace
-          destroyProjectTemplateAnimations();
-        }
-      },
-      {
-        namespace: 'about',
-        beforeEnter() {
-          destroyAboutAnimations();
-        },
-        afterEnter() {
-          isTransitioning = false;
-          setTimeout(() => {
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                initAboutAnimations();
-                ensureLenisRunning();
-                unlockScrollAfterLenisReady();
-                if (typeof ScrollTrigger !== 'undefined') {
-                  setTimeout(() => {
-                    ScrollTrigger.refresh();
-                  }, 150);
-                }
-              });
-            });
-          }, 300);
-        },
-        afterLeave() {
-          destroyAboutAnimations();
-        }
-      },
-      {
-        namespace: 'home',
-        beforeEnter() {
-          destroyHomeAnimations();
-        },
-        afterEnter() {
-          isTransitioning = false;
-          setTimeout(() => {
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                initHomeAnimations();
-                ensureLenisRunning();
-                unlockScrollAfterLenisReady();
-                if (typeof ScrollTrigger !== 'undefined') {
-                  setTimeout(() => {
-                    ScrollTrigger.refresh();
-                  }, 150);
-                }
-                const overlay = getTransitionOverlay();
-                const target = document.querySelector('[data-barba="container"]');
-                gsap.set(overlay, { autoAlpha: 1, visibility: 'visible' });
-                waitForContent(target).then(() => {
-                  gsap.to(overlay, {
-                    autoAlpha: 0,
-                    duration: 0.8,
-                    ease: "power2.out",
-                    onComplete: () => {
-                      overlay.style.visibility = 'hidden';
-                    }
-                  });
-                });
-              });
-            });
-          }, 300);
-        },
-        afterLeave() {
-          destroyHomeAnimations();
-        }
-      }
-    ]
-  });
-}
-
-// Initialize on DOM ready
+// Initialize on DOM ready (no Barba)
 document.addEventListener("DOMContentLoaded", () => {
-  // Setup Barba.js transitions
-  setupBarbaTransitions();
-  
-  // Initialize page-specific animations for initial page load
-  // Only if this is the initial page load (not a Barba transition)
-  // The view's afterEnter hook will handle initialization during transitions
+  initPreloader();
   const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
-  if (namespace === 'project-template') {
-    // Check if Barba has already initialized (if not, this is the first page load)
-    // Barba views handle initialization during transitions, so we only need this for initial load
-    setTimeout(() => {
-      // Only initialize if we're not in a transition
-      if (!isTransitioning) {
-        initProjectTemplateAnimations();
-        ensureLenisRunning();
-        unlockScrollAfterLenisReady();
-        if (typeof ScrollTrigger !== 'undefined') {
-          ScrollTrigger.refresh();
-        }
-      }
-    }, 400); // Slightly longer delay to ensure Barba is set up
-  }
-  if (namespace === 'about') {
-    setTimeout(() => {
-      if (!isTransitioning) {
-        initAboutAnimations();
-        ensureLenisRunning();
-        unlockScrollAfterLenisReady();
-        if (typeof ScrollTrigger !== 'undefined') {
-          ScrollTrigger.refresh();
-        }
-      }
-    }, 400);
-  }
-  if (namespace === 'home') {
-    setTimeout(() => {
-      if (!isTransitioning) {
-        initHomeAnimations();
-        ensureLenisRunning();
-        unlockScrollAfterLenisReady();
-        if (typeof ScrollTrigger !== 'undefined') {
-          ScrollTrigger.refresh();
-        }
-        const overlay = getTransitionOverlay();
-        const target = document.querySelector('[data-barba="container"]');
-        gsap.set(overlay, { autoAlpha: 1, visibility: 'visible' });
-        waitForContent(target).then(() => {
-          gsap.to(overlay, {
-            autoAlpha: 0,
-            duration: 0.8,
-            ease: "power2.out",
-            onComplete: () => {
-              overlay.style.visibility = 'hidden';
-            }
-          });
-        });
-      }
-    }, 400);
-  }
+  const init = () => {
+    if (namespace === 'project-template') {
+      initProjectTemplateAnimations();
+    } else if (namespace === 'about') {
+      initAboutAnimations();
+    } else if (namespace === 'home') {
+      initHomeAnimations();
+    }
+    ensureLenisRunning();
+    if (typeof ScrollTrigger !== 'undefined') {
+      ScrollTrigger.refresh();
+    }
+  };
+  setTimeout(init, 200);
 });
-
-
 
 })();

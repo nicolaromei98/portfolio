@@ -38,6 +38,36 @@
     return overlay;
   }
 
+  function runPageTransitionEntry() {
+    const flag = sessionStorage.getItem('pageTransitionPending');
+    if (flag !== '1') return;
+    sessionStorage.removeItem('pageTransitionPending');
+    const overlay = getPageTransitionOverlay();
+    const hasGSAP = !!window.gsap;
+    overlay.style.display = 'block';
+    overlay.style.pointerEvents = 'none';
+    if (hasGSAP) {
+      gsap.set(overlay, { autoAlpha: 1 });
+      gsap.to(overlay, {
+        autoAlpha: 0,
+        duration: 0.45,
+        ease: 'power2.out',
+        onComplete: () => {
+          overlay.style.display = 'none';
+        }
+      });
+    } else {
+      overlay.style.opacity = '1';
+      overlay.style.transition = 'opacity 450ms ease';
+      requestAnimationFrame(() => {
+        overlay.style.opacity = '0';
+        setTimeout(() => {
+          overlay.style.display = 'none';
+        }, 460);
+      });
+    }
+  }
+
   function initPreloader() {
     const STORAGE_KEY = "preloader_seen_session";
     const preloader = document.querySelector(".preloader");
@@ -131,6 +161,7 @@
     const overlay = getPageTransitionOverlay();
 
     function animateAndGo(href) {
+      sessionStorage.setItem('pageTransitionPending', '1');
       const hasGSAP = !!window.gsap;
       if (hasGSAP) {
         gsap.set(overlay, { display: 'block', pointerEvents: 'auto' });
@@ -1854,6 +1885,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
   setTimeout(init, 200);
+  runPageTransitionEntry();
   setupPageTransitions();
 });
 

@@ -27,6 +27,9 @@
     if (!overlay) {
       overlay = document.createElement('div');
       overlay.id = 'page-transition-overlay';
+      overlay.style.display = 'flex';
+      overlay.style.opacity = '1';
+      overlay.style.pointerEvents = 'auto';
       const txt = document.createElement('div');
       txt.id = 'page-transition-text';
       txt.textContent = document.title || '';

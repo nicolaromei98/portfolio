@@ -33,39 +33,20 @@
       overlay.style.pointerEvents = 'none';
       overlay.style.zIndex = '9999';
       overlay.style.display = 'none';
+      overlay.style.display = 'flex';
+      overlay.style.alignItems = 'center';
+      overlay.style.justifyContent = 'center';
+      const txt = document.createElement('div');
+      txt.id = 'page-transition-text';
+      txt.style.fontFamily = 'sans-serif';
+      txt.style.fontSize = '24px';
+      txt.style.letterSpacing = '0.08em';
+      txt.style.color = '#111';
+      txt.style.opacity = '0';
+      overlay.appendChild(txt);
       document.body.appendChild(overlay);
     }
     return overlay;
-  }
-
-  function runPageTransitionEntry() {
-    const flag = sessionStorage.getItem('pageTransitionPending');
-    if (flag !== '1') return;
-    sessionStorage.removeItem('pageTransitionPending');
-    const overlay = getPageTransitionOverlay();
-    const hasGSAP = !!window.gsap;
-    overlay.style.display = 'block';
-    overlay.style.pointerEvents = 'none';
-    if (hasGSAP) {
-      gsap.set(overlay, { autoAlpha: 1 });
-      gsap.to(overlay, {
-        autoAlpha: 0,
-        duration: 0.45,
-        ease: 'power2.out',
-        onComplete: () => {
-          overlay.style.display = 'none';
-        }
-      });
-    } else {
-      overlay.style.opacity = '1';
-      overlay.style.transition = 'opacity 450ms ease';
-      requestAnimationFrame(() => {
-        overlay.style.opacity = '0';
-        setTimeout(() => {
-          overlay.style.display = 'none';
-        }, 460);
-      });
-    }
   }
 
   function initPreloader() {
@@ -159,22 +140,46 @@
 
   function setupPageTransitions() {
     const overlay = getPageTransitionOverlay();
+    const textEl = document.getElementById('page-transition-text');
 
-    function animateAndGo(href) {
-      sessionStorage.setItem('pageTransitionPending', '1');
+    function animateAndGo(href, title) {
       const hasGSAP = !!window.gsap;
+      if (textEl) {
+        textEl.textContent = title || '';
+      }
       if (hasGSAP) {
-        gsap.set(overlay, { display: 'block', pointerEvents: 'auto' });
-        gsap.to(overlay, { autoAlpha: 1, duration: 0.4, ease: 'power2.out', onComplete: () => {
-          window.location.href = href;
-        }});
+        gsap.set(overlay, { display: 'flex', pointerEvents: 'auto' });
+        gsap.set(textEl, { autoAlpha: 0, y: 10 });
+        const tl = gsap.timeline({
+          onComplete: () => window.location.href = href
+        });
+        tl.to(overlay, { autoAlpha: 1, duration: 0.4, ease: 'power2.out' }, 0);
+        if (textEl) {
+          tl.to(textEl, { autoAlpha: 1, y: 0, duration: 0.35, ease: 'power2.out' }, 0.05);
+        }
+        tl.to(textEl, { autoAlpha: 0, y: -10, duration: 0.3, ease: 'power2.out' }, "+=0.25");
       } else {
         overlay.style.display = 'block';
         overlay.style.pointerEvents = 'auto';
         overlay.style.transition = 'opacity 400ms ease';
+        if (textEl) {
+          textEl.style.transition = 'opacity 300ms ease, transform 300ms ease';
+          textEl.style.opacity = '0';
+          textEl.style.transform = 'translateY(10px)';
+          requestAnimationFrame(() => {
+            textEl.style.opacity = '1';
+            textEl.style.transform = 'translateY(0)';
+          });
+        }
         requestAnimationFrame(() => {
           overlay.style.opacity = '1';
-          setTimeout(() => window.location.href = href, 420);
+          setTimeout(() => {
+            if (textEl) {
+              textEl.style.opacity = '0';
+              textEl.style.transform = 'translateY(-10px)';
+            }
+            setTimeout(() => window.location.href = href, 180);
+          }, 350);
         });
       }
     }
@@ -197,7 +202,8 @@
       if (anchor.target === '_blank' || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
       if (!isInternalLink(anchor)) return;
       e.preventDefault();
-      animateAndGo(anchor.href);
+      const title = anchor.getAttribute('data-transition-title') || anchor.textContent?.trim() || anchor.href;
+      animateAndGo(anchor.href, title);
     });
   }
 
@@ -953,7 +959,9 @@ function initLenisSmoothScroll() {
   });
 
   // Synchronize Lenis scrolling with GSAP's ScrollTrigger plugin
-  lenisInstance.on('scroll', ScrollTrigger.update);
+  if (typeof ScrollTrigger !== 'undefined') {
+    lenisInstance.on('scroll', ScrollTrigger.update);
+  }
 
   // Create animation loop (single runner)
   const loop = (time) => {
@@ -1885,8 +1893,37 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
   setTimeout(init, 200);
-  runPageTransitionEntry();
   setupPageTransitions();
+
+  // Fade-out overlay on landing (for cases where it persisted through navigation)
+  const overlay = document.getElementById('page-transition-overlay');
+  const textEl = document.getElementById('page-transition-text');
+  if (overlay) {
+    const hasGSAP = !!window.gsap;
+    if (hasGSAP) {
+      gsap.to([textEl, overlay], {
+        autoAlpha: 0,
+        duration: 0.5,
+        ease: 'power2.out',
+        onComplete: () => {
+          overlay.style.display = 'none';
+          overlay.style.pointerEvents = 'none';
+          if (textEl) {
+            textEl.style.opacity = '0';
+          }
+        }
+      });
+    } else {
+      overlay.style.transition = 'opacity 500ms ease';
+      requestAnimationFrame(() => {
+        overlay.style.opacity = '0';
+        setTimeout(() => {
+          overlay.style.display = 'none';
+          overlay.style.pointerEvents = 'none';
+        }, 520);
+      });
+    }
+  }
 });
 
 })();

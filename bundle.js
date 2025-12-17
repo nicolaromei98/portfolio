@@ -1779,7 +1779,7 @@ function destroyAboutAnimations() {
 // Initialize on DOM ready (no Barba)
 document.addEventListener("DOMContentLoaded", () => {
   initPreloader();
-  const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
+  const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace") || 'home';
   const init = () => {
     if (namespace === 'project-template') {
       initProjectTemplateAnimations();

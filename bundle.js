@@ -16,6 +16,7 @@
   let sketchInstance = null;
   let pixelateInstances = [];
   let mwgEffect005Cleanup = null;
+  let mwgEffect005Triggers = [];
   let aboutSliderCleanup = null;
   let homeCanvasCleanup = null;
   let homeTimeCleanup = null;
@@ -26,23 +27,9 @@
     if (!overlay) {
       overlay = document.createElement('div');
       overlay.id = 'page-transition-overlay';
-      overlay.style.position = 'fixed';
-      overlay.style.inset = '0';
-      overlay.style.background = '#E7E7E7';
-      overlay.style.opacity = '0';
-      overlay.style.pointerEvents = 'none';
-      overlay.style.zIndex = '9999';
-      overlay.style.display = 'none';
-      overlay.style.display = 'flex';
-      overlay.style.alignItems = 'center';
-      overlay.style.justifyContent = 'center';
       const txt = document.createElement('div');
       txt.id = 'page-transition-text';
-      txt.style.fontFamily = 'sans-serif';
-      txt.style.fontSize = '24px';
-      txt.style.letterSpacing = '0.08em';
-      txt.style.color = '#111';
-      txt.style.opacity = '0';
+      txt.textContent = document.title || '';
       overlay.appendChild(txt);
       document.body.appendChild(overlay);
     }
@@ -149,7 +136,7 @@
       }
       if (hasGSAP) {
         gsap.set(overlay, { display: 'flex', pointerEvents: 'auto' });
-        gsap.set(textEl, { autoAlpha: 0, y: 10 });
+        gsap.set(textEl, { autoAlpha: 1, y: 0 });
         const tl = gsap.timeline({
           onComplete: () => window.location.href = href
         });
@@ -163,8 +150,8 @@
         overlay.style.transition = 'opacity 700ms ease';
         if (textEl) {
           textEl.style.transition = 'opacity 600ms ease, transform 600ms ease';
-          textEl.style.opacity = '0';
-          textEl.style.transform = 'translateY(10px)';
+          textEl.style.opacity = '1';
+          textEl.style.transform = 'translateY(0)';
           requestAnimationFrame(() => {
             textEl.style.opacity = '1';
             textEl.style.transform = 'translateY(0)';
@@ -830,110 +817,53 @@ function destroyPixelateImageRenderEffect() {
 }
 
 // ================== mwg_effect005 EFFECT (NO ScrollTrigger) ==================
-function initMWGEffect005NoST() {
-  if (typeof gsap === 'undefined') return;
+function initMWGEffect005() {
+  if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') return;
 
-  // Clean previous
-  destroyMWGEffect005NoST();
+  destroyMWGEffect005();
 
-  const scope = document.querySelector('.mwg_effect005');
-  if (!scope) return;
-  const paragraph = scope.querySelector('.paragraph');
+  const paragraph = document.querySelector(".mwg_effect005 .paragraph");
   if (paragraph && !paragraph.querySelector('.word')) {
-    const text = (paragraph.textContent || '').trim();
-    paragraph.innerHTML = text
-      .split(/\s+/)
-      .map((word) => `<span class="word">${word}</span>`)
-      .join(' ');
+    wrapWordsInSpan(paragraph);
   }
 
-  const pinHeight = scope.querySelector('.pin-height');
-  const container = scope.querySelector('.container');
-  const words = scope.querySelectorAll('.word');
+  const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
+  const container = document.querySelector(".mwg_effect005 .container");
+  const words = document.querySelectorAll(".mwg_effect005 .word");
   if (!(pinHeight && container && words.length)) return;
 
-  // Sticky pin
-  container.style.position = 'sticky';
-  container.style.top = '0';
+  ScrollTrigger.create({
+    trigger: pinHeight,
+    start: 'top top',
+    end: 'bottom bottom',
+    pin: container,
+    scrub: true,
+  });
 
-  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
-  const easeInOut4 = (p) =>
-    p < 0.5 ? 8 * p * p * p * p : 1 - Math.pow(-2 * p + 2, 4) / 2;
-  const getTranslateX = (el) => {
-    const t = getComputedStyle(el).transform;
-    if (!t || t === 'none') return 0;
-    if (t.startsWith('matrix(')) return parseFloat(t.split(',')[4]) || 0;
-    if (t.startsWith('matrix3d(')) return parseFloat(t.split(',')[12]) || 0;
-    return 0;
-  };
-
-  const baseX = Array.from(words, (el) => getTranslateX(el));
-  baseX.forEach((x, i) => gsap.set(words[i], { x }));
-  const setX = Array.from(words, (el) => gsap.quickSetter(el, 'x', 'px'));
-  const setO = Array.from(words, (el) => gsap.quickSetter(el, 'opacity'));
-
-  let startY = 0;
-  let endY = 0;
-  let range = 1;
-  let ticking = false;
-
-  function measure() {
-    const rect = pinHeight.getBoundingClientRect();
-    const y = window.scrollY;
-    startY = y + rect.top - window.innerHeight * 0.7; // start: top 70%
-    endY = y + rect.bottom - window.innerHeight; // end: bottom bottom
-    range = Math.max(1, endY - startY);
-  }
-
-  function update() {
-    ticking = false;
-    const t = clamp01((window.scrollY - startY) / range);
-    const n = words.length;
-    const stagger = 0.02;
-    const totalStagger = stagger * (n - 1);
-    const animWindow = Math.max(0.0001, 1 - totalStagger);
-
-    for (let i = 0; i < n; i++) {
-      const localStart = i * stagger;
-      const p = clamp01((t - localStart) / animWindow);
-      const eased = easeInOut4(p);
-      setX[i](baseX[i] * (1 - eased));
-      setO[i](eased);
+  const moveTween = gsap.to(words, {
+    x: 0,
+    opacity: 1,
+    stagger: 0.02,
+    ease: 'power4.inOut',
+    scrollTrigger: {
+      trigger: pinHeight,
+      start: 'top 70%',
+      end: 'bottom bottom',
+      scrub: true,
     }
-  }
+  });
 
-  function onScroll() {
-    if (ticking) return;
-    ticking = true;
-    requestAnimationFrame(update);
-  }
-
-  function onResize() {
-    measure();
-    for (let i = 0; i < words.length; i++) {
-      baseX[i] = getTranslateX(words[i]);
-      gsap.set(words[i], { x: baseX[i] });
-    }
-    update();
-  }
-
-  measure();
-  update();
-
-  window.addEventListener('scroll', onScroll, { passive: true });
-  window.addEventListener('resize', onResize);
-
-  mwgEffect005Cleanup = () => {
-    window.removeEventListener('scroll', onScroll, { passive: true });
-    window.removeEventListener('resize', onResize);
-    gsap.set(words, { clearProps: 'all' });
-  };
+  mwgEffect005Triggers = [moveTween.scrollTrigger];
 }
 
-function destroyMWGEffect005NoST() {
-  if (mwgEffect005Cleanup) {
-    mwgEffect005Cleanup();
-    mwgEffect005Cleanup = null;
+function destroyMWGEffect005() {
+  if (mwgEffect005Triggers && mwgEffect005Triggers.length) {
+    mwgEffect005Triggers.forEach(t => t && t.kill && t.kill());
+  }
+  mwgEffect005Triggers = [];
+  const words = document.querySelectorAll(".mwg_effect005 .word");
+  if (words.length) {
+    gsap.set(words, { clearProps: 'all' });
   }
 }
 
@@ -1103,8 +1033,8 @@ function initProjectTemplateAnimations() {
   // Initialize global parallax
   initGlobalParallax();
 
-  // Initialize mwg_effect005 (no ScrollTrigger)
-  initMWGEffect005NoST();
+  // Initialize mwg_effect005 (ScrollTrigger)
+  initMWGEffect005();
 
   // Initialize pixelate effect
   initPixelateImageRenderEffect();
@@ -1182,8 +1112,8 @@ function destroyProjectTemplateAnimations() {
   // Destroy pixelate effects
   destroyPixelateImageRenderEffect();
 
-  // Destroy mwg_effect005 (no ScrollTrigger)
-  destroyMWGEffect005NoST();
+  // Destroy mwg_effect005
+  destroyMWGEffect005();
 
   // Destroy parallax
   destroyGlobalParallax();
@@ -1896,7 +1826,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (hasGSAP) {
       gsap.to([textEl, overlay], {
         autoAlpha: 0,
-        duration: 0.8,
+        duration: 1.0,
         ease: 'power2.out',
         onComplete: () => {
           overlay.style.display = 'none';
@@ -1907,13 +1837,13 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
     } else {
-      overlay.style.transition = 'opacity 800ms ease';
+      overlay.style.transition = 'opacity 1000ms ease';
       requestAnimationFrame(() => {
         overlay.style.opacity = '0';
         setTimeout(() => {
           overlay.style.display = 'none';
           overlay.style.pointerEvents = 'none';
-        }, 820);
+        }, 1020);
       });
     }
   }

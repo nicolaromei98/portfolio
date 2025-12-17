@@ -153,17 +153,16 @@
         const tl = gsap.timeline({
           onComplete: () => window.location.href = href
         });
-        tl.to(overlay, { autoAlpha: 1, duration: 0.4, ease: 'power2.out' }, 0);
+        tl.to(overlay, { autoAlpha: 1, duration: 0.7, ease: 'power2.out' }, 0);
         if (textEl) {
-          tl.to(textEl, { autoAlpha: 1, y: 0, duration: 0.35, ease: 'power2.out' }, 0.05);
+          tl.to(textEl, { autoAlpha: 1, y: 0, duration: 0.55, ease: 'power2.out' }, 0.05);
         }
-        tl.to(textEl, { autoAlpha: 0, y: -10, duration: 0.3, ease: 'power2.out' }, "+=0.25");
       } else {
         overlay.style.display = 'block';
         overlay.style.pointerEvents = 'auto';
-        overlay.style.transition = 'opacity 400ms ease';
+        overlay.style.transition = 'opacity 700ms ease';
         if (textEl) {
-          textEl.style.transition = 'opacity 300ms ease, transform 300ms ease';
+          textEl.style.transition = 'opacity 600ms ease, transform 600ms ease';
           textEl.style.opacity = '0';
           textEl.style.transform = 'translateY(10px)';
           requestAnimationFrame(() => {
@@ -173,13 +172,7 @@
         }
         requestAnimationFrame(() => {
           overlay.style.opacity = '1';
-          setTimeout(() => {
-            if (textEl) {
-              textEl.style.opacity = '0';
-              textEl.style.transform = 'translateY(-10px)';
-            }
-            setTimeout(() => window.location.href = href, 180);
-          }, 350);
+          setTimeout(() => window.location.href = href, 750);
         });
       }
     }
@@ -1903,7 +1896,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (hasGSAP) {
       gsap.to([textEl, overlay], {
         autoAlpha: 0,
-        duration: 0.5,
+        duration: 0.8,
         ease: 'power2.out',
         onComplete: () => {
           overlay.style.display = 'none';
@@ -1914,13 +1907,13 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
     } else {
-      overlay.style.transition = 'opacity 500ms ease';
+      overlay.style.transition = 'opacity 800ms ease';
       requestAnimationFrame(() => {
         overlay.style.opacity = '0';
         setTimeout(() => {
           overlay.style.display = 'none';
           overlay.style.pointerEvents = 'none';
-        }, 520);
+        }, 820);
       });
     }
   }

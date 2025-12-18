@@ -20,7 +20,28 @@
   let homeCanvasCleanup = null;
   let homeTimeCleanup = null;
   let lenisRafId = null;
-  let isTransitioning = false; // Unused without Barba; kept for compatibility
+  let isTransitioning = false;
+
+  function unlockScrollAfterLenisReady() {
+    const finish = () => unlockScroll();
+    if (!lenisInstance) {
+      finish();
+      return;
+    }
+    let attempts = 0;
+    const tick = () => {
+      attempts += 1;
+      if (typeof lenisInstance.raf === 'function') {
+        lenisInstance.raf(performance.now());
+      }
+      if (attempts >= 2) {
+        finish();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
 
   function ensureLenisRunning() {
     if (!lenisInstance) return;
@@ -45,6 +66,22 @@
   // UTILITY FUNCTIONS
   // ============================================================================
 
+  function lockScroll() {
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    if (lenisInstance && typeof lenisInstance.stop === 'function') {
+      lenisInstance.stop();
+    }
+  }
+
+  function unlockScroll() {
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+    if (lenisInstance && typeof lenisInstance.start === 'function') {
+      lenisInstance.start();
+    }
+  }
+
 function resetWebflow(data) {
   const parser = new DOMParser();
   const dom = parser.parseFromString(data.next.html, "text/html");
@@ -65,6 +102,7 @@ function resetWebflow(data) {
     }
   }
 }
+
 
 
 class Sketch {
@@ -1180,21 +1218,18 @@ void main() {
       this.renderer.setPixelRatio(gsap.utils.clamp(1, 1.5, window.devicePixelRatio));
       this.renderer.setClearColor(0xE7E7E7, 1);
       const canvasEl = this.renderer.domElement;
-      // Anchor canvas to the grid container, below UI
-      if (getComputedStyle(this.el).position === 'static') {
-        this.el.style.position = 'relative';
-      }
-      canvasEl.style.position = 'absolute';
+      // Keep canvas full-viewport, behind UI, and non-blocking
+      canvasEl.style.position = 'fixed';
       canvasEl.style.top = '0';
       canvasEl.style.left = '0';
       canvasEl.style.width = '100%';
       canvasEl.style.height = '100%';
       canvasEl.style.pointerEvents = 'none';
-      canvasEl.style.zIndex = '0';
+      canvasEl.style.zIndex = '-1';
       if (canvasEl.parentNode) {
         canvasEl.parentNode.removeChild(canvasEl);
       }
-      this.el.appendChild(canvasEl);
+      document.body.appendChild(canvasEl);
 
       this.addPlanes();
       this.addEvents();
@@ -1690,24 +1725,23 @@ function destroyAboutAnimations() {
   destroyLenisSmoothScroll();
 }
 
-// REMOVED: initPageAnimations() - Not used, conflicts with Barba views
-  // REMOVED: destroyAllAnimations() - Conflicts with destroyProjectTemplateAnimations()
-
-  // Initialize on DOM ready (no Barba.js)
-  document.addEventListener("DOMContentLoaded", () => {
-    const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
-    if (namespace === 'project-template') {
-      initProjectTemplateAnimations();
-    } else if (namespace === 'about') {
-      initAboutAnimations();
-    } else if (namespace === 'home') {
-      initHomeAnimations();
-    }
-    ensureLenisRunning();
-    if (typeof ScrollTrigger !== 'undefined') {
-      ScrollTrigger.refresh();
-    }
-  });
+ // REMOVED: initPageAnimations() - Not used, conflicts with destroyProjectTemplateAnimations()
+ 
+ // Initialize on DOM ready without Barba
+ document.addEventListener("DOMContentLoaded", () => {
+   const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
+   if (namespace === 'project-template') {
+     initProjectTemplateAnimations();
+   } else if (namespace === 'about') {
+     initAboutAnimations();
+   } else if (namespace === 'home') {
+     initHomeAnimations();
+   }
+   ensureLenisRunning();
+   if (typeof ScrollTrigger !== 'undefined') {
+     ScrollTrigger.refresh();
+   }
+ });
 
 
 

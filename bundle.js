@@ -15,8 +15,6 @@
   let lenisInstance = null;
   let sketchInstance = null;
   let pixelateInstances = [];
-  let mwgEffect005Cleanup = null;
-  let mwgEffect005Triggers = [];
   let aboutSliderCleanup = null;
   let homeCanvasCleanup = null;
   let homeTimeCleanup = null;
@@ -37,6 +35,47 @@
       document.body.appendChild(overlay);
     }
     return overlay;
+  }
+
+  function showOverlay(text, duration = 0.7) {
+    const overlay = getPageTransitionOverlay();
+    const textEl = overlay.querySelector('#page-transition-text');
+    if (textEl) textEl.textContent = text || document.title || '';
+    const hasGSAP = !!window.gsap;
+    if (hasGSAP) {
+      gsap.set(overlay, { display: 'flex', pointerEvents: 'auto' });
+      gsap.set(textEl, { autoAlpha: 1, y: 0 });
+      gsap.to(overlay, { autoAlpha: 1, duration, ease: 'power2.out' });
+    } else {
+      overlay.style.display = 'flex';
+      overlay.style.pointerEvents = 'auto';
+      overlay.style.opacity = '1';
+    }
+  }
+
+  function hideOverlay(duration = 0.8) {
+    const overlay = getPageTransitionOverlay();
+    const textEl = overlay.querySelector('#page-transition-text');
+    const hasGSAP = !!window.gsap;
+    if (hasGSAP) {
+      gsap.to([textEl, overlay], {
+        autoAlpha: 0,
+        duration,
+        ease: 'power2.out',
+        onComplete: () => {
+          overlay.style.display = 'none';
+          overlay.style.pointerEvents = 'none';
+          if (textEl) textEl.style.opacity = '0';
+        }
+      });
+    } else {
+      overlay.style.transition = `opacity ${Math.round(duration * 1000)}ms ease`;
+      overlay.style.opacity = '0';
+      setTimeout(() => {
+        overlay.style.display = 'none';
+        overlay.style.pointerEvents = 'none';
+      }, duration * 1000 + 20);
+    }
   }
 
   function initPreloader() {
@@ -129,42 +168,9 @@
   }
 
   function setupPageTransitions() {
-    const overlay = getPageTransitionOverlay();
-    const textEl = document.getElementById('page-transition-text');
-
     function animateAndGo(href, title) {
-      const hasGSAP = !!window.gsap;
-      if (textEl) {
-        textEl.textContent = title || '';
-      }
-      if (hasGSAP) {
-        gsap.set(overlay, { display: 'flex', pointerEvents: 'auto' });
-        gsap.set(textEl, { autoAlpha: 1, y: 0 });
-        const tl = gsap.timeline({
-          onComplete: () => window.location.href = href
-        });
-        tl.to(overlay, { autoAlpha: 1, duration: 0.7, ease: 'power2.out' }, 0);
-        if (textEl) {
-          tl.to(textEl, { autoAlpha: 1, y: 0, duration: 0.55, ease: 'power2.out' }, 0.05);
-        }
-      } else {
-        overlay.style.display = 'block';
-        overlay.style.pointerEvents = 'auto';
-        overlay.style.transition = 'opacity 700ms ease';
-        if (textEl) {
-          textEl.style.transition = 'opacity 600ms ease, transform 600ms ease';
-          textEl.style.opacity = '1';
-          textEl.style.transform = 'translateY(0)';
-          requestAnimationFrame(() => {
-            textEl.style.opacity = '1';
-            textEl.style.transform = 'translateY(0)';
-          });
-        }
-        requestAnimationFrame(() => {
-          overlay.style.opacity = '1';
-          setTimeout(() => window.location.href = href, 750);
-        });
-      }
+      showOverlay(title);
+      setTimeout(() => window.location.href = href, 750);
     }
 
     function isInternalLink(anchor) {
@@ -1806,6 +1812,8 @@ document.addEventListener("DOMContentLoaded", () => {
   initPreloader();
   const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace") || 'home';
   const init = () => {
+    // overlay shown with current title on entry to avoid flash
+    showOverlay(document.title || '');
     if (namespace === 'project-template') {
       initProjectTemplateAnimations();
     } else if (namespace === 'about') {
@@ -1817,39 +1825,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (typeof ScrollTrigger !== 'undefined') {
       ScrollTrigger.refresh();
     }
+    // hide overlay after load
+    hideOverlay(1.0);
   };
   setTimeout(init, 200);
   setupPageTransitions();
-
-  // Fade-out overlay on landing (for cases where it persisted through navigation)
-  const overlay = document.getElementById('page-transition-overlay');
-  const textEl = document.getElementById('page-transition-text');
-  if (overlay) {
-    const hasGSAP = !!window.gsap;
-    if (hasGSAP) {
-      gsap.to([textEl, overlay], {
-        autoAlpha: 0,
-        duration: 1.0,
-        ease: 'power2.out',
-        onComplete: () => {
-          overlay.style.display = 'none';
-          overlay.style.pointerEvents = 'none';
-          if (textEl) {
-            textEl.style.opacity = '0';
-          }
-        }
-      });
-    } else {
-      overlay.style.transition = 'opacity 1000ms ease';
-      requestAnimationFrame(() => {
-        overlay.style.opacity = '0';
-        setTimeout(() => {
-          overlay.style.display = 'none';
-          overlay.style.pointerEvents = 'none';
-        }, 1020);
-      });
-    }
-  }
 });
 
 })();

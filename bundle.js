@@ -25,29 +25,19 @@
     if (!overlay) {
       overlay = document.createElement('div');
       overlay.id = 'page-transition-overlay';
-      overlay.style.display = 'flex';
-      overlay.style.opacity = '1';
-      overlay.style.pointerEvents = 'auto';
-      const txt = document.createElement('div');
-      txt.id = 'page-transition-text';
-      txt.textContent = document.title || '';
-      overlay.appendChild(txt);
       document.body.appendChild(overlay);
     }
     return overlay;
   }
 
-  function showOverlay(text, duration = 0.7) {
+  function showOverlay(duration = 0.7) {
     const overlay = getPageTransitionOverlay();
-    const textEl = overlay.querySelector('#page-transition-text');
-    if (textEl) textEl.textContent = text || document.title || '';
     const hasGSAP = !!window.gsap;
     if (hasGSAP) {
-      gsap.set(overlay, { display: 'flex', pointerEvents: 'auto' });
-      gsap.set(textEl, { autoAlpha: 1, y: 0 });
+      gsap.set(overlay, { display: 'block', pointerEvents: 'auto' });
       gsap.to(overlay, { autoAlpha: 1, duration, ease: 'power2.out' });
     } else {
-      overlay.style.display = 'flex';
+      overlay.style.display = 'block';
       overlay.style.pointerEvents = 'auto';
       overlay.style.opacity = '1';
     }
@@ -55,17 +45,15 @@
 
   function hideOverlay(duration = 0.8) {
     const overlay = getPageTransitionOverlay();
-    const textEl = overlay.querySelector('#page-transition-text');
     const hasGSAP = !!window.gsap;
     if (hasGSAP) {
-      gsap.to([textEl, overlay], {
+      gsap.to(overlay, {
         autoAlpha: 0,
         duration,
         ease: 'power2.out',
         onComplete: () => {
           overlay.style.display = 'none';
           overlay.style.pointerEvents = 'none';
-          if (textEl) textEl.style.opacity = '0';
         }
       });
     } else {
@@ -1812,8 +1800,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initPreloader();
   const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace") || 'home';
   const init = () => {
-    // overlay shown with current title on entry to avoid flash
-    showOverlay(document.title || '');
+    showOverlay();
     if (namespace === 'project-template') {
       initProjectTemplateAnimations();
     } else if (namespace === 'about') {

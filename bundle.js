@@ -1180,8 +1180,11 @@ void main() {
       this.renderer.setPixelRatio(gsap.utils.clamp(1, 1.5, window.devicePixelRatio));
       this.renderer.setClearColor(0xE7E7E7, 1);
       const canvasEl = this.renderer.domElement;
-      // Keep canvas full-viewport, behind UI, and non-blocking
-      canvasEl.style.position = 'fixed';
+      // Anchor canvas to the grid container, below UI
+      if (getComputedStyle(this.el).position === 'static') {
+        this.el.style.position = 'relative';
+      }
+      canvasEl.style.position = 'absolute';
       canvasEl.style.top = '0';
       canvasEl.style.left = '0';
       canvasEl.style.width = '100%';
@@ -1191,7 +1194,7 @@ void main() {
       if (canvasEl.parentNode) {
         canvasEl.parentNode.removeChild(canvasEl);
       }
-      document.body.appendChild(canvasEl);
+      this.el.appendChild(canvasEl);
 
       this.addPlanes();
       this.addEvents();

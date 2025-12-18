@@ -1187,7 +1187,7 @@ void main() {
       canvasEl.style.width = '100%';
       canvasEl.style.height = '100%';
       canvasEl.style.pointerEvents = 'none';
-      canvasEl.style.zIndex = '-1';
+      canvasEl.style.zIndex = '0';
       if (canvasEl.parentNode) {
         canvasEl.parentNode.removeChild(canvasEl);
       }

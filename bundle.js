@@ -25,6 +25,13 @@
     if (!overlay) {
       overlay = document.createElement('div');
       overlay.id = 'page-transition-overlay';
+      overlay.style.position = 'fixed';
+      overlay.style.inset = '0';
+      overlay.style.background = '#E7E7E7';
+      overlay.style.zIndex = '9999';
+      overlay.style.opacity = '0';
+      overlay.style.pointerEvents = 'none';
+      overlay.style.display = 'none';
       document.body.appendChild(overlay);
     }
     return overlay;
@@ -157,7 +164,7 @@
 
   function setupPageTransitions() {
     function animateAndGo(href, title) {
-      showOverlay(title);
+      showOverlay(0.7);
       setTimeout(() => window.location.href = href, 750);
     }
 
@@ -1800,7 +1807,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initPreloader();
   const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace") || 'home';
   const init = () => {
-    showOverlay();
+    showOverlay(0.7);
     if (namespace === 'project-template') {
       initProjectTemplateAnimations();
     } else if (namespace === 'about') {
@@ -1812,7 +1819,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (typeof ScrollTrigger !== 'undefined') {
       ScrollTrigger.refresh();
     }
-    // hide overlay after load
     hideOverlay(1.0);
   };
   setTimeout(init, 200);

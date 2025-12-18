@@ -15,180 +15,32 @@
   let lenisInstance = null;
   let sketchInstance = null;
   let pixelateInstances = [];
+  let mwgEffect005Cleanup = null;
   let aboutSliderCleanup = null;
   let homeCanvasCleanup = null;
   let homeTimeCleanup = null;
   let lenisRafId = null;
+  let isTransitioning = false;
 
-  function getPageTransitionOverlay() {
-    let overlay = document.getElementById('page-transition-overlay');
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.id = 'page-transition-overlay';
-      overlay.style.position = 'fixed';
-      overlay.style.inset = '0';
-      overlay.style.background = '#E7E7E7';
-      overlay.style.zIndex = '9999';
-      overlay.style.opacity = '0';
-      overlay.style.pointerEvents = 'none';
-      overlay.style.display = 'none';
-      document.body.appendChild(overlay);
-    }
-    return overlay;
-  }
-
-  function showOverlay(duration = 0.7) {
-    const overlay = getPageTransitionOverlay();
-    const hasGSAP = !!window.gsap;
-    if (hasGSAP) {
-      gsap.set(overlay, { display: 'block', pointerEvents: 'auto' });
-      gsap.to(overlay, { autoAlpha: 1, duration, ease: 'power2.out' });
-    } else {
-      overlay.style.display = 'block';
-      overlay.style.pointerEvents = 'auto';
-      overlay.style.opacity = '1';
-    }
-  }
-
-  function hideOverlay(duration = 0.8) {
-    const overlay = getPageTransitionOverlay();
-    const hasGSAP = !!window.gsap;
-    if (hasGSAP) {
-      gsap.to(overlay, {
-        autoAlpha: 0,
-        duration,
-        ease: 'power2.out',
-        onComplete: () => {
-          overlay.style.display = 'none';
-          overlay.style.pointerEvents = 'none';
-        }
-      });
-    } else {
-      overlay.style.transition = `opacity ${Math.round(duration * 1000)}ms ease`;
-      overlay.style.opacity = '0';
-      setTimeout(() => {
-        overlay.style.display = 'none';
-        overlay.style.pointerEvents = 'none';
-      }, duration * 1000 + 20);
-    }
-  }
-
-  function initPreloader() {
-    const STORAGE_KEY = "preloader_seen_session";
-    const preloader = document.querySelector(".preloader");
-    if (!preloader) return;
-    const countEl = preloader.querySelector("[data-count]");
-    const lineWrap = preloader.querySelector(".preloader__line");
-    const lineFill = preloader.querySelector(".line__animate");
-    if (!countEl || !lineWrap || !lineFill) return;
-
-    if (sessionStorage.getItem(STORAGE_KEY) === "1") {
-      preloader.style.display = "none";
-      preloader.style.opacity = "0";
+  function unlockScrollAfterLenisReady() {
+    const finish = () => unlockScroll();
+    if (!lenisInstance) {
+      finish();
       return;
     }
-
-    const DURATION_MS = 3000;
-    const HOLD_PERCENT = 92;
-    preloader.style.display = "flex";
-    preloader.style.opacity = "1";
-    const hasGSAP = !!window.gsap;
-    if (hasGSAP) {
-      gsap.set(lineFill, { scaleX: 0, transformOrigin: "left center" });
-      gsap.set([countEl, lineWrap], { opacity: 1 });
-    } else {
-      lineFill.style.transformOrigin = "left center";
-      lineFill.style.transform = "scaleX(0)";
-      countEl.style.opacity = "1";
-      lineWrap.style.opacity = "1";
-    }
-
-    let contentReady = document.readyState !== "loading";
-    if (!contentReady) {
-      document.addEventListener("DOMContentLoaded", () => (contentReady = true), { once: true });
-    }
-
-    const start = performance.now();
-    let displayed = 0;
-    let finished = false;
-    const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
-    const lerp = (a, b, t) => a + (b - a) * t;
-
-    function finish() {
-      finished = true;
-      countEl.textContent = "100";
-      if (hasGSAP) {
-        const tl = gsap.timeline({ defaults: { ease: "power2.out" } });
-        tl.to(lineFill, { scaleX: 1, duration: 0.2 })
-          .to([lineWrap, countEl], { opacity: 0, duration: 0.6 }, "+=0.15")
-          .to(preloader, { opacity: 0, duration: 1.0 }, "<+=0.1")
-          .set(preloader, { display: "none" });
-      } else {
-        lineFill.style.transform = "scaleX(1)";
-        lineWrap.style.transition = "opacity 600ms ease";
-        countEl.style.transition = "opacity 600ms ease";
-        preloader.style.transition = "opacity 1000ms ease";
-        setTimeout(() => {
-          lineWrap.style.opacity = "0";
-          countEl.style.opacity = "0";
-          setTimeout(() => {
-            preloader.style.opacity = "0";
-            setTimeout(() => (preloader.style.display = "none"), 1020);
-          }, 150);
-        }, 150);
+    let attempts = 0;
+    const tick = () => {
+      attempts += 1;
+      if (typeof lenisInstance.raf === 'function') {
+        lenisInstance.raf(performance.now());
       }
-      sessionStorage.setItem(STORAGE_KEY, "1");
-    }
-
-    function tick(now) {
-      if (finished) return;
-      const elapsed = now - start;
-      const t = clamp(elapsed / DURATION_MS, 0, 1);
-      let target = t * 100;
-      if (!contentReady) target = Math.min(target, HOLD_PERCENT);
-      displayed = lerp(displayed, target, 0.1);
-      const pct = Math.floor(displayed);
-      countEl.textContent = pct;
-      const scaleX = pct / 100;
-      if (hasGSAP) gsap.set(lineFill, { scaleX });
-      else lineFill.style.transform = `scaleX(${scaleX})`;
-      if (elapsed >= DURATION_MS) {
+      if (attempts >= 2) {
         finish();
         return;
       }
       requestAnimationFrame(tick);
-    }
-
+    };
     requestAnimationFrame(tick);
-  }
-
-  function setupPageTransitions() {
-    function animateAndGo(href, title) {
-      showOverlay(0.7);
-      setTimeout(() => window.location.href = href, 750);
-    }
-
-    function isInternalLink(anchor) {
-      const href = anchor.getAttribute('href');
-      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return false;
-      const url = anchor.href;
-      try {
-        const u = new URL(url);
-        return u.origin === window.location.origin;
-      } catch (e) {
-        return true; // relative URL
-      }
-    }
-
-    document.addEventListener('click', (e) => {
-      const anchor = e.target.closest('a');
-      if (!anchor) return;
-      if (anchor.target === '_blank' || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
-      if (!isInternalLink(anchor)) return;
-      e.preventDefault();
-      const title = anchor.getAttribute('data-transition-title') || anchor.textContent?.trim() || anchor.href;
-      animateAndGo(anchor.href, title);
-    });
   }
 
   function ensureLenisRunning() {
@@ -821,53 +673,110 @@ function destroyPixelateImageRenderEffect() {
 }
 
 // ================== mwg_effect005 EFFECT (NO ScrollTrigger) ==================
-function initMWGEffect005() {
-  if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') return;
+function initMWGEffect005NoST() {
+  if (typeof gsap === 'undefined') return;
 
-  destroyMWGEffect005();
+  // Clean previous
+  destroyMWGEffect005NoST();
 
-  const paragraph = document.querySelector(".mwg_effect005 .paragraph");
+  const scope = document.querySelector('.mwg_effect005');
+  if (!scope) return;
+  const paragraph = scope.querySelector('.paragraph');
   if (paragraph && !paragraph.querySelector('.word')) {
-    wrapWordsInSpan(paragraph);
+    const text = (paragraph.textContent || '').trim();
+    paragraph.innerHTML = text
+      .split(/\s+/)
+      .map((word) => `<span class="word">${word}</span>`)
+      .join(' ');
   }
 
-  const pinHeight = document.querySelector(".mwg_effect005 .pin-height");
-  const container = document.querySelector(".mwg_effect005 .container");
-  const words = document.querySelectorAll(".mwg_effect005 .word");
+  const pinHeight = scope.querySelector('.pin-height');
+  const container = scope.querySelector('.container');
+  const words = scope.querySelectorAll('.word');
   if (!(pinHeight && container && words.length)) return;
 
-  ScrollTrigger.create({
-    trigger: pinHeight,
-    start: 'top top',
-    end: 'bottom bottom',
-    pin: container,
-    scrub: true,
-  });
+  // Sticky pin
+  container.style.position = 'sticky';
+  container.style.top = '0';
 
-  const moveTween = gsap.to(words, {
-    x: 0,
-    opacity: 1,
-    stagger: 0.02,
-    ease: 'power4.inOut',
-    scrollTrigger: {
-      trigger: pinHeight,
-      start: 'top 70%',
-      end: 'bottom bottom',
-      scrub: true,
+  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+  const easeInOut4 = (p) =>
+    p < 0.5 ? 8 * p * p * p * p : 1 - Math.pow(-2 * p + 2, 4) / 2;
+  const getTranslateX = (el) => {
+    const t = getComputedStyle(el).transform;
+    if (!t || t === 'none') return 0;
+    if (t.startsWith('matrix(')) return parseFloat(t.split(',')[4]) || 0;
+    if (t.startsWith('matrix3d(')) return parseFloat(t.split(',')[12]) || 0;
+    return 0;
+  };
+
+  const baseX = Array.from(words, (el) => getTranslateX(el));
+  baseX.forEach((x, i) => gsap.set(words[i], { x }));
+  const setX = Array.from(words, (el) => gsap.quickSetter(el, 'x', 'px'));
+  const setO = Array.from(words, (el) => gsap.quickSetter(el, 'opacity'));
+
+  let startY = 0;
+  let endY = 0;
+  let range = 1;
+  let ticking = false;
+
+  function measure() {
+    const rect = pinHeight.getBoundingClientRect();
+    const y = window.scrollY;
+    startY = y + rect.top - window.innerHeight * 0.7; // start: top 70%
+    endY = y + rect.bottom - window.innerHeight; // end: bottom bottom
+    range = Math.max(1, endY - startY);
+  }
+
+  function update() {
+    ticking = false;
+    const t = clamp01((window.scrollY - startY) / range);
+    const n = words.length;
+    const stagger = 0.02;
+    const totalStagger = stagger * (n - 1);
+    const animWindow = Math.max(0.0001, 1 - totalStagger);
+
+    for (let i = 0; i < n; i++) {
+      const localStart = i * stagger;
+      const p = clamp01((t - localStart) / animWindow);
+      const eased = easeInOut4(p);
+      setX[i](baseX[i] * (1 - eased));
+      setO[i](eased);
     }
-  });
+  }
 
-  mwgEffect005Triggers = [moveTween.scrollTrigger];
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(update);
+  }
+
+  function onResize() {
+    measure();
+    for (let i = 0; i < words.length; i++) {
+      baseX[i] = getTranslateX(words[i]);
+      gsap.set(words[i], { x: baseX[i] });
+    }
+    update();
+  }
+
+  measure();
+  update();
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onResize);
+
+  mwgEffect005Cleanup = () => {
+    window.removeEventListener('scroll', onScroll, { passive: true });
+    window.removeEventListener('resize', onResize);
+    gsap.set(words, { clearProps: 'all' });
+  };
 }
 
-function destroyMWGEffect005() {
-  if (mwgEffect005Triggers && mwgEffect005Triggers.length) {
-    mwgEffect005Triggers.forEach(t => t && t.kill && t.kill());
-  }
-  mwgEffect005Triggers = [];
-  const words = document.querySelectorAll(".mwg_effect005 .word");
-  if (words.length) {
-    gsap.set(words, { clearProps: 'all' });
+function destroyMWGEffect005NoST() {
+  if (mwgEffect005Cleanup) {
+    mwgEffect005Cleanup();
+    mwgEffect005Cleanup = null;
   }
 }
 
@@ -886,9 +795,7 @@ function initLenisSmoothScroll() {
   });
 
   // Synchronize Lenis scrolling with GSAP's ScrollTrigger plugin
-  if (typeof ScrollTrigger !== 'undefined') {
-    lenisInstance.on('scroll', ScrollTrigger.update);
-  }
+  lenisInstance.on('scroll', ScrollTrigger.update);
 
   // Create animation loop (single runner)
   const loop = (time) => {
@@ -1037,8 +944,8 @@ function initProjectTemplateAnimations() {
   // Initialize global parallax
   initGlobalParallax();
 
-  // Initialize mwg_effect005 (ScrollTrigger)
-  initMWGEffect005();
+  // Initialize mwg_effect005 (no ScrollTrigger)
+  initMWGEffect005NoST();
 
   // Initialize pixelate effect
   initPixelateImageRenderEffect();
@@ -1116,8 +1023,8 @@ function destroyProjectTemplateAnimations() {
   // Destroy pixelate effects
   destroyPixelateImageRenderEffect();
 
-  // Destroy mwg_effect005
-  destroyMWGEffect005();
+  // Destroy mwg_effect005 (no ScrollTrigger)
+  destroyMWGEffect005NoST();
 
   // Destroy parallax
   destroyGlobalParallax();
@@ -1802,12 +1709,13 @@ function destroyAboutAnimations() {
   destroyLenisSmoothScroll();
 }
 
+// REMOVED: initPageAnimations() - Not used, conflicts with Barba views
+// REMOVED: destroyAllAnimations() - Conflicts with destroyProjectTemplateAnimations()
+
 // Initialize on DOM ready (no Barba)
 document.addEventListener("DOMContentLoaded", () => {
-  initPreloader();
-  const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace") || 'home';
+  const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
   const init = () => {
-    showOverlay(0.7);
     if (namespace === 'project-template') {
       initProjectTemplateAnimations();
     } else if (namespace === 'about') {
@@ -1816,13 +1724,14 @@ document.addEventListener("DOMContentLoaded", () => {
       initHomeAnimations();
     }
     ensureLenisRunning();
+    unlockScrollAfterLenisReady();
     if (typeof ScrollTrigger !== 'undefined') {
       ScrollTrigger.refresh();
     }
-    hideOverlay(1.0);
   };
   setTimeout(init, 200);
-  setupPageTransitions();
 });
+
+
 
 })();

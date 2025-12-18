@@ -20,28 +20,7 @@
   let homeCanvasCleanup = null;
   let homeTimeCleanup = null;
   let lenisRafId = null;
-  let isTransitioning = false;
-
-  function unlockScrollAfterLenisReady() {
-    const finish = () => unlockScroll();
-    if (!lenisInstance) {
-      finish();
-      return;
-    }
-    let attempts = 0;
-    const tick = () => {
-      attempts += 1;
-      if (typeof lenisInstance.raf === 'function') {
-        lenisInstance.raf(performance.now());
-      }
-      if (attempts >= 2) {
-        finish();
-        return;
-      }
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  }
+  let isTransitioning = false; // Unused without Barba; kept for compatibility
 
   function ensureLenisRunning() {
     if (!lenisInstance) return;
@@ -86,7 +65,6 @@ function resetWebflow(data) {
     }
   }
 }
-
 
 
 class Sketch {
@@ -1710,12 +1688,11 @@ function destroyAboutAnimations() {
 }
 
 // REMOVED: initPageAnimations() - Not used, conflicts with Barba views
-// REMOVED: destroyAllAnimations() - Conflicts with destroyProjectTemplateAnimations()
+  // REMOVED: destroyAllAnimations() - Conflicts with destroyProjectTemplateAnimations()
 
-// Initialize on DOM ready (no Barba)
-document.addEventListener("DOMContentLoaded", () => {
-  const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
-  const init = () => {
+  // Initialize on DOM ready (no Barba.js)
+  document.addEventListener("DOMContentLoaded", () => {
+    const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
     if (namespace === 'project-template') {
       initProjectTemplateAnimations();
     } else if (namespace === 'about') {
@@ -1724,13 +1701,10 @@ document.addEventListener("DOMContentLoaded", () => {
       initHomeAnimations();
     }
     ensureLenisRunning();
-    unlockScrollAfterLenisReady();
     if (typeof ScrollTrigger !== 'undefined') {
       ScrollTrigger.refresh();
     }
-  };
-  setTimeout(init, 200);
-});
+  });
 
 
 

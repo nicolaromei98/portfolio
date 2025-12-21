@@ -1,279 +1,168 @@
+/**
+ * SISTEMA DI NAVIGAZIONE AVANZATO
+ * Preloader (Session-based) + Navigation API + View Transitions + GSAP
+ */
 
 (() => {
-  if (!window.gsap) return;
+  if (!window.gsap) return;
 
-  /* ==========================================================================
-   * CONFIGURATION
-   * ========================================================================== */
-  const STORAGE_KEYS = {
-    SEEN: "preloader_seen_session",
-    PENDING: "page_transition_pending",
-  };
+  /* ==========================================================================
+   * CONFIGURAZIONE E STATO
+   * ========================================================================== */
+  const STORAGE_KEYS = { SEEN: "preloader_seen_session" };
+  
+  const DOM = {
+    get preloader() { return document.querySelector(".preloader"); },
+    get overlay() { return document.querySelector(".page-transition"); },
+    get blinkTexts() { return document.querySelectorAll("[data-blink-text]"); },
+    // Aggiungi qui altri elementi globali se necessario
+  };
 
-  const ANIM_CONFIG = {
-    preloader: {
-      durationMs: 2400,
-      clipEase: "power2.inOut",
-      clipDelay: 0.18,
-      open: { duration: 0.28, stagger: 0.28 },
-      uiFade: 0.28,
-      close: { duration: 0.42, stagger: 0.42 },
-      out: { duration: 0.6, ease: "sine.inOut" },
-      text: { duration: 0.1, stagger: 0.03, ease: "none" },
-    },
-    pageTransition: {
-      in: 0.6,
-      out: 0.6,
-      ease: "sine.inOut"
-    }
-  };
+  let isNavigating = false;
 
-  /* ==========================================================================
-   * DOM ELEMENTS
-   * ========================================================================== */
-  const select = (sel, root = document) => root.querySelector(sel);
-  const selectAll = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  /* ==========================================================================
+   * EFFETTI TIPOGRAFICI (BLINK)
+   * ========================================================================== */
+  const initBlinkEffect = () => {
+    DOM.blinkTexts.forEach((el, index) => {
+      if (el.dataset.wrapped) return;
 
-  const DOM = {
-    preloader: select(".preloader"),
-    wrap: select("[data-load-wrap]"),
-    overlay: select(".page-transition"),
-    blinkTexts: selectAll("[data-blink-text]"),
-  };
+      const raw = el.innerHTML.replace(/<br\s*\/?>/gi, "\n");
+      el.innerHTML = raw.split("").map(ch => {
+        if (ch === "\n") return "<br>";
+        const safeChar = ch === " " ? "&nbsp;" : ch;
+        return `<span class="blink-char" style="opacity:0; filter:brightness(0.5); display:inline-block; will-change:opacity, filter;">${safeChar}</span>`;
+      }).join("");
+      
+      el.dataset.wrapped = "1";
+      const chars = el.querySelectorAll(".blink-char");
 
-  const UI = DOM.preloader ? {
-    count: select("[data-count]", DOM.preloader),
-    lineWrap: select(".preloader__line", DOM.preloader),
-    lineFill: select(".line__animate", DOM.preloader),
-    text: select("[data-load-text]", DOM.preloader),
-  } : {};
+      // Animazione iniziale a cascata (Burst)
+      const tl = gsap.timeline({ delay: index * 0.1 });
+      chars.forEach(char => {
+        tl.to(char, { 
+          opacity: 1, 
+          filter: "brightness(1)", 
+          duration: 0.1, 
+          ease: "none" 
+        }, gsap.utils.random(0, 0.5));
+      });
+    });
+  };
 
-  const images = DOM.wrap ? selectAll("[data-load-img]", DOM.wrap) : [];
-  let isAnimationRunning = false;
+  /* ==========================================================================
+   * LOGICA PRELOADER (Solo primo avvio)
+   * ========================================================================== */
+  const runPreloader = () => {
+    const preloader = DOM.preloader;
+    if (!preloader) return;
 
-  /* ==========================================================================
-   * LOGIC: BLINK TEXT EFFECT
-   * ========================================================================== */
-  const initBlinkEffect = () => {
-    DOM.blinkTexts.forEach((el, index) => {
-      if (!el.dataset.wrapped) {
-        const raw = el.innerHTML.replace(/<br\s*\/?>/gi, "\n");
-        el.innerHTML = raw.split("").map(ch => {
-          if (ch === "\n") return "<br>";
-          const safeChar = ch === " " ? "&nbsp;" : ch;
-          return `<span class="blink-char" style="opacity:0; filter:brightness(0.5); display:inline-block; will-change:opacity, filter;">${safeChar}</span>`;
-        }).join("");
-        el.dataset.wrapped = "1";
-      }
+    // Esempio animazione preloader (personalizzabile)
+    const tl = gsap.timeline({
+      onComplete: () => {
+        sessionStorage.setItem(STORAGE_KEYS.SEEN, "1");
+        gsap.to(preloader, { 
+          opacity: 0, 
+          duration: 0.8, 
+          display: "none", 
+          onComplete: initBlinkEffect 
+        });
+      }
+    });
 
-      const chars = el.querySelectorAll(".blink-char");
-      let hoverTL;
+    tl.to(".preloader__line .line__animate", { scaleX: 1, duration: 2, ease: "power2.inOut" })
+      .to("[data-count]", { innerText: 100, snap: { innerText: 1 }, duration: 2 }, 0);
+  };
 
-      const settleAll = () => gsap.to(chars, { 
-        opacity: 1, filter: "brightness(1)", duration: 0.5, stagger: 0.01, ease: "power2.out", overwrite: "auto" 
-      });
+  /* ==========================================================================
+   * NAVIGATION API & VIEW TRANSITIONS (Il "motore")
+   * ========================================================================== */
+  const initModernNavigation = () => {
+    if (!window.navigation) {
+      console.warn("Navigation API non supportata in questo browser.");
+      return;
+    }
 
-      const createFlash = (target) => {
-        const tl = gsap.timeline();
-        tl.to(target, { opacity: 1, filter: "brightness(2)", duration: 0.05, ease: "none" })
-          .to(target, { opacity: 0.2, filter: "brightness(0.5)", duration: 0.05, ease: "none" })
-          .to(target, { opacity: 1, filter: "brightness(1)", duration: 0.1, ease: "none" });
-        return tl;
-      };
+    navigation.addEventListener("navigate", (event) => {
+      const url = new URL(event.destination.url);
 
-      const getRandomChar = () => chars[gsap.utils.random(0, chars.length - 1, 1)];
+      // Filtri: solo link interni, no download, no stessa pagina
+      if (
+        url.origin !== location.origin || 
+        event.downloadRequest || 
+        !event.canIntercept || 
+        url.href === location.href
+      ) return;
 
-      const doBurst = () => {
-        if (hoverTL) hoverTL.kill();
-        const tl = gsap.timeline({ delay: index * 0.1 });
-        const flashesCount = Math.min(30, chars.length * 2); 
-        for (let i = 0; i < flashesCount; i++) {
-          tl.add(createFlash(getRandomChar()), gsap.utils.random(0, 0.6));
-        }
-        tl.add(settleAll(), 0.5);
-      };
+      event.intercept({
+        handler: async () => {
+          isNavigating = true;
 
-      const startHover = () => {
-        if (hoverTL) hoverTL.kill();
-        gsap.set(chars, { opacity: 1 });
-        hoverTL = gsap.timeline({ repeat: -1 });
-        const flashes = Math.max(5, Math.floor(chars.length / 3));
-        for (let i = 0; i < flashes; i++) {
-          hoverTL.add(createFlash(getRandomChar()), gsap.utils.random(0, 1.5));
-        }
-      };
+          // 1. Fetch della nuova pagina
+          const response = await fetch(url.href);
+          const html = await response.text();
+          const parser = new DOMParser();
+          const nextDoc = parser.parseFromString(html, "text/html");
 
-      const stopHover = () => { 
-        if (hoverTL) hoverTL.kill(); 
-        gsap.to(chars, { opacity: 1, filter: "brightness(1)", duration: 0.3, overwrite: "auto" });
-      };
+          // 2. Esecuzione View Transition (se supportata)
+          if (document.startViewTransition) {
+            const transition = document.startViewTransition(() => {
+              // Sostituzione atomica del contenuto
+              document.body.innerHTML = nextDoc.body.innerHTML;
+              document.title = nextDoc.title;
+              window.scrollTo(0, 0);
+            });
 
-      doBurst();
-      el.addEventListener("mouseenter", startHover, { passive: true });
-      el.addEventListener("mouseleave", stopHover, { passive: true });
-    });
-  };
+            await transition.finished;
+          } else {
+            // Fallback per browser vecchi
+            document.body.innerHTML = nextDoc.body.innerHTML;
+            document.title = nextDoc.title;
+            window.scrollTo(0, 0);
+          }
 
-  /* ==========================================================================
-   * PAGE TRANSITIONS LOGIC
-   * ========================================================================== */
-  const handlePageLoadTransition = (onAnimationStart) => {
-    if (!DOM.overlay) return false;
-    
-    if (sessionStorage.getItem(STORAGE_KEYS.PENDING) === "1") {
-      sessionStorage.removeItem(STORAGE_KEYS.PENDING);
-      
-      gsap.fromTo(DOM.overlay, 
-        { opacity: 1, display: "block", pointerEvents: "all" },
-        { 
-          opacity: 0, 
-          duration: ANIM_CONFIG.pageTransition.out, 
-          ease: ANIM_CONFIG.pageTransition.ease,
-          onStart: () => { if (onAnimationStart) onAnimationStart(); },
-          onComplete: () => gsap.set(DOM.overlay, { display: "none", pointerEvents: "none" })
-        }
-      );
-      return true;
-    }
-    
-    gsap.set(DOM.overlay, { opacity: 0, display: "none", pointerEvents: "none" });
-    return false;
-  };
+          // 3. Riavvio effetti sulla nuova pagina
+          reinitPage();
+          isNavigating = false;
+        }
+      });
+    });
+  };
 
-  const handleInternalLinkClick = (e) => {
-    if (isAnimationRunning) return;
-    const link = e.target.closest("a");
-    if (!shouldInterceptLink(link)) return;
+  /* ==========================================================================
+   * REINIZIALIZZAZIONE
+   * ========================================================================== */
+  const reinitPage = () => {
+    initBlinkEffect();
+    // Aggiungi qui altre funzioni GSAP che devono ripartire (es. ScrollTrigger)
+    if (window.Lenis) {
+       // Se usi Lenis, resetta lo scroll qui
+    }
+  };
 
-    e.preventDefault();
-    sessionStorage.setItem(STORAGE_KEYS.PENDING, "1");
+  /* ==========================================================================
+   * BOOTSTRAP
+   * ========================================================================== */
+  const init = () => {
+    const hasSeenPreloader = sessionStorage.getItem(STORAGE_KEYS.SEEN) === "1";
 
-    gsap.to(DOM.overlay, {
-      display: "block",
-      opacity: 1,
-      duration: ANIM_CONFIG.pageTransition.in,
-      ease: ANIM_CONFIG.pageTransition.ease,
-      pointerEvents: "all",
-      onComplete: () => (location.href = link.href),
-    });
-  };
+    if (DOM.preloader && !hasSeenPreloader) {
+      runPreloader();
+    } else {
+      if (DOM.preloader) DOM.preloader.style.display = "none";
+      initBlinkEffect();
+    }
 
-  const shouldInterceptLink = (a) => {
-    if (!a || (a.target && a.target !== "_self") || a.hasAttribute("download")) return false;
-    const href = a.getAttribute("href");
-    if (!href || href === "#" || href.startsWith("mailto:") || href.startsWith("tel:")) return false;
-    let url; try { url = new URL(a.href, location.href); } catch { return false; }
-    if (url.origin !== location.origin) return false;
-    if (url.pathname === location.pathname && url.search === location.search && url.hash) return false;
-    if (sessionStorage.getItem(STORAGE_KEYS.SEEN) !== "1") return false;
-    return true;
-  };
+    initModernNavigation();
+  };
 
-  /* ==========================================================================
-   * BFCache / BACK BUTTON FIX
-   * ========================================================================== */
-  window.addEventListener("pageshow", (event) => {
-    // Se la pagina viene caricata dalla cache (tasto Back)
-    if (event.persisted) {
-      isAnimationRunning = false;
-      sessionStorage.removeItem(STORAGE_KEYS.PENDING);
-      
-      // Reset immediato dell'overlay
-      if (DOM.overlay) {
-        gsap.set(DOM.overlay, { opacity: 0, display: "none", pointerEvents: "none" });
-      }
-      
-      // Riavvia gli effetti blink (altrimenti rimarrebbero statici)
-      initBlinkEffect();
-    }
-  });
+  // Esegui al caricamento
+  if (document.readyState === "complete") init();
+  else window.addEventListener("load", init);
 
-  /* ==========================================================================
-   * MAIN INITIALIZATION
-   * ========================================================================== */
-  const init = () => {
-    const hasRequiredUI = DOM.preloader && images.length && UI.count && UI.lineWrap && UI.lineFill;
-    const hasSeenPreloader = sessionStorage.getItem(STORAGE_KEYS.SEEN) === "1";
-
-    if (DOM.overlay) {
-      document.addEventListener("click", handleInternalLinkClick, { passive: false });
-    }
-
-    if (hasRequiredUI && !hasSeenPreloader) {
-      // --- LOGICA PRELOADER ---
-      isAnimationRunning = true;
-      
-      const setupInitialState = () => {
-        Object.assign(DOM.preloader.style, { position: "fixed", inset: "0", zIndex: "2147483647", display: "flex", opacity: "1" });
-        UI.count.textContent = "0";
-        Object.assign(UI.lineFill.style, { transformOrigin: "left center", transform: "scaleX(0)" });
-        images.forEach((img, i) => {
-           img.style.zIndex = String(i + 1);
-           gsap.set(img, { clipPath: "inset(0 0 100% 0)" });
-        });
-      };
-
-      let splitInstance = null, splitChars = [];
-      const setupPreloaderText = () => {
-        if (!UI.text) return;
-        UI.text.style.visibility = "hidden";
-        if (window.SplitText) {
-          splitInstance = new SplitText(UI.text, { type: "words, chars", charsClass: "st-char" });
-          splitChars = splitInstance.chars || [];
-          gsap.set(splitChars, { opacity: 0 });
-        }
-        UI.text.style.visibility = "visible";
-      };
-
-      const runPreloader = () => {
-        const C = ANIM_CONFIG.preloader;
-        const tl = gsap.timeline({ defaults: { ease: C.clipEase } });
-        const endAt = C.durationMs / 1000;
-
-        const progress = { val: 0 };
-        tl.to(progress, {
-          val: 100, duration: endAt, ease: "none",
-          onUpdate: () => {
-            const p = progress.val | 0;
-            UI.count.textContent = p;
-            gsap.set(UI.lineFill, { scaleX: p / 100 });
-          }
-        }, 0);
-
-        if (splitChars.length) tl.to(splitChars, { opacity: 1, duration: C.text.duration, ease: C.text.ease, stagger: C.text.stagger }, 0); 
-        images.forEach((img, i) => { tl.to(img, { clipPath: "inset(0 0 0% 0)", duration: C.open.duration }, C.clipDelay + (i * C.open.stagger)); });
-        
-        const uiElements = [UI.lineWrap, UI.count, UI.text].filter(Boolean);
-        tl.to(uiElements, { opacity: 0, duration: C.uiFade, ease: "power2.out" }, endAt - 0.1);
-
-        const reversedImages = [...images].reverse();
-        reversedImages.forEach((img, i) => { tl.to(img, { clipPath: "inset(0 0 100% 0)", duration: C.close.duration }, endAt + (i * C.close.stagger)); });
-
-        const totalCloseTime = (C.close.stagger * (reversedImages.length - 1)) + C.close.duration;
-        const fadeOutStartTime = endAt + totalCloseTime + 0.06;
-
-        tl.call(initBlinkEffect, null, fadeOutStartTime);
-        tl.to(DOM.preloader, { opacity: 0, duration: C.out.duration, ease: C.out.ease }, fadeOutStartTime);
-        tl.set(DOM.preloader, { display: "none" })
-          .add(() => {
-            sessionStorage.setItem(STORAGE_KEYS.SEEN, "1");
-            isAnimationRunning = false;
-            if (splitInstance?.revert) splitInstance.revert();
-          });
-      };
-
-      setupInitialState();
-      setupPreloaderText();
-      runPreloader();
-
-    } else {
-      // --- LOGICA NO PRELOADER ---
-      if (DOM.preloader) DOM.preloader.style.display = "none";
-      const isTransitioning = handlePageLoadTransition(initBlinkEffect);
-      if (!isTransitioning) initBlinkEffect();
-    }
-  };
-
-  init();
+  // Fix per il tasto "Indietro" del browser (BFCache)
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) reinitPage();
+  });
 
 })();

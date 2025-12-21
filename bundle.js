@@ -1,17 +1,10 @@
 (() => {
-  if (!window.gsap) {
-    console.warn("GSAP non trovato. Il codice non può essere eseguito.");
-    return;
-  }
+  if (!window.gsap) return;
 
   /* ==========================================================================
-   * CONFIGURATION
+   * CONFIGURATION & STYLES INJECTION
    * ========================================================================== */
-  const STORAGE_KEYS = {
-    SEEN: "preloader_seen_session",
-    PENDING: "page_transition_pending",
-  };
-
+  const STORAGE_KEYS = { SEEN: "preloader_seen_session", PENDING: "page_transition_pending" };
   const ANIM_CONFIG = {
     preloader: {
       durationMs: 2400,
@@ -23,16 +16,8 @@
       out: { duration: 0.6, ease: "sine.inOut" },
       text: { duration: 0.1, stagger: 0.03, ease: "none" },
     },
-    pageTransition: {
-      in: 0.6,
-      out: 0.6,
-      ease: "sine.inOut"
-    },
-    reveal: {
-      duration: 0.8,
-      stagger: 0.15,
-      ease: "power2.out"
-    }
+    pageTransition: { in: 0.6, out: 0.6, ease: "sine.inOut" },
+    reveal: { duration: 0.8, stagger: 0.15, ease: "power2.out" }
   };
 
   /* ==========================================================================
@@ -60,13 +45,41 @@
   let isAnimationRunning = false;
 
   /* ==========================================================================
-   * LOGIC: BLINK & REVEAL EFFECT
+   * INITIAL STATE (NO-CSS ARCHITECTURE)
+   * ========================================================================== */
+  const setInitialStyles = () => {
+    // Nascondiamo subito gli elementi reveal
+    if (DOM.revealElements.length) {
+      gsap.set(DOM.revealElements, { autoAlpha: 0, y: 20 });
+    }
+    
+    // Prepariamo l'overlay di transizione
+    if (DOM.overlay) {
+      gsap.set(DOM.overlay, { 
+        position: "fixed", inset: 0, backgroundColor: "#000", 
+        zIndex: 2147483646, display: "none", autoAlpha: 0 
+      });
+    }
+
+    // Prepariamo il preloader se esiste
+    if (DOM.preloader) {
+      gsap.set(DOM.preloader, { 
+        position: "fixed", inset: 0, backgroundColor: "#000", 
+        zIndex: 2147483647, display: "none", autoAlpha: 0 
+      });
+    }
+  };
+
+  setInitialStyles();
+
+  /* ==========================================================================
+   * LOGIC: BLINK & REVEAL
    * ========================================================================== */
   const initBlinkEffect = () => {
-    // REVEAL ANIMATION (Forza la visibilità con autoAlpha)
+    // Animazione REVEAL (JS Only trigger)
     if (DOM.revealElements.length > 0) {
       gsap.to(DOM.revealElements, {
-        autoAlpha: 1, // Gestisce sia opacity che visibility
+        autoAlpha: 1,
         y: 0,
         duration: ANIM_CONFIG.reveal.duration,
         stagger: ANIM_CONFIG.reveal.stagger,
@@ -75,7 +88,7 @@
       });
     }
 
-    // BLINK TEXT LOGIC
+    // Animazione BLINK TEXT
     DOM.blinkTexts.forEach((el, index) => {
       if (!el.dataset.wrapped) {
         const raw = el.innerHTML.replace(/<br\s*\/?>/gi, "\n");
@@ -90,10 +103,6 @@
       const chars = el.querySelectorAll(".blink-char");
       let hoverTL;
 
-      const settleAll = () => gsap.to(chars, { 
-        opacity: 1, filter: "brightness(1)", duration: 0.5, stagger: 0.01, ease: "power2.out", overwrite: "auto" 
-      });
-
       const createFlash = (target) => {
         const tl = gsap.timeline();
         tl.to(target, { opacity: 1, filter: "brightness(2)", duration: 0.05, ease: "none" })
@@ -102,208 +111,115 @@
         return tl;
       };
 
-      const getRandomChar = () => chars[gsap.utils.random(0, chars.length - 1, 1)];
-
       const doBurst = () => {
         if (hoverTL) hoverTL.kill();
         const tl = gsap.timeline({ delay: index * 0.1 });
         const flashesCount = Math.min(30, chars.length * 2); 
         for (let i = 0; i < flashesCount; i++) {
-          tl.add(createFlash(getRandomChar()), gsap.utils.random(0, 0.6));
+          tl.add(createFlash(chars[gsap.utils.random(0, chars.length - 1, 1)]), gsap.utils.random(0, 0.6));
         }
-        tl.add(settleAll(), 0.5);
-      };
-
-      const startHover = () => {
-        if (hoverTL) hoverTL.kill();
-        gsap.set(chars, { opacity: 1 });
-        hoverTL = gsap.timeline({ repeat: -1 });
-        const flashes = Math.max(5, Math.floor(chars.length / 3));
-        for (let i = 0; i < flashes; i++) {
-          hoverTL.add(createFlash(getRandomChar()), gsap.utils.random(0, 1.5));
-        }
-      };
-
-      const stopHover = () => { 
-        if (hoverTL) hoverTL.kill(); 
-        gsap.to(chars, { opacity: 1, filter: "brightness(1)", duration: 0.3, overwrite: "auto" });
+        tl.to(chars, { opacity: 1, filter: "brightness(1)", duration: 0.5, stagger: 0.01, ease: "power2.out" }, 0.5);
       };
 
       doBurst();
-      el.addEventListener("mouseenter", startHover, { passive: true });
-      el.addEventListener("mouseleave", stopHover, { passive: true });
+      el.addEventListener("mouseenter", () => {
+        if (hoverTL) hoverTL.kill();
+        hoverTL = gsap.timeline({ repeat: -1 });
+        for (let i = 0; i < 5; i++) {
+          hoverTL.add(createFlash(chars[gsap.utils.random(0, chars.length - 1, 1)]), gsap.utils.random(0, 1.5));
+        }
+      }, { passive: true });
+      
+      el.addEventListener("mouseleave", () => {
+        if (hoverTL) hoverTL.kill();
+        gsap.to(chars, { opacity: 1, filter: "brightness(1)", duration: 0.3 });
+      }, { passive: true });
     });
   };
 
   /* ==========================================================================
-   * PAGE TRANSITIONS LOGIC
+   * TRANSITIONS & LINK INTERCEPTION
    * ========================================================================== */
   const handlePageLoadTransition = (onAnimationStart) => {
-    if (!DOM.overlay) return false;
-    if (sessionStorage.getItem(STORAGE_KEYS.PENDING) === "1") {
-      sessionStorage.removeItem(STORAGE_KEYS.PENDING);
-      gsap.fromTo(DOM.overlay, 
-        { autoAlpha: 1, display: "block", pointerEvents: "all" },
-        { 
-          autoAlpha: 0, 
-          duration: ANIM_CONFIG.pageTransition.out, 
-          ease: ANIM_CONFIG.pageTransition.ease,
-          onStart: () => { if (onAnimationStart) onAnimationStart(); },
-          onComplete: () => gsap.set(DOM.overlay, { display: "none", pointerEvents: "none" })
-        }
-      );
-      return true;
-    }
-    gsap.set(DOM.overlay, { autoAlpha: 0, display: "none", pointerEvents: "none" });
-    return false;
+    if (!DOM.overlay || sessionStorage.getItem(STORAGE_KEYS.PENDING) !== "1") return false;
+    sessionStorage.removeItem(STORAGE_KEYS.PENDING);
+    gsap.fromTo(DOM.overlay, { autoAlpha: 1, display: "block" }, {
+      autoAlpha: 0, duration: ANIM_CONFIG.pageTransition.out, ease: ANIM_CONFIG.pageTransition.ease,
+      onStart: onAnimationStart,
+      onComplete: () => gsap.set(DOM.overlay, { display: "none" })
+    });
+    return true;
   };
 
   const handleInternalLinkClick = (e) => {
     if (isAnimationRunning) return;
-    const link = e.target.closest("a");
-    if (!shouldInterceptLink(link)) return;
-
+    const a = e.target.closest("a");
+    if (!a || a.target === "_blank" || a.hasAttribute("download") || !a.href.includes(location.hostname)) return;
+    
     e.preventDefault();
     sessionStorage.setItem(STORAGE_KEYS.PENDING, "1");
-
-    gsap.to(DOM.overlay, {
-      display: "block",
-      autoAlpha: 1,
-      duration: ANIM_CONFIG.pageTransition.in,
-      ease: ANIM_CONFIG.pageTransition.ease,
-      pointerEvents: "all",
-      onComplete: () => (location.href = link.href),
-    });
-  };
-
-  const shouldInterceptLink = (a) => {
-    if (!a || (a.target && a.target !== "_self") || a.hasAttribute("download")) return false;
-    const href = a.getAttribute("href");
-    if (!href || href === "#" || href.startsWith("mailto:") || href.startsWith("tel:")) return false;
-    let url; try { url = new URL(a.href, location.href); } catch { return false; }
-    if (url.origin !== location.origin) return false;
-    if (url.pathname === location.pathname && url.search === location.search && url.hash) return false;
-    if (sessionStorage.getItem(STORAGE_KEYS.SEEN) !== "1") return false;
-    return true;
+    gsap.to(DOM.overlay, { display: "block", autoAlpha: 1, duration: ANIM_CONFIG.pageTransition.in, onComplete: () => location.href = a.href });
   };
 
   /* ==========================================================================
-   * BFCache / BACK BUTTON FIX
-   * ========================================================================== */
-  window.addEventListener("pageshow", (event) => {
-    if (event.persisted) {
-      isAnimationRunning = false;
-      sessionStorage.removeItem(STORAGE_KEYS.PENDING);
-      if (DOM.overlay) gsap.set(DOM.overlay, { autoAlpha: 0, display: "none", pointerEvents: "none" });
-      gsap.set(DOM.revealElements, { autoAlpha: 0, y: 10 });
-      initBlinkEffect();
-    }
-  });
-
-  /* ==========================================================================
-   * MAIN INITIALIZATION
+   * MAIN INIT
    * ========================================================================== */
   const init = () => {
-    // Reset immediato reveal elements
-    if (DOM.revealElements.length) {
-      gsap.set(DOM.revealElements, { autoAlpha: 0, y: 10 });
-    }
+    const hasPreloaderUI = DOM.preloader && UI.count && images.length > 0;
+    const alreadySeen = sessionStorage.getItem(STORAGE_KEYS.SEEN) === "1";
 
-    const hasRequiredUI = DOM.preloader && UI.count && UI.lineWrap && UI.lineFill;
-    const hasSeenPreloader = sessionStorage.getItem(STORAGE_KEYS.SEEN) === "1";
+    if (DOM.overlay) document.addEventListener("click", handleInternalLinkClick);
 
-    if (DOM.overlay) {
-      document.addEventListener("click", handleInternalLinkClick, { passive: false });
-    }
-
-    // Timer Fallback: se dopo 4s il preloader è bloccato, forza l'apparizione
-    const fallbackTimer = setTimeout(() => {
-        if (isAnimationRunning) {
-            if (DOM.preloader) gsap.to(DOM.preloader, { autoAlpha: 0, duration: 0.5, onComplete: () => DOM.preloader.style.display = "none" });
-            initBlinkEffect();
-            isAnimationRunning = false;
-        }
-    }, 4000);
-
-    if (hasRequiredUI && !hasSeenPreloader && images.length > 0) {
+    if (hasPreloaderUI && !alreadySeen) {
       isAnimationRunning = true;
+      gsap.set(DOM.preloader, { display: "flex", autoAlpha: 1 });
       
-      const setupInitialState = () => {
-        Object.assign(DOM.preloader.style, { position: "fixed", inset: "0", zIndex: "2147483647", display: "flex", opacity: "1" });
-        UI.count.textContent = "0";
-        Object.assign(UI.lineFill.style, { transformOrigin: "left center", transform: "scaleX(0)" });
-        images.forEach((img, i) => {
-           img.style.zIndex = String(i + 1);
-           gsap.set(img, { clipPath: "inset(0 0 100% 0)" });
-        });
-      };
+      // Setup Immagini (clip-path via JS)
+      images.forEach((img, i) => {
+        img.style.position = "absolute";
+        img.style.inset = "0";
+        img.style.objectFit = "cover";
+        img.style.zIndex = i + 1;
+        gsap.set(img, { clipPath: "inset(0 0 100% 0)" });
+      });
 
-      let splitInstance = null, splitChars = [];
-      const setupPreloaderText = () => {
-        if (!UI.text) return;
-        UI.text.style.visibility = "hidden";
-        // Controllo SplitText (Evita errori se non hai la licenza)
-        if (window.SplitText) {
-          splitInstance = new SplitText(UI.text, { type: "words, chars", charsClass: "st-char" });
-          splitChars = splitInstance.chars || [];
-          gsap.set(splitChars, { opacity: 0 });
+      const tl = gsap.timeline({ 
+        onComplete: () => {
+          sessionStorage.setItem(STORAGE_KEYS.SEEN, "1");
+          isAnimationRunning = false;
         }
-        UI.text.style.visibility = "visible";
-      };
+      });
 
-      const runPreloader = () => {
-        const C = ANIM_CONFIG.preloader;
-        const tl = gsap.timeline({ defaults: { ease: C.clipEase } });
-        const endAt = C.durationMs / 1000;
+      const prog = { val: 0 };
+      tl.to(prog, { val: 100, duration: ANIM_CONFIG.preloader.durationMs/1000, ease: "none", 
+        onUpdate: () => {
+          UI.count.textContent = Math.floor(prog.val);
+          gsap.set(UI.lineFill, { scaleX: prog.val / 100 });
+        }
+      }, 0);
 
-        const progress = { val: 0 };
-        tl.to(progress, {
-          val: 100, duration: endAt, ease: "none",
-          onUpdate: () => {
-            const p = progress.val | 0;
-            UI.count.textContent = p;
-            gsap.set(UI.lineFill, { scaleX: p / 100 });
-          }
-        }, 0);
+      images.forEach((img, i) => {
+        tl.to(img, { clipPath: "inset(0 0 0% 0)", duration: 0.3 }, 0.2 + (i * 0.2));
+      });
 
-        if (splitChars.length) tl.to(splitChars, { opacity: 1, duration: C.text.duration, ease: C.text.ease, stagger: C.text.stagger }, 0); 
-        images.forEach((img, i) => { tl.to(img, { clipPath: "inset(0 0 0% 0)", duration: C.open.duration }, C.clipDelay + (i * C.open.stagger)); });
-        
-        const uiElements = [UI.lineWrap, UI.count, UI.text].filter(Boolean);
-        tl.to(uiElements, { opacity: 0, duration: C.uiFade, ease: "power2.out" }, endAt - 0.1);
+      const end = ANIM_CONFIG.preloader.durationMs/1000;
+      tl.to([UI.lineWrap, UI.count, UI.text], { autoAlpha: 0, duration: 0.3 }, end - 0.2);
+      
+      [...images].reverse().forEach((img, i) => {
+        tl.to(img, { clipPath: "inset(100% 0 0 0)", duration: 0.4 }, end + (i * 0.2));
+      });
 
-        const reversedImages = [...images].reverse();
-        reversedImages.forEach((img, i) => { tl.to(img, { clipPath: "inset(0 0 100% 0)", duration: C.close.duration }, endAt + (i * C.close.stagger)); });
-
-        const totalCloseTime = (C.close.stagger * (reversedImages.length - 1)) + C.close.duration;
-        const fadeOutStartTime = endAt + totalCloseTime + 0.06;
-
-        tl.call(() => {
-            clearTimeout(fallbackTimer);
-            initBlinkEffect();
-        }, null, fadeOutStartTime);
-
-        tl.to(DOM.preloader, { autoAlpha: 0, duration: C.out.duration, ease: C.out.ease }, fadeOutStartTime);
-        tl.set(DOM.preloader, { display: "none" })
-          .add(() => {
-            sessionStorage.setItem(STORAGE_KEYS.SEEN, "1");
-            isAnimationRunning = false;
-            if (splitInstance?.revert) splitInstance.revert();
-          });
-      };
-
-      setupInitialState();
-      setupPreloaderText();
-      runPreloader();
+      tl.call(initBlinkEffect, null, ">");
+      tl.to(DOM.preloader, { autoAlpha: 0, duration: 0.6, display: "none" });
 
     } else {
-      clearTimeout(fallbackTimer);
       if (DOM.preloader) DOM.preloader.style.display = "none";
-      const isTransitioning = handlePageLoadTransition(initBlinkEffect);
-      if (!isTransitioning) initBlinkEffect();
+      if (!handlePageLoadTransition(initBlinkEffect)) initBlinkEffect();
     }
   };
 
-  init();
+  // Supporto BFCache (Back button)
+  window.addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
 
+  window.addEventListener("DOMContentLoaded", init);
 })();

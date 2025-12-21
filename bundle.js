@@ -1,16 +1,9 @@
 (() => {
-  // Controllo librerie necessarie
-  if (!window.gsap) {
-    console.warn("GSAP non trovato. Assicurati di caricarlo prima di questo script.");
-    return;
-  }
+  if (!window.gsap) return;
 
-  /* ==========================================================================
-   * CONFIGURAZIONE
-   * ========================================================================== */
   const STORAGE_KEYS = { SEEN: "preloader_seen_session" };
-  
-  // Selettori dinamici (da ricalcolare a ogni cambio pagina)
+
+  // Helper per selezionare elementi aggiornati dopo il cambio pagina
   const getDOM = () => ({
     preloader: document.querySelector(".preloader"),
     wrap: document.querySelector("[data-load-wrap]"),
@@ -27,7 +20,6 @@
    * ========================================================================== */
   const initLenis = () => {
     if (lenis) lenis.destroy();
-    // Assicurati che la libreria Lenis sia caricata nel progetto
     if (window.Lenis) {
       lenis = new Lenis({ autoRaf: true, smoothWheel: true });
       const raf = (time) => { lenis.raf(time); requestAnimationFrame(raf); };
@@ -36,12 +28,12 @@
   };
 
   /* ==========================================================================
-   * LOGIC: BLINK & REVEAL
+   * EFFETTI: BLINK & REVEAL
    * ========================================================================== */
   const initEffects = () => {
     const DOM = getDOM();
 
-    // 1. Reveal Elements (Opacity + Y movement)
+    // Reveal Elements
     if (DOM.revealElements.length) {
       gsap.fromTo(DOM.revealElements, 
         { opacity: 0, y: 40 }, 
@@ -49,15 +41,13 @@
       );
     }
 
-    // 2. Blink Text Effect
+    // Blink Text
     DOM.blinkTexts.forEach((el) => {
       if (el.dataset.wrapped) return;
-      
       const raw = el.innerHTML.replace(/<br\s*\/?>/gi, "\n");
       el.innerHTML = raw.split("").map(ch => {
         if (ch === "\n") return "<br>";
-        const safeChar = ch === " " ? "&nbsp;" : ch;
-        return `<span class="blink-char" style="opacity:0; filter:brightness(0.5); display:inline-block; will-change:opacity, filter;">${safeChar}</span>`;
+        return `<span class="blink-char" style="opacity:0; filter:brightness(0.5); display:inline-block; will-change:opacity, filter;">${ch === " " ? "&nbsp;" : ch}</span>`;
       }).join("");
       el.dataset.wrapped = "1";
 
@@ -78,51 +68,44 @@
   };
 
   /* ==========================================================================
-   * NAVIGAZIONE: VIEW TRANSITIONS API (JS Only)
+   * NAVIGAZIONE: VIEW TRANSITION API (CORRETTA)
    * ========================================================================== */
   const handleNavigation = () => {
-    // Se il browser non supporta l'API, la navigazione resta standard
     if (!document.startViewTransition) return;
 
     window.addEventListener("click", (e) => {
       const link = e.target.closest("a");
-      if (!link || !link.href.includes(location.hostname) || link.target === "_blank" || link.hasAttribute("download")) return;
+      if (!link || !link.href.includes(location.hostname) || link.target === "_blank" || link.hasAttribute("download") || link.getAttribute("href").startsWith("#")) return;
       
-      // Escludi anchor link interni (#)
-      if (link.getAttribute("href").startsWith("#")) return;
-
       e.preventDefault();
 
+      // Avviamo la transizione PRIMA del fetch per permettere al browser di "fotografare" la vecchia pagina
       document.startViewTransition(async () => {
         try {
           const response = await fetch(link.href);
           const text = await response.text();
           const nextHtml = new DOMParser().parseFromString(text, "text/html");
           
-          // Cambio contenuti
+          // Sostituzione contenuti
           document.body.innerHTML = nextHtml.body.innerHTML;
           document.title = nextHtml.title;
           
-          // Reset post-navigazione
           window.scrollTo(0, 0);
           initLenis();
           initEffects();
         } catch (err) {
-          console.error("Errore nel caricamento pagina:", err);
-          location.href = link.href; // Fallback in caso di errore fetch
+          location.href = link.href;
         }
       });
     });
   };
 
   /* ==========================================================================
-   * LOGICA PRELOADER
+   * PRELOADER
    * ========================================================================== */
-  const runPreloader = (DOM) => {
-    const UI = {
-      count: document.querySelector("[data-count]"),
-      lineFill: document.querySelector(".line__animate"),
-    };
+  const runPreloader = () => {
+    const DOM = getDOM();
+    const UI = { count: document.querySelector("[data-count]"), lineFill: document.querySelector(".line__animate") };
 
     isAnimationRunning = true;
     gsap.set(DOM.preloader, { display: "flex", opacity: 1, position: "fixed", inset: 0, zIndex: 9999 });
@@ -146,37 +129,31 @@
       tl.to(img, { clipPath: "inset(0 0 0% 0)", duration: 0.3 }, 0.2 + (i * 0.2));
     });
 
-    tl.to(DOM.preloader, { opacity: 0, duration: 0.6, ease: "sine.inOut" });
+    tl.to(DOM.preloader, { opacity: 0, duration: 0.6 });
     tl.set(DOM.preloader, { display: "none" });
   };
 
   /* ==========================================================================
-   * INITIALIZATION
+   * INIT
    * ========================================================================== */
   const init = () => {
-    const DOM = getDOM();
     initLenis();
     handleNavigation();
 
     const alreadySeen = sessionStorage.getItem(STORAGE_KEYS.SEEN) === "1";
+    const DOM = getDOM();
     
     if (DOM.preloader && !alreadySeen && DOM.images.length > 0) {
-      runPreloader(DOM);
+      runPreloader();
     } else {
       if (DOM.preloader) DOM.preloader.style.display = "none";
       initEffects();
     }
   };
 
-  // Avvio
   init();
 
-  // Gestione BFCache (Back button)
   window.addEventListener("pageshow", (e) => {
-    if (e.persisted) {
-      initLenis();
-      initEffects();
-    }
+    if (e.persisted) { initLenis(); initEffects(); }
   });
-
 })();

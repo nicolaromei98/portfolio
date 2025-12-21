@@ -1,193 +1,215 @@
-/**
- * ULTRA-FLUID NAVIGATION SYSTEM
- * Preloader + Navigation API + View Transitions + GSAP Synchronizer
- */
-
 (() => {
-  // Controllo compatibilità GSAP
-  if (!window.gsap) return;
+  if (!window.gsap) return;
 
-  /* ==========================================================================
-   * 1. CONFIGURAZIONE E ELEMENTI
-   * ========================================================================== */
-  const STORAGE_KEYS = { SEEN: "preloader_seen_session" };
+  /* ==========================================================================
+   * CONFIGURATION
+   * ========================================================================== */
+  const STORAGE_KEYS = {
+    SEEN: "preloader_seen_session",
+    PENDING: "page_transition_pending",
+  };
 
-  // Utilizziamo getter per assicurarci di trovare gli elementi anche dopo il cambio DOM
-  const DOM = {
-    get preloader() { return document.querySelector(".preloader"); },
-    get overlay() { return document.querySelector(".page-transition"); },
-    get blinkTexts() { return document.querySelectorAll("[data-blink-text]"); },
-    get count() { return document.querySelector("[data-count]"); },
-    get lineFill() { return document.querySelector(".line__animate"); }
-  };
+  const ANIM_CONFIG = {
+    preloader: {
+      durationMs: 2400,
+      clipEase: "power2.inOut",
+      clipDelay: 0.18,
+      open: { duration: 0.28, stagger: 0.28 },
+      uiFade: 0.28,
+      close: { duration: 0.42, stagger: 0.42 },
+      out: { duration: 0.6, ease: "sine.inOut" },
+      text: { duration: 0.1, stagger: 0.03, ease: "none" },
+    },
+    pageTransition: {
+      in: 0.6,
+      out: 0.6,
+      ease: "sine.inOut"
+    }
+  };
 
-  /* ==========================================================================
-   * 2. LOGICA ANIMAZIONI (Sincronizzazione)
-   * ========================================================================== */
-  
-  // Chiude il sipario prima di cambiare pagina
-  const hidePage = () => {
-    return gsap.to(DOM.overlay, {
-      display: "block",
-      opacity: 1,
-      duration: 0.5,
-      ease: "power2.inOut",
-      pointerEvents: "all"
-    });
-  };
+  /* ==========================================================================
+   * DOM ELEMENTS
+   * ========================================================================== */
+  const select = (sel, root = document) => root.querySelector(sel);
+  const selectAll = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-  // Apre il sipario dopo che la nuova pagina è pronta
-  const showPage = () => {
-    return gsap.fromTo(DOM.overlay, 
-      { opacity: 1 },
-      { 
-        opacity: 0, 
-        duration: 0.6, 
-        ease: "sine.inOut",
-        onComplete: () => gsap.set(DOM.overlay, { display: "none", pointerEvents: "none" }) 
-      }
-    );
-  };
+  const DOM = {
+    preloader: select(".preloader"),
+    wrap: select("[data-load-wrap]"),
+    overlay: select(".page-transition"),
+    blinkTexts: selectAll("[data-blink-text]"),
+  };
 
-  /* ==========================================================================
-   * 3. EFFETTO TIPOGRAFICO (BLINK)
-   * ========================================================================== */
-  const initBlinkEffect = () => {
-    DOM.blinkTexts.forEach((el, index) => {
-      if (el.dataset.wrapped) return;
+  const UI = DOM.preloader ? {
+    count: select("[data-count]", DOM.preloader),
+    lineWrap: select(".preloader__line", DOM.preloader),
+    lineFill: select(".line__animate", DOM.preloader),
+    text: select("[data-load-text]", DOM.preloader),
+  } : {};
 
-      const raw = el.innerHTML.replace(/<br\s*\/?>/gi, "\n");
-      el.innerHTML = raw.split("").map(ch => {
-        if (ch === "\n") return "<br>";
-        const safeChar = ch === " " ? "&nbsp;" : ch;
-        return `<span class="blink-char" style="opacity:0; filter:brightness(0.5); display:inline-block; will-change:opacity, filter;">${safeChar}</span>`;
-      }).join("");
-      
-      el.dataset.wrapped = "1";
-      const chars = el.querySelectorAll(".blink-char");
+  const images = DOM.wrap ? selectAll("[data-load-img]", DOM.wrap) : [];
+  let isAnimationRunning = false;
 
-      const tl = gsap.timeline({ delay: index * 0.1 });
-      chars.forEach(char => {
-        tl.to(char, { 
-          opacity: 1, 
-          filter: "brightness(1)", 
-          duration: 0.05, 
-          ease: "none" 
-        }, gsap.utils.random(0, 0.5));
-      });
-    });
-  };
+  /* ==========================================================================
+   * LOGIC: BLINK TEXT EFFECT
+   * ========================================================================== */
+  const initBlinkEffect = () => {
+    DOM.blinkTexts.forEach((el, index) => {
+      if (!el.dataset.wrapped) {
+        const raw = el.innerHTML.replace(/<br\s*\/?>/gi, "\n");
+        el.innerHTML = raw.split("").map(ch => {
+          if (ch === "\n") return "<br>";
+          const safeChar = ch === " " ? "&nbsp;" : ch;
+          return `<span class="blink-char" style="opacity:0; filter:brightness(0.5); display:inline-block; will-change:opacity, filter;">${safeChar}</span>`;
+        }).join("");
+        el.dataset.wrapped = "1";
+      }
 
-  /* ==========================================================================
-   * 4. NAVIGATION API & VIEW TRANSITIONS
-   * ========================================================================== */
-  const initModernNavigation = () => {
-    if (!window.navigation) return;
+      const chars = el.querySelectorAll(".blink-char");
+      let hoverTL;
 
-    navigation.addEventListener("navigate", (event) => {
-      const url = new URL(event.destination.url);
+      const settleAll = () => gsap.to(chars, { 
+        opacity: 1, filter: "brightness(1)", duration: 0.5, stagger: 0.01, ease: "power2.out", overwrite: "auto" 
+      });
 
-      // Filtri di sicurezza
-      if (
-        url.origin !== location.origin || 
-        event.downloadRequest || 
-        !event.canIntercept ||
-        url.href === location.href
-      ) return;
+      const createFlash = (target) => {
+        const tl = gsap.timeline();
+        tl.to(target, { opacity: 1, filter: "brightness(2)", duration: 0.05, ease: "none" })
+          .to(target, { opacity: 0.2, filter: "brightness(0.5)", duration: 0.05, ease: "none" })
+          .to(target, { opacity: 1, filter: "brightness(1)", duration: 0.1, ease: "none" });
+        return tl;
+      };
 
-      event.intercept({
-        handler: async () => {
-          // A. Chiudi il sipario (Attendiamo che GSAP finisca)
-          await hidePage();
+      const getRandomChar = () => chars[gsap.utils.random(0, chars.length - 1, 1)];
 
-          // B. Carica la nuova pagina
-          const response = await fetch(url.href);
-          const html = await response.text();
-          const parser = new DOMParser();
-          const nextDoc = parser.parseFromString(html, "text/html");
+      const doBurst = () => {
+        if (hoverTL) hoverTL.kill();
+        const tl = gsap.timeline({ delay: index * 0.1 });
+        const flashesCount = Math.min(30, chars.length * 2); 
+        for (let i = 0; i < flashesCount; i++) {
+          tl.add(createFlash(getRandomChar()), gsap.utils.random(0, 0.6));
+        }
+        tl.add(settleAll(), 0.5);
+      };
 
-          // C. Scambio contenuto con View Transition API
-          if (document.startViewTransition) {
-            const transition = document.startViewTransition(() => {
-              applyNewContent(nextDoc);
-            });
-            await transition.finished;
-          } else {
-            applyNewContent(nextDoc);
-          }
+      const startHover = () => {
+        if (hoverTL) hoverTL.kill();
+        gsap.set(chars, { opacity: 1 });
+        hoverTL = gsap.timeline({ repeat: -1 });
+        const flashes = Math.max(5, Math.floor(chars.length / 3));
+        for (let i = 0; i < flashes; i++) {
+          hoverTL.add(createFlash(getRandomChar()), gsap.utils.random(0, 1.5));
+        }
+      };
 
-          // D. Riavvio e Apertura
-          reinitializeAll();
-          showPage();
-        }
-      });
-    });
-  };
+      const stopHover = () => { 
+        if (hoverTL) hoverTL.kill(); 
+        gsap.to(chars, { opacity: 1, filter: "brightness(1)", duration: 0.3, overwrite: "auto" });
+      };
 
-  const applyNewContent = (nextDoc) => {
-    document.body.innerHTML = nextDoc.body.innerHTML;
-    document.title = nextDoc.title;
-    window.scrollTo(0, 0);
-  };
+      doBurst();
+      el.addEventListener("mouseenter", startHover, { passive: true });
+      el.addEventListener("mouseleave", stopHover, { passive: true });
+    });
+  };
 
-  /* ==========================================================================
-   * 5. GESTIONE PRELOADER (Primo Accesso)
-   * ========================================================================== */
-  const runPreloader = () => {
-    const tl = gsap.timeline({
-      onComplete: () => {
-        sessionStorage.setItem(STORAGE_KEYS.SEEN, "1");
-        gsap.to(DOM.preloader, { 
-          opacity: 0, 
-          duration: 0.8, 
-          display: "none", 
-          onComplete: () => {
-            initBlinkEffect();
-            showPage();
-          }
-        });
-      }
-    });
+  /* ==========================================================================
+   * PAGE TRANSITIONS LOGIC
+   * ========================================================================== */
+  const handlePageLoadTransition = (onAnimationStart) => {
+    if (!DOM.overlay) return false;
+    
+    if (sessionStorage.getItem(STORAGE_KEYS.PENDING) === "1") {
+      sessionStorage.removeItem(STORAGE_KEYS.PENDING);
+      
+      gsap.fromTo(DOM.overlay, 
+        { opacity: 1, display: "block", pointerEvents: "all" },
+        { 
+          opacity: 0, 
+          duration: ANIM_CONFIG.pageTransition.out, 
+          ease: ANIM_CONFIG.pageTransition.ease,
+          onStart: () => { if (onAnimationStart) onAnimationStart(); },
+          onComplete: () => gsap.set(DOM.overlay, { display: "none", pointerEvents: "none" })
+        }
+      );
+      return true;
+    }
+    
+    gsap.set(DOM.overlay, { opacity: 0, display: "none", pointerEvents: "none" });
+    return false;
+  };
 
-    if (DOM.lineFill) tl.to(DOM.lineFill, { scaleX: 1, duration: 1.5, ease: "power2.inOut" });
-    if (DOM.count) tl.to(DOM.count, { innerText: 100, snap: { innerText: 1 }, duration: 1.5 }, 0);
-  };
+  const handleInternalLinkClick = (e) => {
+    if (isAnimationRunning) return;
+    const link = e.target.closest("a");
+    if (!shouldInterceptLink(link)) return;
 
-  /* ==========================================================================
-   * 6. BOOTSTRAP
-   * ========================================================================== */
-  const reinitializeAll = () => {
-    initBlinkEffect();
-    // Inserisci qui altre init per scroll-trigger, lenis, etc.
-  };
+    e.preventDefault();
+    sessionStorage.setItem(STORAGE_KEYS.PENDING, "1");
 
-  const init = () => {
-    const hasSeenPreloader = sessionStorage.getItem(STORAGE_KEYS.SEEN) === "1";
+    gsap.to(DOM.overlay, {
+      display: "block",
+      opacity: 1,
+      duration: ANIM_CONFIG.pageTransition.in,
+      ease: ANIM_CONFIG.pageTransition.ease,
+      pointerEvents: "all",
+      onComplete: () => (location.href = link.href),
+    });
+  };
 
-    if (DOM.preloader && !hasSeenPreloader) {
-      // Setup iniziale preloader
-      gsap.set(DOM.preloader, { display: "flex", opacity: 1 });
-      runPreloader();
-    } else {
-      // Salta preloader
-      if (DOM.preloader) DOM.preloader.style.display = "none";
-      initBlinkEffect();
-      // Se veniamo da un ricaricamento forzato, assicuriamoci che l'overlay sia via
-      gsap.set(DOM.overlay, { display: "none", opacity: 0 });
-    }
+  const shouldInterceptLink = (a) => {
+    if (!a || (a.target && a.target !== "_self") || a.hasAttribute("download")) return false;
+    const href = a.getAttribute("href");
+    if (!href || href === "#" || href.startsWith("mailto:") || href.startsWith("tel:")) return false;
+    let url; try { url = new URL(a.href, location.href); } catch { return false; }
+    if (url.origin !== location.origin) return false;
+    if (url.pathname === location.pathname && url.search === location.search && url.hash) return false;
+    if (sessionStorage.getItem(STORAGE_KEYS.SEEN) !== "1") return false;
+    return true;
+  };
 
-    initModernNavigation();
-  };
+  /* ==========================================================================
+   * BFCache / BACK BUTTON FIX
+   * ========================================================================== */
+  window.addEventListener("pageshow", (event) => {
+    // Se la pagina viene caricata dalla cache (tasto Back)
+    if (event.persisted) {
+      isAnimationRunning = false;
+      sessionStorage.removeItem(STORAGE_KEYS.PENDING);
+      
+      // Reset immediato dell'overlay
+      if (DOM.overlay) {
+        gsap.set(DOM.overlay, { opacity: 0, display: "none", pointerEvents: "none" });
+      }
+      
+      // Riavvia gli effetti blink (altrimenti rimarrebbero statici)
+      initBlinkEffect();
+    }
+  });
 
-  // Avvio al caricamento del DOM
-  window.addEventListener("load", init);
+  /* ==========================================================================
+   * MAIN INITIALIZATION
+   * ========================================================================== */
+  const init = () => {
+    const hasRequiredUI = DOM.preloader && images.length && UI.count && UI.lineWrap && UI.lineFill;
+    const hasSeenPreloader = sessionStorage.getItem(STORAGE_KEYS.SEEN) === "1";
 
-  // Fix BFCache (tasto indietro)
-  window.addEventListener("pageshow", (event) => {
-    if (event.persisted) {
-      gsap.set(DOM.overlay, { display: "none", opacity: 0 });
-      reinitializeAll();
-    }
-  });
+    if (DOM.overlay) {
+      document.addEventListener("click", handleInternalLinkClick, { passive: false });
+    }
 
-})();
+    if (hasRequiredUI && !hasSeenPreloader) {
+      // --- LOGICA PRELOADER ---
+      isAnimationRunning = true;
+      
+      const setupInitialState = () => {
+        Object.assign(DOM.preloader.style, { position: "fixed", inset: "0", zIndex: "2147483647", display: "flex", opacity: "1" });
+        UI.count.textContent = "0";
+        Object.assign(UI.lineFill.style, { transformOrigin: "left center", transform: "scaleX(0)" });
+        images.forEach((img, i) => {
+           img.style.zIndex = String(i + 1);
+           gsap.set(img, { clipPath: "inset(0 0 100% 0)" });
+        });
+      };
+
+      let splitInstance = null, splitChars = [];

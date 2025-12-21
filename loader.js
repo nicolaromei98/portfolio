@@ -38,7 +38,8 @@
     wrap: select("[data-load-wrap]"),
     overlay: select(".page-transition"),
     blinkTexts: selectAll("[data-blink-text]"),
-    eyebrows: selectAll("[data-eyebrow]"), // Nuovi elementi
+    eyebrows: selectAll("[data-eyebrow]"),
+    heroTab: select(".hero__tab-wrap"), // Nuovo elemento
   };
 
   const UI = DOM.preloader ? {
@@ -52,13 +53,12 @@
   let isAnimationRunning = false;
 
   /* ==========================================================================
-   * SHARED ANIMATION: SPLIT TEXT (EYEBROWS & PRELOADER)
+   * SHARED ANIMATION: SPLIT TEXT
    * ========================================================================== */
   const runSplitAnimation = (elements, config = ANIM_CONFIG.preloader.text) => {
     if (!window.SplitText || !elements.length) return;
 
     elements.forEach(el => {
-      // Evita doppie inizializzazioni
       if (el.dataset.splitDone) return;
       
       const split = new SplitText(el, { type: "words, chars", charsClass: "st-char" });
@@ -71,7 +71,6 @@
         stagger: config.stagger,
         onComplete: () => {
           el.dataset.splitDone = "1";
-          // Opzionale: split.revert(); // Scommenta se vuoi pulire il DOM dopo l'animazione
         }
       });
     });
@@ -81,10 +80,8 @@
    * LOGIC: BLINK TEXT EFFECT + EYEBROWS
    * ========================================================================== */
   const initBlinkAndEyebrows = () => {
-    // 1. Anima i testi "eyebrow" con lo stile split-text
     runSplitAnimation(DOM.eyebrows);
 
-    // 2. Anima l'effetto Blink (codice originale)
     DOM.blinkTexts.forEach((el, index) => {
       if (!el.dataset.wrapped) {
         const raw = el.innerHTML.replace(/<br\s*\/?>/gi, "\n");
@@ -147,6 +144,20 @@
   /* ==========================================================================
    * PAGE TRANSITIONS LOGIC
    * ========================================================================== */
+  const shouldInterceptLink = (a) => {
+    if (!a || (a.target && a.target !== "_self") || a.hasAttribute("download")) return false;
+    
+    const href = a.getAttribute("href");
+    if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) return false;
+    
+    try {
+      const url = new URL(a.href, window.location.origin);
+      return url.hostname === window.location.hostname;
+    } catch (e) {
+      return false;
+    }
+  };
+
   const handlePageLoadTransition = (onAnimationStart) => {
     if (!DOM.overlay) return false;
     
@@ -173,6 +184,7 @@
   const handleInternalLinkClick = (e) => {
     if (isAnimationRunning) return;
     const link = e.target.closest("a");
+    
     if (!shouldInterceptLink(link)) return;
 
     e.preventDefault();
@@ -184,19 +196,10 @@
       duration: ANIM_CONFIG.pageTransition.in,
       ease: ANIM_CONFIG.pageTransition.ease,
       pointerEvents: "all",
-      onComplete: () => (location.href = link.href),
+      onComplete: () => {
+        window.location.href = link.href;
+      },
     });
-  };
-
-  const shouldInterceptLink = (a) => {
-    if (!a || (a.target && a.target !== "_self") || a.hasAttribute("download")) return false;
-    const href = a.getAttribute("href");
-    if (!href || href === "#" || href.startsWith("mailto:") || href.startsWith("tel:")) return false;
-    let url; try { url = new URL(a.href, location.href); } catch { return false; }
-    if (url.origin !== location.origin) return false;
-    if (url.pathname === location.pathname && url.search === location.search && url.hash) return false;
-    if (sessionStorage.getItem(STORAGE_KEYS.SEEN) !== "1") return false;
-    return true;
   };
 
   /* ==========================================================================
@@ -209,7 +212,7 @@
       if (DOM.overlay) {
         gsap.set(DOM.overlay, { opacity: 0, display: "none", pointerEvents: "none" });
       }
-      // Reset attributi per riattivare le animazioni
+      if (DOM.heroTab) gsap.set(DOM.heroTab, { opacity: 1 });
       DOM.eyebrows.forEach(el => delete el.dataset.splitDone);
       initBlinkAndEyebrows();
     }
@@ -222,9 +225,7 @@
     const hasRequiredUI = DOM.preloader && images.length && UI.count && UI.lineWrap && UI.lineFill;
     const hasSeenPreloader = sessionStorage.getItem(STORAGE_KEYS.SEEN) === "1";
 
-    if (DOM.overlay) {
-      document.addEventListener("click", handleInternalLinkClick, { passive: false });
-    }
+    document.addEventListener("click", handleInternalLinkClick);
 
     if (hasRequiredUI && !hasSeenPreloader) {
       isAnimationRunning = true;
@@ -233,6 +234,10 @@
         Object.assign(DOM.preloader.style, { position: "fixed", inset: "0", zIndex: "2147483647", display: "flex", opacity: "1" });
         UI.count.textContent = "0";
         Object.assign(UI.lineFill.style, { transformOrigin: "left center", transform: "scaleX(0)" });
+        
+        // Imposta stato iniziale per heroTab
+        if (DOM.heroTab) gsap.set(DOM.heroTab, { opacity: 0 });
+
         images.forEach((img, i) => {
            img.style.zIndex = String(i + 1);
            gsap.set(img, { clipPath: "inset(0 0 100% 0)" });
@@ -254,7 +259,6 @@
           }
         }, 0);
 
-        // Anima il testo del preloader usando la nuova funzione condivisa
         if (UI.text) {
             tl.add(() => runSplitAnimation([UI.text]), 0);
         }
@@ -275,6 +279,12 @@
         const fadeOutStartTime = endAt + totalCloseTime + 0.06;
 
         tl.call(initBlinkAndEyebrows, null, fadeOutStartTime);
+        
+        // Animazione HERO TAB in contemporanea alla chiusura preloader
+        if (DOM.heroTab) {
+          tl.to(DOM.heroTab, { opacity: 1, duration: 1, ease: "power2.out" }, fadeOutStartTime);
+        }
+
         tl.to(DOM.preloader, { opacity: 0, duration: C.out.duration, ease: C.out.ease }, fadeOutStartTime);
         tl.set(DOM.preloader, { display: "none" })
           .add(() => {
@@ -288,6 +298,7 @@
 
     } else {
       if (DOM.preloader) DOM.preloader.style.display = "none";
+      if (DOM.heroTab) gsap.set(DOM.heroTab, { opacity: 1 }); // Sempre visibile se preloader saltato
       const isTransitioning = handlePageLoadTransition(initBlinkAndEyebrows);
       if (!isTransitioning) initBlinkAndEyebrows();
     }

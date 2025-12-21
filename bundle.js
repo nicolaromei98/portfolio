@@ -1,52 +1,56 @@
 (() => {
-  if (!window.gsap) return;
+  // Controllo librerie necessarie
+  if (!window.gsap) {
+    console.warn("GSAP non trovato. Assicurati di caricarlo prima di questo script.");
+    return;
+  }
 
   /* ==========================================================================
-   * CONFIGURAZIONE & SELETTORI
+   * CONFIGURAZIONE
    * ========================================================================== */
   const STORAGE_KEYS = { SEEN: "preloader_seen_session" };
   
-  const DOM = {
+  // Selettori dinamici (da ricalcolare a ogni cambio pagina)
+  const getDOM = () => ({
     preloader: document.querySelector(".preloader"),
     wrap: document.querySelector("[data-load-wrap]"),
-    // Usiamo funzioni per i selettori così da trovarli anche dopo il cambio pagina
-    blinkTexts: () => document.querySelectorAll("[data-blink-text]"),
-    revealElements: () => document.querySelectorAll("[data-reveal]"),
-  };
+    blinkTexts: document.querySelectorAll("[data-blink-text]"),
+    revealElements: document.querySelectorAll("[data-reveal]"),
+    images: document.querySelectorAll("[data-load-img]")
+  });
 
-  const images = DOM.wrap ? Array.from(DOM.wrap.querySelectorAll("[data-load-img]")) : [];
-  let isAnimationRunning = false;
   let lenis;
+  let isAnimationRunning = false;
 
   /* ==========================================================================
    * SMOOTH SCROLL (LENIS)
    * ========================================================================== */
   const initLenis = () => {
     if (lenis) lenis.destroy();
-    lenis = new Lenis({ autoRaf: true, smoothWheel: true });
-    
-    function raf(time) {
-      lenis.raf(time);
+    // Assicurati che la libreria Lenis sia caricata nel progetto
+    if (window.Lenis) {
+      lenis = new Lenis({ autoRaf: true, smoothWheel: true });
+      const raf = (time) => { lenis.raf(time); requestAnimationFrame(raf); };
       requestAnimationFrame(raf);
     }
-    requestAnimationFrame(raf);
   };
 
   /* ==========================================================================
-   * EFFETTI: BLINK & REVEAL
+   * LOGIC: BLINK & REVEAL
    * ========================================================================== */
   const initEffects = () => {
-    // 1. Reveal Elements (Stagger)
-    const reveals = DOM.revealElements();
-    if (reveals.length) {
-      gsap.fromTo(reveals, 
-        { opacity: 0, y: 30 }, 
-        { opacity: 1, y: 0, duration: 1, stagger: 0.15, ease: "power4.out", overwrite: "auto" }
+    const DOM = getDOM();
+
+    // 1. Reveal Elements (Opacity + Y movement)
+    if (DOM.revealElements.length) {
+      gsap.fromTo(DOM.revealElements, 
+        { opacity: 0, y: 40 }, 
+        { opacity: 1, y: 0, duration: 1.2, stagger: 0.1, ease: "power4.out", overwrite: "auto" }
       );
     }
 
     // 2. Blink Text Effect
-    DOM.blinkTexts().forEach((el) => {
+    DOM.blinkTexts.forEach((el) => {
       if (el.dataset.wrapped) return;
       
       const raw = el.innerHTML.replace(/<br\s*\/?>/gi, "\n");
@@ -58,7 +62,6 @@
       el.dataset.wrapped = "1";
 
       const chars = el.querySelectorAll(".blink-char");
-      
       const createFlash = (target) => {
         return gsap.timeline()
           .to(target, { opacity: 1, filter: "brightness(2)", duration: 0.05 })
@@ -66,7 +69,6 @@
           .to(target, { opacity: 1, filter: "brightness(1)", duration: 0.1 });
       };
 
-      // Burst iniziale
       const tl = gsap.timeline();
       for (let i = 0; i < Math.min(30, chars.length * 2); i++) {
         tl.add(createFlash(chars[gsap.utils.random(0, chars.length - 1, 1)]), gsap.utils.random(0, 0.6));
@@ -76,48 +78,54 @@
   };
 
   /* ==========================================================================
-   * NAVIGAZIONE: VIEW TRANSITIONS API
+   * NAVIGAZIONE: VIEW TRANSITIONS API (JS Only)
    * ========================================================================== */
   const handleNavigation = () => {
-    // Se il browser non supporta le View Transitions, usiamo il metodo classico
+    // Se il browser non supporta l'API, la navigazione resta standard
     if (!document.startViewTransition) return;
 
     window.addEventListener("click", (e) => {
       const link = e.target.closest("a");
-      // Intercettiamo solo link interni, non download, non nuovi tab
       if (!link || !link.href.includes(location.hostname) || link.target === "_blank" || link.hasAttribute("download")) return;
       
+      // Escludi anchor link interni (#)
+      if (link.getAttribute("href").startsWith("#")) return;
+
       e.preventDefault();
 
       document.startViewTransition(async () => {
-        // Carichiamo la nuova pagina in background
-        const response = await fetch(link.href);
-        const text = await response.text();
-        const nextHtml = new DOMParser().parseFromString(text, "text/html");
-        
-        // Sostituiamo il contenuto
-        document.body.innerHTML = nextHtml.body.innerHTML;
-        document.title = nextHtml.title;
-        
-        // Reset e riavvio animazioni
-        window.scrollTo(0, 0);
-        initLenis();
-        initEffects();
+        try {
+          const response = await fetch(link.href);
+          const text = await response.text();
+          const nextHtml = new DOMParser().parseFromString(text, "text/html");
+          
+          // Cambio contenuti
+          document.body.innerHTML = nextHtml.body.innerHTML;
+          document.title = nextHtml.title;
+          
+          // Reset post-navigazione
+          window.scrollTo(0, 0);
+          initLenis();
+          initEffects();
+        } catch (err) {
+          console.error("Errore nel caricamento pagina:", err);
+          location.href = link.href; // Fallback in caso di errore fetch
+        }
       });
     });
   };
 
   /* ==========================================================================
-   * PRELOADER LOGIC
+   * LOGICA PRELOADER
    * ========================================================================== */
-  const runPreloader = () => {
+  const runPreloader = (DOM) => {
     const UI = {
       count: document.querySelector("[data-count]"),
       lineFill: document.querySelector(".line__animate"),
     };
 
     isAnimationRunning = true;
-    gsap.set(DOM.preloader, { display: "flex", opacity: 1 });
+    gsap.set(DOM.preloader, { display: "flex", opacity: 1, position: "fixed", inset: 0, zIndex: 9999 });
     
     const tl = gsap.timeline({
       onComplete: () => {
@@ -133,12 +141,12 @@
       if (UI.lineFill) gsap.set(UI.lineFill, { scaleX: prog.val / 100 });
     }});
 
-    images.forEach((img, i) => {
+    DOM.images.forEach((img, i) => {
       gsap.set(img, { clipPath: "inset(0 0 100% 0)" });
       tl.to(img, { clipPath: "inset(0 0 0% 0)", duration: 0.3 }, 0.2 + (i * 0.2));
     });
 
-    tl.to(DOM.preloader, { opacity: 0, duration: 0.6 });
+    tl.to(DOM.preloader, { opacity: 0, duration: 0.6, ease: "sine.inOut" });
     tl.set(DOM.preloader, { display: "none" });
   };
 
@@ -146,22 +154,29 @@
    * INITIALIZATION
    * ========================================================================== */
   const init = () => {
+    const DOM = getDOM();
     initLenis();
     handleNavigation();
 
     const alreadySeen = sessionStorage.getItem(STORAGE_KEYS.SEEN) === "1";
-    if (DOM.preloader && !alreadySeen && images.length > 0) {
-      runPreloader();
+    
+    if (DOM.preloader && !alreadySeen && DOM.images.length > 0) {
+      runPreloader(DOM);
     } else {
       if (DOM.preloader) DOM.preloader.style.display = "none";
       initEffects();
     }
   };
 
-  // Avvio al caricamento
+  // Avvio
   init();
-  
-  // Fix per il tasto "Back" del browser
-  window.addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
+
+  // Gestione BFCache (Back button)
+  window.addEventListener("pageshow", (e) => {
+    if (e.persisted) {
+      initLenis();
+      initEffects();
+    }
+  });
 
 })();

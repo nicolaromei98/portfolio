@@ -1,27 +1,56 @@
 /**
- * SISTEMA DI NAVIGAZIONE AVANZATO
- * Preloader (Session-based) + Navigation API + View Transitions + GSAP
+ * ULTRA-FLUID NAVIGATION SYSTEM
+ * Preloader + Navigation API + View Transitions + GSAP Synchronizer
  */
 
 (() => {
+  // Controllo compatibilità GSAP
   if (!window.gsap) return;
 
   /* ==========================================================================
-   * CONFIGURAZIONE E STATO
+   * 1. CONFIGURAZIONE E ELEMENTI
    * ========================================================================== */
   const STORAGE_KEYS = { SEEN: "preloader_seen_session" };
-  
+
+  // Utilizziamo getter per assicurarci di trovare gli elementi anche dopo il cambio DOM
   const DOM = {
     get preloader() { return document.querySelector(".preloader"); },
     get overlay() { return document.querySelector(".page-transition"); },
     get blinkTexts() { return document.querySelectorAll("[data-blink-text]"); },
-    // Aggiungi qui altri elementi globali se necessario
+    get count() { return document.querySelector("[data-count]"); },
+    get lineFill() { return document.querySelector(".line__animate"); }
   };
 
-  let isNavigating = false;
+  /* ==========================================================================
+   * 2. LOGICA ANIMAZIONI (Sincronizzazione)
+   * ========================================================================== */
+  
+  // Chiude il sipario prima di cambiare pagina
+  const hidePage = () => {
+    return gsap.to(DOM.overlay, {
+      display: "block",
+      opacity: 1,
+      duration: 0.5,
+      ease: "power2.inOut",
+      pointerEvents: "all"
+    });
+  };
+
+  // Apre il sipario dopo che la nuova pagina è pronta
+  const showPage = () => {
+    return gsap.fromTo(DOM.overlay, 
+      { opacity: 1 },
+      { 
+        opacity: 0, 
+        duration: 0.6, 
+        ease: "sine.inOut",
+        onComplete: () => gsap.set(DOM.overlay, { display: "none", pointerEvents: "none" }) 
+      }
+    );
+  };
 
   /* ==========================================================================
-   * EFFETTI TIPOGRAFICI (BLINK)
+   * 3. EFFETTO TIPOGRAFICO (BLINK)
    * ========================================================================== */
   const initBlinkEffect = () => {
     DOM.blinkTexts.forEach((el, index) => {
@@ -37,13 +66,12 @@
       el.dataset.wrapped = "1";
       const chars = el.querySelectorAll(".blink-char");
 
-      // Animazione iniziale a cascata (Burst)
       const tl = gsap.timeline({ delay: index * 0.1 });
       chars.forEach(char => {
         tl.to(char, { 
           opacity: 1, 
           filter: "brightness(1)", 
-          duration: 0.1, 
+          duration: 0.05, 
           ease: "none" 
         }, gsap.utils.random(0, 0.5));
       });
@@ -51,118 +79,115 @@
   };
 
   /* ==========================================================================
-   * LOGICA PRELOADER (Solo primo avvio)
-   * ========================================================================== */
-  const runPreloader = () => {
-    const preloader = DOM.preloader;
-    if (!preloader) return;
-
-    // Esempio animazione preloader (personalizzabile)
-    const tl = gsap.timeline({
-      onComplete: () => {
-        sessionStorage.setItem(STORAGE_KEYS.SEEN, "1");
-        gsap.to(preloader, { 
-          opacity: 0, 
-          duration: 0.8, 
-          display: "none", 
-          onComplete: initBlinkEffect 
-        });
-      }
-    });
-
-    tl.to(".preloader__line .line__animate", { scaleX: 1, duration: 2, ease: "power2.inOut" })
-      .to("[data-count]", { innerText: 100, snap: { innerText: 1 }, duration: 2 }, 0);
-  };
-
-  /* ==========================================================================
-   * NAVIGATION API & VIEW TRANSITIONS (Il "motore")
+   * 4. NAVIGATION API & VIEW TRANSITIONS
    * ========================================================================== */
   const initModernNavigation = () => {
-    if (!window.navigation) {
-      console.warn("Navigation API non supportata in questo browser.");
-      return;
-    }
+    if (!window.navigation) return;
 
     navigation.addEventListener("navigate", (event) => {
       const url = new URL(event.destination.url);
 
-      // Filtri: solo link interni, no download, no stessa pagina
+      // Filtri di sicurezza
       if (
         url.origin !== location.origin || 
         event.downloadRequest || 
-        !event.canIntercept || 
+        !event.canIntercept ||
         url.href === location.href
       ) return;
 
       event.intercept({
         handler: async () => {
-          isNavigating = true;
+          // A. Chiudi il sipario (Attendiamo che GSAP finisca)
+          await hidePage();
 
-          // 1. Fetch della nuova pagina
+          // B. Carica la nuova pagina
           const response = await fetch(url.href);
           const html = await response.text();
           const parser = new DOMParser();
           const nextDoc = parser.parseFromString(html, "text/html");
 
-          // 2. Esecuzione View Transition (se supportata)
+          // C. Scambio contenuto con View Transition API
           if (document.startViewTransition) {
             const transition = document.startViewTransition(() => {
-              // Sostituzione atomica del contenuto
-              document.body.innerHTML = nextDoc.body.innerHTML;
-              document.title = nextDoc.title;
-              window.scrollTo(0, 0);
+              applyNewContent(nextDoc);
             });
-
             await transition.finished;
           } else {
-            // Fallback per browser vecchi
-            document.body.innerHTML = nextDoc.body.innerHTML;
-            document.title = nextDoc.title;
-            window.scrollTo(0, 0);
+            applyNewContent(nextDoc);
           }
 
-          // 3. Riavvio effetti sulla nuova pagina
-          reinitPage();
-          isNavigating = false;
+          // D. Riavvio e Apertura
+          reinitializeAll();
+          showPage();
         }
       });
     });
   };
 
-  /* ==========================================================================
-   * REINIZIALIZZAZIONE
-   * ========================================================================== */
-  const reinitPage = () => {
-    initBlinkEffect();
-    // Aggiungi qui altre funzioni GSAP che devono ripartire (es. ScrollTrigger)
-    if (window.Lenis) {
-       // Se usi Lenis, resetta lo scroll qui
-    }
+  const applyNewContent = (nextDoc) => {
+    document.body.innerHTML = nextDoc.body.innerHTML;
+    document.title = nextDoc.title;
+    window.scrollTo(0, 0);
   };
 
   /* ==========================================================================
-   * BOOTSTRAP
+   * 5. GESTIONE PRELOADER (Primo Accesso)
    * ========================================================================== */
+  const runPreloader = () => {
+    const tl = gsap.timeline({
+      onComplete: () => {
+        sessionStorage.setItem(STORAGE_KEYS.SEEN, "1");
+        gsap.to(DOM.preloader, { 
+          opacity: 0, 
+          duration: 0.8, 
+          display: "none", 
+          onComplete: () => {
+            initBlinkEffect();
+            showPage();
+          }
+        });
+      }
+    });
+
+    if (DOM.lineFill) tl.to(DOM.lineFill, { scaleX: 1, duration: 1.5, ease: "power2.inOut" });
+    if (DOM.count) tl.to(DOM.count, { innerText: 100, snap: { innerText: 1 }, duration: 1.5 }, 0);
+  };
+
+  /* ==========================================================================
+   * 6. BOOTSTRAP
+   * ========================================================================== */
+  const reinitializeAll = () => {
+    initBlinkEffect();
+    // Inserisci qui altre init per scroll-trigger, lenis, etc.
+  };
+
   const init = () => {
     const hasSeenPreloader = sessionStorage.getItem(STORAGE_KEYS.SEEN) === "1";
 
     if (DOM.preloader && !hasSeenPreloader) {
+      // Setup iniziale preloader
+      gsap.set(DOM.preloader, { display: "flex", opacity: 1 });
       runPreloader();
     } else {
+      // Salta preloader
       if (DOM.preloader) DOM.preloader.style.display = "none";
       initBlinkEffect();
+      // Se veniamo da un ricaricamento forzato, assicuriamoci che l'overlay sia via
+      gsap.set(DOM.overlay, { display: "none", opacity: 0 });
     }
 
     initModernNavigation();
   };
 
-  // Esegui al caricamento
-  if (document.readyState === "complete") init();
-  else window.addEventListener("load", init);
+  // Avvio al caricamento del DOM
+  window.addEventListener("load", init);
 
-  // Fix per il tasto "Indietro" del browser (BFCache)
+  // Fix BFCache (tasto indietro)
   window.addEventListener("pageshow", (event) => {
-    if (event.persisted) reinitPage();
+    if (event.persisted) {
+      gsap.set(DOM.overlay, { display: "none", opacity: 0 });
+      reinitializeAll();
+    }
   });
 
 })();

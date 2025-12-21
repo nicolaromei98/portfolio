@@ -43,7 +43,7 @@
     wrap: select("[data-load-wrap]"),
     overlay: select(".page-transition"),
     blinkTexts: selectAll("[data-blink-text]"),
-    revealElements: selectAll("[data-reveal]"), // Nuovo selettore
+    revealElements: selectAll("[data-reveal]"),
   };
 
   const UI = DOM.preloader ? {
@@ -60,7 +60,7 @@
    * LOGIC: BLINK & REVEAL EFFECT
    * ========================================================================== */
   const initBlinkEffect = () => {
-    // --- NUOVA LOGICA: REVEAL ELEMENTS ---
+    // 1. ANIMAZIONE REVEAL (I tuoi elementi ora appaiono qui)
     if (DOM.revealElements.length > 0) {
       gsap.to(DOM.revealElements, {
         opacity: 1,
@@ -72,7 +72,7 @@
       });
     }
 
-    // --- LOGICA ESISTENTE: BLINK TEXT ---
+    // 2. ANIMAZIONE BLINK TEXT
     DOM.blinkTexts.forEach((el, index) => {
       if (!el.dataset.wrapped) {
         const raw = el.innerHTML.replace(/<br\s*\/?>/gi, "\n");
@@ -195,7 +195,8 @@
       isAnimationRunning = false;
       sessionStorage.removeItem(STORAGE_KEYS.PENDING);
       if (DOM.overlay) gsap.set(DOM.overlay, { opacity: 0, display: "none", pointerEvents: "none" });
-      gsap.set(DOM.revealElements, { opacity: 0, y: 10 }); // Reset reveal
+      // Reset reveal elements per chi torna indietro
+      gsap.set(DOM.revealElements, { opacity: 0, y: 10 });
       initBlinkEffect();
     }
   });
@@ -204,19 +205,20 @@
    * MAIN INITIALIZATION
    * ========================================================================== */
   const init = () => {
-    // Reset iniziale reveal elements
+    // RESET STATO INIZIALE (sovrascrive eventuali conflitti CSS)
     if (DOM.revealElements.length) {
       gsap.set(DOM.revealElements, { opacity: 0, y: 10 });
     }
 
-    const hasRequiredUI = DOM.preloader && images.length && UI.count && UI.lineWrap && UI.lineFill;
+    const hasPreloader = DOM.preloader && UI.count && UI.lineWrap && UI.lineFill && images.length > 0;
     const hasSeenPreloader = sessionStorage.getItem(STORAGE_KEYS.SEEN) === "1";
 
     if (DOM.overlay) {
       document.addEventListener("click", handleInternalLinkClick, { passive: false });
     }
 
-    if (hasRequiredUI && !hasSeenPreloader) {
+    // Caso A: Esegui Preloader
+    if (hasPreloader && !hasSeenPreloader) {
       isAnimationRunning = true;
       
       const setupInitialState = () => {
@@ -282,10 +284,18 @@
       setupPreloaderText();
       runPreloader();
 
-    } else {
+    } 
+    // Caso B: Salta Preloader (già visto o elementi mancanti)
+    else {
       if (DOM.preloader) DOM.preloader.style.display = "none";
+      
+      // Controlla se c'è una transizione di pagina da una navigazione precedente
       const isTransitioning = handlePageLoadTransition(initBlinkEffect);
-      if (!isTransitioning) initBlinkEffect();
+      
+      // Se non c'è transizione, avvia gli effetti immediatamente
+      if (!isTransitioning) {
+        initBlinkEffect();
+      }
     }
   };
 

@@ -38,6 +38,7 @@
     wrap: select("[data-load-wrap]"),
     overlay: select(".page-transition"),
     blinkTexts: selectAll("[data-blink-text]"),
+    eyebrows: selectAll("[data-eyebrow]"), // Nuovi elementi
   };
 
   const UI = DOM.preloader ? {
@@ -51,9 +52,39 @@
   let isAnimationRunning = false;
 
   /* ==========================================================================
-   * LOGIC: BLINK TEXT EFFECT
+   * SHARED ANIMATION: SPLIT TEXT (EYEBROWS & PRELOADER)
    * ========================================================================== */
-  const initBlinkEffect = () => {
+  const runSplitAnimation = (elements, config = ANIM_CONFIG.preloader.text) => {
+    if (!window.SplitText || !elements.length) return;
+
+    elements.forEach(el => {
+      // Evita doppie inizializzazioni
+      if (el.dataset.splitDone) return;
+      
+      const split = new SplitText(el, { type: "words, chars", charsClass: "st-char" });
+      gsap.set(split.chars, { opacity: 0 });
+      
+      gsap.to(split.chars, {
+        opacity: 1,
+        duration: config.duration,
+        ease: config.ease,
+        stagger: config.stagger,
+        onComplete: () => {
+          el.dataset.splitDone = "1";
+          // Opzionale: split.revert(); // Scommenta se vuoi pulire il DOM dopo l'animazione
+        }
+      });
+    });
+  };
+
+  /* ==========================================================================
+   * LOGIC: BLINK TEXT EFFECT + EYEBROWS
+   * ========================================================================== */
+  const initBlinkAndEyebrows = () => {
+    // 1. Anima i testi "eyebrow" con lo stile split-text
+    runSplitAnimation(DOM.eyebrows);
+
+    // 2. Anima l'effetto Blink (codice originale)
     DOM.blinkTexts.forEach((el, index) => {
       if (!el.dataset.wrapped) {
         const raw = el.innerHTML.replace(/<br\s*\/?>/gi, "\n");
@@ -172,18 +203,15 @@
    * BFCache / BACK BUTTON FIX
    * ========================================================================== */
   window.addEventListener("pageshow", (event) => {
-    // Se la pagina viene caricata dalla cache (tasto Back)
     if (event.persisted) {
       isAnimationRunning = false;
       sessionStorage.removeItem(STORAGE_KEYS.PENDING);
-      
-      // Reset immediato dell'overlay
       if (DOM.overlay) {
         gsap.set(DOM.overlay, { opacity: 0, display: "none", pointerEvents: "none" });
       }
-      
-      // Riavvia gli effetti blink (altrimenti rimarrebbero statici)
-      initBlinkEffect();
+      // Reset attributi per riattivare le animazioni
+      DOM.eyebrows.forEach(el => delete el.dataset.splitDone);
+      initBlinkAndEyebrows();
     }
   });
 
@@ -199,7 +227,6 @@
     }
 
     if (hasRequiredUI && !hasSeenPreloader) {
-      // --- LOGICA PRELOADER ---
       isAnimationRunning = true;
       
       const setupInitialState = () => {
@@ -210,18 +237,6 @@
            img.style.zIndex = String(i + 1);
            gsap.set(img, { clipPath: "inset(0 0 100% 0)" });
         });
-      };
-
-      let splitInstance = null, splitChars = [];
-      const setupPreloaderText = () => {
-        if (!UI.text) return;
-        UI.text.style.visibility = "hidden";
-        if (window.SplitText) {
-          splitInstance = new SplitText(UI.text, { type: "words, chars", charsClass: "st-char" });
-          splitChars = splitInstance.chars || [];
-          gsap.set(splitChars, { opacity: 0 });
-        }
-        UI.text.style.visibility = "visible";
       };
 
       const runPreloader = () => {
@@ -239,37 +254,42 @@
           }
         }, 0);
 
-        if (splitChars.length) tl.to(splitChars, { opacity: 1, duration: C.text.duration, ease: C.text.ease, stagger: C.text.stagger }, 0); 
-        images.forEach((img, i) => { tl.to(img, { clipPath: "inset(0 0 0% 0)", duration: C.open.duration }, C.clipDelay + (i * C.open.stagger)); });
+        // Anima il testo del preloader usando la nuova funzione condivisa
+        if (UI.text) {
+            tl.add(() => runSplitAnimation([UI.text]), 0);
+        }
+
+        images.forEach((img, i) => { 
+            tl.to(img, { clipPath: "inset(0 0 0% 0)", duration: C.open.duration }, C.clipDelay + (i * C.open.stagger)); 
+        });
         
         const uiElements = [UI.lineWrap, UI.count, UI.text].filter(Boolean);
         tl.to(uiElements, { opacity: 0, duration: C.uiFade, ease: "power2.out" }, endAt - 0.1);
 
         const reversedImages = [...images].reverse();
-        reversedImages.forEach((img, i) => { tl.to(img, { clipPath: "inset(0 0 100% 0)", duration: C.close.duration }, endAt + (i * C.close.stagger)); });
+        reversedImages.forEach((img, i) => { 
+            tl.to(img, { clipPath: "inset(0 0 100% 0)", duration: C.close.duration }, endAt + (i * C.close.stagger)); 
+        });
 
         const totalCloseTime = (C.close.stagger * (reversedImages.length - 1)) + C.close.duration;
         const fadeOutStartTime = endAt + totalCloseTime + 0.06;
 
-        tl.call(initBlinkEffect, null, fadeOutStartTime);
+        tl.call(initBlinkAndEyebrows, null, fadeOutStartTime);
         tl.to(DOM.preloader, { opacity: 0, duration: C.out.duration, ease: C.out.ease }, fadeOutStartTime);
         tl.set(DOM.preloader, { display: "none" })
           .add(() => {
             sessionStorage.setItem(STORAGE_KEYS.SEEN, "1");
             isAnimationRunning = false;
-            if (splitInstance?.revert) splitInstance.revert();
           });
       };
 
       setupInitialState();
-      setupPreloaderText();
       runPreloader();
 
     } else {
-      // --- LOGICA NO PRELOADER ---
       if (DOM.preloader) DOM.preloader.style.display = "none";
-      const isTransitioning = handlePageLoadTransition(initBlinkEffect);
-      if (!isTransitioning) initBlinkEffect();
+      const isTransitioning = handlePageLoadTransition(initBlinkAndEyebrows);
+      if (!isTransitioning) initBlinkAndEyebrows();
     }
   };
 

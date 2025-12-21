@@ -1,5 +1,8 @@
 (() => {
-  if (!window.gsap) return;
+  if (!window.gsap) {
+    console.warn("GSAP non trovato. Il codice non può essere eseguito.");
+    return;
+  }
 
   /* ==========================================================================
    * CONFIGURATION
@@ -60,10 +63,10 @@
    * LOGIC: BLINK & REVEAL EFFECT
    * ========================================================================== */
   const initBlinkEffect = () => {
-    // 1. ANIMAZIONE REVEAL (I tuoi elementi ora appaiono qui)
+    // REVEAL ANIMATION (Forza la visibilità con autoAlpha)
     if (DOM.revealElements.length > 0) {
       gsap.to(DOM.revealElements, {
-        opacity: 1,
+        autoAlpha: 1, // Gestisce sia opacity che visibility
         y: 0,
         duration: ANIM_CONFIG.reveal.duration,
         stagger: ANIM_CONFIG.reveal.stagger,
@@ -72,7 +75,7 @@
       });
     }
 
-    // 2. ANIMAZIONE BLINK TEXT
+    // BLINK TEXT LOGIC
     DOM.blinkTexts.forEach((el, index) => {
       if (!el.dataset.wrapped) {
         const raw = el.innerHTML.replace(/<br\s*\/?>/gi, "\n");
@@ -137,14 +140,12 @@
    * ========================================================================== */
   const handlePageLoadTransition = (onAnimationStart) => {
     if (!DOM.overlay) return false;
-    
     if (sessionStorage.getItem(STORAGE_KEYS.PENDING) === "1") {
       sessionStorage.removeItem(STORAGE_KEYS.PENDING);
-      
       gsap.fromTo(DOM.overlay, 
-        { opacity: 1, display: "block", pointerEvents: "all" },
+        { autoAlpha: 1, display: "block", pointerEvents: "all" },
         { 
-          opacity: 0, 
+          autoAlpha: 0, 
           duration: ANIM_CONFIG.pageTransition.out, 
           ease: ANIM_CONFIG.pageTransition.ease,
           onStart: () => { if (onAnimationStart) onAnimationStart(); },
@@ -153,8 +154,7 @@
       );
       return true;
     }
-    
-    gsap.set(DOM.overlay, { opacity: 0, display: "none", pointerEvents: "none" });
+    gsap.set(DOM.overlay, { autoAlpha: 0, display: "none", pointerEvents: "none" });
     return false;
   };
 
@@ -168,7 +168,7 @@
 
     gsap.to(DOM.overlay, {
       display: "block",
-      opacity: 1,
+      autoAlpha: 1,
       duration: ANIM_CONFIG.pageTransition.in,
       ease: ANIM_CONFIG.pageTransition.ease,
       pointerEvents: "all",
@@ -194,9 +194,8 @@
     if (event.persisted) {
       isAnimationRunning = false;
       sessionStorage.removeItem(STORAGE_KEYS.PENDING);
-      if (DOM.overlay) gsap.set(DOM.overlay, { opacity: 0, display: "none", pointerEvents: "none" });
-      // Reset reveal elements per chi torna indietro
-      gsap.set(DOM.revealElements, { opacity: 0, y: 10 });
+      if (DOM.overlay) gsap.set(DOM.overlay, { autoAlpha: 0, display: "none", pointerEvents: "none" });
+      gsap.set(DOM.revealElements, { autoAlpha: 0, y: 10 });
       initBlinkEffect();
     }
   });
@@ -205,20 +204,28 @@
    * MAIN INITIALIZATION
    * ========================================================================== */
   const init = () => {
-    // RESET STATO INIZIALE (sovrascrive eventuali conflitti CSS)
+    // Reset immediato reveal elements
     if (DOM.revealElements.length) {
-      gsap.set(DOM.revealElements, { opacity: 0, y: 10 });
+      gsap.set(DOM.revealElements, { autoAlpha: 0, y: 10 });
     }
 
-    const hasPreloader = DOM.preloader && UI.count && UI.lineWrap && UI.lineFill && images.length > 0;
+    const hasRequiredUI = DOM.preloader && UI.count && UI.lineWrap && UI.lineFill;
     const hasSeenPreloader = sessionStorage.getItem(STORAGE_KEYS.SEEN) === "1";
 
     if (DOM.overlay) {
       document.addEventListener("click", handleInternalLinkClick, { passive: false });
     }
 
-    // Caso A: Esegui Preloader
-    if (hasPreloader && !hasSeenPreloader) {
+    // Timer Fallback: se dopo 4s il preloader è bloccato, forza l'apparizione
+    const fallbackTimer = setTimeout(() => {
+        if (isAnimationRunning) {
+            if (DOM.preloader) gsap.to(DOM.preloader, { autoAlpha: 0, duration: 0.5, onComplete: () => DOM.preloader.style.display = "none" });
+            initBlinkEffect();
+            isAnimationRunning = false;
+        }
+    }, 4000);
+
+    if (hasRequiredUI && !hasSeenPreloader && images.length > 0) {
       isAnimationRunning = true;
       
       const setupInitialState = () => {
@@ -235,6 +242,7 @@
       const setupPreloaderText = () => {
         if (!UI.text) return;
         UI.text.style.visibility = "hidden";
+        // Controllo SplitText (Evita errori se non hai la licenza)
         if (window.SplitText) {
           splitInstance = new SplitText(UI.text, { type: "words, chars", charsClass: "st-char" });
           splitChars = splitInstance.chars || [];
@@ -270,8 +278,12 @@
         const totalCloseTime = (C.close.stagger * (reversedImages.length - 1)) + C.close.duration;
         const fadeOutStartTime = endAt + totalCloseTime + 0.06;
 
-        tl.call(initBlinkEffect, null, fadeOutStartTime);
-        tl.to(DOM.preloader, { opacity: 0, duration: C.out.duration, ease: C.out.ease }, fadeOutStartTime);
+        tl.call(() => {
+            clearTimeout(fallbackTimer);
+            initBlinkEffect();
+        }, null, fadeOutStartTime);
+
+        tl.to(DOM.preloader, { autoAlpha: 0, duration: C.out.duration, ease: C.out.ease }, fadeOutStartTime);
         tl.set(DOM.preloader, { display: "none" })
           .add(() => {
             sessionStorage.setItem(STORAGE_KEYS.SEEN, "1");
@@ -284,18 +296,11 @@
       setupPreloaderText();
       runPreloader();
 
-    } 
-    // Caso B: Salta Preloader (già visto o elementi mancanti)
-    else {
+    } else {
+      clearTimeout(fallbackTimer);
       if (DOM.preloader) DOM.preloader.style.display = "none";
-      
-      // Controlla se c'è una transizione di pagina da una navigazione precedente
       const isTransitioning = handlePageLoadTransition(initBlinkEffect);
-      
-      // Se non c'è transizione, avvia gli effetti immediatamente
-      if (!isTransitioning) {
-        initBlinkEffect();
-      }
+      if (!isTransitioning) initBlinkEffect();
     }
   };
 

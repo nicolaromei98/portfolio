@@ -280,62 +280,23 @@
         },
         side: THREE.DoubleSide,
         uniforms: {
-          time: {
-            type: "f",
-            value: 0
-          },
-          progress: {
-            type: "f",
-            value: 0
-          },
-          border: {
-            type: "f",
-            value: 0
-          },
-          intensity: {
-            type: "f",
-            value: 0
-          },
-          scaleX: {
-            type: "f",
-            value: 40
-          },
-          scaleY: {
-            type: "f",
-            value: 40
-          },
-          transition: {
-            type: "f",
-            value: 40
-          },
-          swipe: {
-            type: "f",
-            value: 0
-          },
-          width: {
-            type: "f",
-            value: 0
-          },
-          radius: {
-            type: "f",
-            value: 0
-          },
-          texture1: {
-            type: "f",
-            value: this.textures[0]
-          },
-          texture2: {
-            type: "f",
-            value: this.textures[1]
-          },
+          time: { type: "f", value: 0 },
+          progress: { type: "f", value: 0 },
+          border: { type: "f", value: 0 },
+          intensity: { type: "f", value: 0 },
+          scaleX: { type: "f", value: 40 },
+          scaleY: { type: "f", value: 40 },
+          transition: { type: "f", value: 40 },
+          swipe: { type: "f", value: 0 },
+          width: { type: "f", value: 0 },
+          radius: { type: "f", value: 0 },
+          texture1: { type: "f", value: this.textures[0] },
+          texture2: { type: "f", value: this.textures[1] },
           displacement: {
             type: "f",
             value: new THREE.TextureLoader().load('https://uploads-ssl.webflow.com/5dc1ae738cab24fef27d7fd2/5dcae913c897156755170518_disp1.jpg')
           },
-          resolution: {
-            type: "v4",
-            value: new THREE.Vector4()
-          },
+          resolution: { type: "v4", value: new THREE.Vector4() },
         },
         vertexShader: this.vertex,
         fragmentShader: this.fragment
@@ -469,9 +430,9 @@
     // Clean up existing instances
     destroyPixelateImageRenderEffect();
     
-    let renderDuration = 100;  // Velocizzato leggermente per l'hover
-    let renderSteps = 20;      // Più step per fluidità
-    let renderColumns = 10;    // Blocchi iniziali
+    let renderDuration = 100;
+    let renderSteps = 20;
+    let renderColumns = 10;
 
     const pixelateElements = document.querySelectorAll('[data-pixelate-render]');
     pixelateElements.forEach(setupPixelate);
@@ -480,9 +441,7 @@
       const img = root.querySelector('[data-pixelate-render-img]');
       if (!img) return;
 
-      // Selettore trigger (hover è il focus qui)
       const trigger = (root.getAttribute('data-pixelate-render-trigger') || 'load').toLowerCase();
-
       const durAttr = parseInt(root.getAttribute('data-pixelate-render-duration'), 10);
       const stepsAttr = parseInt(root.getAttribute('data-pixelate-render-steps'), 10);
       const colsAttr = parseInt(root.getAttribute('data-pixelate-render-columns'), 10);
@@ -498,7 +457,7 @@
       canvas.style.inset = '0';
       canvas.style.width = '100%';
       canvas.style.height = '100%';
-      canvas.style.pointerEvents = 'none'; // Importante: lascia passare il mouse all'img sotto
+      canvas.style.pointerEvents = 'none';
       root.style.position ||= 'relative';
       root.appendChild(canvas);
 
@@ -513,7 +472,7 @@
       let naturalW = 0, naturalH = 0;
       let playing = false;
       let stageIndex = 0;
-      let targetIndex = 0; // Dove vogliamo arrivare (0 = pixelato, MAX = nitido)
+      let targetIndex = 0;
       let lastTime = 0;
       let backDirty = true, resizeTimeout = 0;
       let steps = [elRenderColumns];
@@ -567,8 +526,6 @@
         const cols = Math.max(1, Math.floor(columns));
         const rows = Math.max(1, Math.round(cols * (ch / cw)));
         
-        // Se siamo alla massima risoluzione, puliamo il canvas per mostrare l'IMG originale sotto
-        // (Opzionale: rimuovi questo IF se vuoi che il canvas rimanga sempre sopra)
         if (stageIndex === steps.length - 1 && targetIndex === steps.length - 1) {
            ctx.clearRect(0, 0, cw, ch);
            return;
@@ -589,43 +546,32 @@
         pixelate(stepCols);
       }
 
-      // Nuova logica di animazione bidirezionale
       function animate(t) {
         if (!playing) return;
-
-        // Gestione del timing
         if (!lastTime) lastTime = t;
         const delta = t - lastTime;
 
-        // Se è passato abbastanza tempo, facciamo un frame
         if (delta >= elRenderDuration) {
           if (stageIndex < targetIndex) {
-             stageIndex++; // Andiamo verso il nitido
+             stageIndex++;
           } else if (stageIndex > targetIndex) {
-             stageIndex--; // Torniamo verso il pixelato
+             stageIndex--;
           } else {
-             // Siamo arrivati a destinazione
              playing = false;
-             // Ultimo disegno per assicurarsi che sia pulito o pixelato
              draw(steps[stageIndex]);
              return; 
           }
-          
           draw(steps[stageIndex]);
           lastTime = t;
         }
-        
         requestAnimationFrame(animate);
       }
 
       function setTarget(isHovering) {
-         // Se hover: target è l'ultimo step (nitido)
-         // Se no hover: target è 0 (pixelato)
          targetIndex = isHovering ? steps.length - 1 : 0;
-         
          if (!playing) {
              playing = true;
-             lastTime = 0; // Reset timer
+             lastTime = 0;
              requestAnimationFrame(animate);
          }
       }
@@ -633,10 +579,7 @@
       function init() {
          naturalW = img.naturalWidth; naturalH = img.naturalHeight;
          if (!naturalW || !naturalH) return;
-         
          fitCanvas();
-         
-         // Stato Iniziale: Pixelato (stageIndex 0)
          stageIndex = 0;
          targetIndex = 0;
          backDirty = true;
@@ -651,7 +594,6 @@
         }, 250);
       }
 
-      // Gestione Trigger
       if (img.complete && img.naturalWidth) init(); 
       else img.addEventListener('load', init, { once: true });
 
@@ -661,12 +603,9 @@
         root.addEventListener('mouseenter', () => setTarget(true));
         root.addEventListener('mouseleave', () => setTarget(false));
       } else {
-         // Se usi altri trigger (load, inview), facciamo solo l'entrata classica
-         // ma manteniamo la struttura compatibile
-         if(trigger === 'load') setTarget(true); // Parte subito
+         if(trigger === 'load') setTarget(true);
       }
 
-      // Store instance for cleanup
       pixelateInstances.push({
         root,
         canvas,
@@ -693,8 +632,6 @@
   // ================== mwg_effect005 EFFECT (NO ScrollTrigger) ==================
   function initMWGEffect005NoST() {
     if (typeof gsap === 'undefined') return;
-
-    // Clean previous
     destroyMWGEffect005NoST();
 
     const scope = document.querySelector('.mwg_effect005');
@@ -713,7 +650,6 @@
     const words = scope.querySelectorAll('.word');
     if (!(pinHeight && container && words.length)) return;
 
-    // Sticky pin
     container.style.position = 'sticky';
     container.style.top = '0';
 
@@ -741,8 +677,8 @@
     function measure() {
       const rect = pinHeight.getBoundingClientRect();
       const y = window.scrollY;
-      startY = y + rect.top - window.innerHeight * 0.7; // start: top 70%
-      endY = y + rect.bottom - window.innerHeight; // end: bottom bottom
+      startY = y + rect.top - window.innerHeight * 0.7; 
+      endY = y + rect.bottom - window.innerHeight; 
       range = Math.max(1, endY - startY);
     }
 
@@ -799,23 +735,16 @@
   }
 
   function initLenisSmoothScroll() {
-    // Destroy existing instance if any
     destroyLenisSmoothScroll();
+    if (typeof Lenis === 'undefined') return;
 
-    if (typeof Lenis === 'undefined') {
-      return;
-    }
-
-    // Initialize a new Lenis instance for smooth scrolling
     lenisInstance = new Lenis({
       lerp: 0.1,
       smooth: true,
     });
 
-    // Synchronize Lenis scrolling with GSAP's ScrollTrigger plugin
     lenisInstance.on('scroll', ScrollTrigger.update);
 
-    // Create animation loop (single runner)
     const loop = (time) => {
       if (lenisInstance) {
         lenisInstance.raf(time);
@@ -826,7 +755,6 @@
   }
 
   function destroyLenisSmoothScroll() {
-    // Destroy Lenis instance
     if (lenisRafId) {
       cancelAnimationFrame(lenisRafId);
       lenisRafId = null;
@@ -838,23 +766,17 @@
   }
 
   function initGlobalParallax() {
-    // Destroy existing parallax context
     if (parallaxContext) {
       parallaxContext();
       parallaxContext = null;
     }
 
-    if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
-      return;
-    }
+    if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') return;
 
-    // Ensure ScrollTrigger is registered with GSAP (needed on some setups)
     if (typeof gsap.registerPlugin === 'function') {
       try {
         gsap.registerPlugin(ScrollTrigger);
-      } catch (e) {
-        // Ignore if already registered
-      }
+      } catch (e) {}
     }
 
     const triggersCreated = [];
@@ -866,9 +788,7 @@
         const disableMobile = disable === "mobile" && isMobile;
         const disableMobileLandscape = disable === "mobileLandscape" && isMobileLandscape;
         const disableTablet = disable === "tablet" && isTablet;
-        if (disableMobile || disableMobileLandscape || disableTablet) {
-          return;
-        }
+        if (disableMobile || disableMobileLandscape || disableTablet) return;
 
         const target = trigger.querySelector('[data-parallax="target"]') || trigger;
         const direction = trigger.getAttribute("data-parallax-direction") || "vertical";
@@ -937,7 +857,6 @@
         mm.revert && mm.revert();
       };
     } else {
-      // Fallback for older GSAP: single pass without context
       const simpleConditions = {
         isMobile: window.matchMedia("(max-width:479px)").matches,
         isMobileLandscape: window.matchMedia("(max-width:767px)").matches,
@@ -956,30 +875,19 @@
   }
 
   function initProjectTemplateAnimations() {
-    // Initialize Lenis smooth scroll first
     initLenisSmoothScroll();
-
-    // Initialize global parallax
     initGlobalParallax();
-
-    // Initialize mwg_effect005 (no ScrollTrigger)
     initMWGEffect005NoST();
-
-    // Initialize pixelate effect
     initPixelateImageRenderEffect();
 
-    // Initialize Three.js Sketch (planetary effect)
     const sliderContainer = document.getElementById("slider");
     if (sliderContainer && typeof THREE !== 'undefined') {
-      // Clean up container before creating new instance
       const existingCanvases = sliderContainer.querySelectorAll('canvas');
       if (existingCanvases.length > 0) {
         existingCanvases.forEach(canvas => {
           try {
             sliderContainer.removeChild(canvas);
-          } catch (e) {
-            // Ignore errors
-          }
+          } catch (e) {}
         });
       }
       
@@ -1014,16 +922,12 @@
 
           void main()	{
             vec2 newUV = (vUv - vec2(0.5))*resolution.zw + vec2(0.5);
-
             vec4 disp = texture2D(displacement, newUV);
             vec2 dispVec = vec2(disp.r, disp.g);
-
             vec2 distortedPosition1 = newUV + getRotM(angle1) * dispVec * intensity * progress;
             vec4 t1 = texture2D(texture1, distortedPosition1);
-
             vec2 distortedPosition2 = newUV + getRotM(angle2) * dispVec * intensity * (1.0 - progress);
             vec4 t2 = texture2D(texture2, distortedPosition2);
-
             gl_FragColor = mix(t1, t2, progress);
           }
         `
@@ -1032,28 +936,19 @@
   }
 
   function destroyProjectTemplateAnimations() {
-    // Destroy Sketch instance
     if (sketchInstance) {
       sketchInstance.destroy();
       sketchInstance = null;
     }
-
-    // Destroy pixelate effects
     destroyPixelateImageRenderEffect();
-
-    // Destroy mwg_effect005 (no ScrollTrigger)
     destroyMWGEffect005NoST();
-
-    // Destroy parallax
     destroyGlobalParallax();
-
-    // Destroy Lenis
     destroyLenisSmoothScroll();
   }
 
   // ================== HOME PAGE (Canvas + Time) ==================
   
-  // MODIFICA: Aggiornato per supportare Greyscale -> Color on hover
+  // MODIFICA CRITICA: Home Canvas con Greyscale Hover Robusto
   function initHomeCanvas() {
     destroyHomeCanvas();
 
@@ -1094,14 +989,13 @@
   }
   `;
 
-    // MODIFICA: Aggiunto supporto Greyscale
     const fragmentShader = `
   precision mediump float;
   uniform vec2 u_res;
   uniform vec2 u_size;
   uniform vec2 u_velo; 
   uniform sampler2D u_texture;
-  uniform float u_grayscale;
+  uniform float u_grayscale; 
   varying vec2 vUv;
 
   float random(vec2 p) {
@@ -1129,10 +1023,10 @@
     float b = texture2D(u_texture, uvCover - rgbOffset).b;
     vec4 color = vec4(r, g, b, 1.0);
 
-    // --- GREYSCALE LOGIC ---
+    // Calcolo Greyscale
     float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+    // Mix: 1.0 = grigio, 0.0 = colore
     color.rgb = mix(color.rgb, vec3(gray), u_grayscale);
-    // ----------------------
 
     float noise = random(uvCover * 550.0); 
     color.rgb += (noise - 0.5) * 0.08;
@@ -1143,8 +1037,24 @@
   }
   `;
 
+    // Uniforms di base, definiti prima
+    const baseUniforms = {
+      u_texture: { value: new THREE.Texture() },
+      u_res: { value: new THREE.Vector2(1, 1) },
+      u_size: { value: new THREE.Vector2(1, 1) }, 
+      u_velo: { value: new THREE.Vector2(0, 0) },
+      u_viewSize: { value: new THREE.Vector2(ww, wh) },
+      u_grayscale: { value: 1.0 } // Default: Bianco e nero
+    };
+
     const geometry = new THREE.PlaneBufferGeometry(1, 1, 32, 32);
-    const material = new THREE.ShaderMaterial({ fragmentShader, vertexShader });
+    
+    // Materiale master
+    const material = new THREE.ShaderMaterial({ 
+      fragmentShader, 
+      vertexShader,
+      uniforms: baseUniforms
+    });
 
     class Plane extends THREE.Object3D {
       init(el, i) {
@@ -1153,38 +1063,36 @@
         this.y = 0;
         this.my = 1 - ((i % 5) * 0.1);
         this.geometry = geometry;
-        this.material = material.clone();
         
-        // MODIFICA: Inizializza u_grayscale
-        this.material.uniforms = {
-          u_texture: { value: 0 },
-          u_res: { value: new THREE.Vector2(1, 1) },
-          u_size: { value: new THREE.Vector2(1, 1) }, 
-          u_velo: { value: new THREE.Vector2(0, 0) },
-          u_viewSize: { value: new THREE.Vector2(ww, wh) },
-          u_grayscale: { value: 1.0 }
-        };
-
+        // Clona materiale
+        this.material = material.clone();
+        // Assicuriamoci che l'uniform del greyscale sia indipendente per questa istanza
+        this.material.uniforms.u_grayscale = { value: 1.0 };
+        
+        // Carica texture
         this.texture = loader.load(this.el.dataset.src, (texture) => {
           texture.minFilter = THREE.LinearFilter;
           texture.generateMipmaps = false;
           const { naturalWidth, naturalHeight } = texture.image;
-          const { u_size, u_texture } = this.material.uniforms;
-          u_texture.value = texture;
-          u_size.value.x = naturalWidth;
-          u_size.value.y = naturalHeight;
+          
+          this.material.uniforms.u_texture.value = texture;
+          this.material.uniforms.u_size.value.x = naturalWidth;
+          this.material.uniforms.u_size.value.y = naturalHeight;
+          this.material.uniforms.u_viewSize.value.x = ww;
+          this.material.uniforms.u_viewSize.value.y = wh;
         });
 
         this.mesh = new THREE.Mesh(this.geometry, this.material);
         this.add(this.mesh);
         this.resize();
 
-        // MODIFICA: Hover events
+        // --- HOVER EVENTS ---
         this.onMouseEnter = () => {
           gsap.to(this.material.uniforms.u_grayscale, {
             value: 0,
             duration: 0.4,
-            ease: "power2.out"
+            ease: "power2.out",
+            overwrite: true
           });
         };
 
@@ -1192,21 +1100,24 @@
           gsap.to(this.material.uniforms.u_grayscale, {
             value: 1,
             duration: 0.4,
-            ease: "power2.out"
+            ease: "power2.out",
+            overwrite: true
           });
         };
 
+        // Aggiungiamo i listener all'elemento DOM originale
         this.el.addEventListener('mouseenter', this.onMouseEnter);
         this.el.addEventListener('mouseleave', this.onMouseLeave);
       }
 
       update = (x, y, max, velo) => {
         const { right, bottom } = this.rect;
-        const { u_velo } = this.material.uniforms;
         this.y = gsap.utils.wrap(-(max.y - bottom), bottom, y * this.my) - this.yOffset;
         this.x = gsap.utils.wrap(-(max.x - right), right, x) - this.xOffset;
-        u_velo.value.x = velo.x;
-        u_velo.value.y = velo.y;
+        
+        this.material.uniforms.u_velo.value.x = velo.x;
+        this.material.uniforms.u_velo.value.y = velo.y;
+        
         this.position.x = this.x;
         this.position.y = this.y;
       }
@@ -1214,23 +1125,26 @@
       resize() {
         this.rect = this.el.getBoundingClientRect();
         const { left, top, width, height } = this.rect;
-        const { u_res, u_viewSize } = this.material.uniforms;
+        
         this.xOffset = (left + (width / 2)) - (ww / 2);
         this.yOffset = (top + (height / 2)) - (wh / 2);
+        
         this.position.x = this.xOffset;
         this.position.y = this.yOffset;
-        u_res.value.x = width;
-        u_res.value.y = height;
-        u_viewSize.value.x = ww;
-        u_viewSize.value.y = wh;
+        
+        this.material.uniforms.u_res.value.x = width;
+        this.material.uniforms.u_res.value.y = height;
+        this.material.uniforms.u_viewSize.value.x = ww;
+        this.material.uniforms.u_viewSize.value.y = wh;
+        
         this.mesh.scale.set(width, height, 1);
       }
       
       destroy() {
-        if (this.el) {
-          this.el.removeEventListener('mouseenter', this.onMouseEnter);
-          this.el.removeEventListener('mouseleave', this.onMouseLeave);
-        }
+         if (this.el) {
+           this.el.removeEventListener('mouseenter', this.onMouseEnter);
+           this.el.removeEventListener('mouseleave', this.onMouseLeave);
+         }
       }
     }
 
@@ -1398,7 +1312,6 @@
 
     homeCanvasCleanup = () => {
       if (core) {
-        // MODIFICA: Cleanup dei listener del piano
         if (core.planes) {
           core.planes.forEach(plane => plane.destroy && plane.destroy());
         }
@@ -1506,14 +1419,12 @@
     const slides = gsap.utils.toArray('[data-slider="slide"]');
     if (!slides.length) return;
 
-    // Cleanup existing
     destroyDraggableInfiniteGSAPSlider();
 
     let activeElement = null;
     let currentEl = null;
     let currentIndex = 0;
 
-    // Responsive: decide which element is active
     const mq = window.matchMedia('(min-width: 992px)');
     let useNextForActive = mq.matches;
 
@@ -1536,7 +1447,6 @@
       activeElement = target;
     }
 
-    // Helper: horizontal loop (simplified from provided code)
     function horizontalLoop(items, config) {
       items = gsap.utils.toArray(items);
       config = config || {};
@@ -1656,7 +1566,6 @@
         return index;
       }
 
-      // Draggable
       let draggable;
       let wasPlaying = false;
       let startProgress = 0;
@@ -1776,7 +1685,6 @@
     destroyLenisSmoothScroll();
   }
 
-  // Initialize on DOM ready without Barba
   document.addEventListener("DOMContentLoaded", () => {
     const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
     if (namespace === 'project-template') {

@@ -5,12 +5,10 @@
   // GLOBAL VARIABLES
   // ============================================================================
   
-  // Register ScrollTrigger plugin immediately
   if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
     gsap.registerPlugin(ScrollTrigger);
   }
   
-  // Store instances for cleanup
   let parallaxContext = null;
   let lenisInstance = null;
   let sketchInstance = null;
@@ -98,21 +96,17 @@
           ix2.init();
         }
       } catch (e) {
-        // Silently ignore if Webflow is not fully available
       }
     }
   }
 
   // ============================================================================
-  // PROJECT TEMPLATE: SKETCH (LIQUID SLIDER)
+  // PROJECT TEMPLATE
   // ============================================================================
 
   class Sketch {
     constructor(opts) {
-      // Guard: ensure Three.js is loaded before using it
-      if (typeof THREE === 'undefined') {
-        return;
-      }
+      if (typeof THREE === 'undefined') return;
 
       this.scene = new THREE.Scene();
       this.vertex = `varying vec2 vUv;void main() {vUv = uv;gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );}`;
@@ -131,26 +125,17 @@
       this.clicker2 = document.getElementById("prev");
       this.container = document.getElementById("slider");
       
-      if (!this.container) {
-        return;
-      }
+      if (!this.container) return;
       
-      // Clean up any existing canvas in the container before adding new one
       const existingCanvas = this.container.querySelector('canvas');
       if (existingCanvas) {
-        try {
-          this.container.removeChild(existingCanvas);
-        } catch (e) {
-          // Canvas might already be removed
-        }
+        try { this.container.removeChild(existingCanvas); } catch (e) {}
       }
       
-      // Ensure the container can anchor the canvas
       if (getComputedStyle(this.container).position === 'static') {
         this.container.style.position = 'relative';
       }
 
-      // Make the renderer fill the container without affecting layout
       this.renderer.domElement.style.position = 'absolute';
       this.renderer.domElement.style.top = '0';
       this.renderer.domElement.style.left = '0';
@@ -163,12 +148,7 @@
       this.width = this.container.offsetWidth;
       this.height = this.container.offsetHeight;
       this.container.appendChild(this.renderer.domElement);
-      this.camera = new THREE.PerspectiveCamera(
-        70,
-        window.innerWidth / window.innerHeight,
-        0.001,
-        1000
-      );
+      this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.001, 1000);
       this.camera.position.set(0, 0, 2);
       this.time = 0;
       this.current = 0;
@@ -220,9 +200,7 @@
       if (this.debug && window.dat) {
         this.gui = new dat.GUI();
       }
-      this.settings = {
-        progress: 0.5
-      };
+      this.settings = { progress: 0.5 };
       Object.keys(this.uniforms).forEach((item) => {
         this.settings[item] = this.uniforms[item].value;
         if (this.debug && this.gui) {
@@ -245,10 +223,8 @@
       this.camera.aspect = this.width / this.height;
       
       if (this.textures[0]) {
-        // image cover
         this.imageAspect = this.textures[0].image.height / this.textures[0].image.width;
-        let a1;
-        let a2;
+        let a1, a2;
         if (this.height / this.width > this.imageAspect) {
           a1 = (this.width / this.height) * this.imageAspect;
           a2 = 1;
@@ -273,11 +249,8 @@
     }
 
     addObjects() {
-      let that = this;
       this.material = new THREE.ShaderMaterial({
-        extensions: {
-          derivatives: "#extension GL_OES_standard_derivatives : enable"
-        },
+        extensions: { derivatives: "#extension GL_OES_standard_derivatives : enable" },
         side: THREE.DoubleSide,
         uniforms: {
           time: { type: "f", value: 0 },
@@ -292,10 +265,7 @@
           radius: { type: "f", value: 0 },
           texture1: { type: "f", value: this.textures[0] },
           texture2: { type: "f", value: this.textures[1] },
-          displacement: {
-            type: "f",
-            value: new THREE.TextureLoader().load('https://uploads-ssl.webflow.com/5dc1ae738cab24fef27d7fd2/5dcae913c897156755170518_disp1.jpg')
-          },
+          displacement: { type: "f", value: new THREE.TextureLoader().load('https://uploads-ssl.webflow.com/5dc1ae738cab24fef27d7fd2/5dcae913c897156755170518_disp1.jpg') },
           resolution: { type: "v4", value: new THREE.Vector4() },
         },
         vertexShader: this.vertex,
@@ -306,14 +276,8 @@
       this.scene.add(this.plane);
     }
 
-    stop() {
-      this.paused = true;
-    }
-
-    play() {
-      this.paused = false;
-      this.render();
-    }
+    stop() { this.paused = true; }
+    play() { this.paused = false; this.render(); }
 
     next() {
       if (this.isRunning) return;
@@ -367,8 +331,6 @@
 
     destroy() {
       this.stop();
-      
-      // Remove event listeners
       if (this.clicker && this.nextHandler) {
         this.clicker.removeEventListener('click', this.nextHandler);
         this.nextHandler = null;
@@ -381,45 +343,18 @@
         window.removeEventListener("resize", this.resizeHandler);
         this.resizeHandler = null;
       }
-      
-      // Remove canvas from DOM first
       if (this.container && this.renderer && this.renderer.domElement) {
-        try {
-          if (this.renderer.domElement.parentNode === this.container) {
-            this.container.removeChild(this.renderer.domElement);
-          }
-        } catch (e) {
-          // Ignore errors
-        }
+        try { if (this.renderer.domElement.parentNode === this.container) this.container.removeChild(this.renderer.domElement); } catch (e) {}
       }
-      
-      // Dispose Three.js resources
-      if (this.renderer) {
-        this.renderer.dispose();
-        this.renderer = null;
-      }
-      if (this.material) {
-        this.material.dispose();
-        this.material = null;
-      }
-      if (this.geometry) {
-        this.geometry.dispose();
-        this.geometry = null;
-      }
+      if (this.renderer) { this.renderer.dispose(); this.renderer = null; }
+      if (this.material) { this.material.dispose(); this.material = null; }
+      if (this.geometry) { this.geometry.dispose(); this.geometry = null; }
       if (this.textures) {
-        this.textures.forEach(texture => {
-          if (texture && texture.dispose) {
-            texture.dispose();
-          }
-        });
+        this.textures.forEach(texture => { if (texture && texture.dispose) texture.dispose(); });
         this.textures = [];
       }
-      
-      // Clear scene
       if (this.scene) {
-        while(this.scene.children.length > 0) {
-          this.scene.remove(this.scene.children[0]);
-        }
+        while(this.scene.children.length > 0) this.scene.remove(this.scene.children[0]);
         this.scene = null;
       }
     }
@@ -427,13 +362,10 @@
 
 
   function initPixelateImageRenderEffect() {
-    // Clean up existing instances
     destroyPixelateImageRenderEffect();
-    
     let renderDuration = 100;
     let renderSteps = 20;
     let renderColumns = 10;
-
     const pixelateElements = document.querySelectorAll('[data-pixelate-render]');
     pixelateElements.forEach(setupPixelate);
 
@@ -446,7 +378,6 @@
       const stepsAttr = parseInt(root.getAttribute('data-pixelate-render-steps'), 10);
       const colsAttr = parseInt(root.getAttribute('data-pixelate-render-columns'), 10);
       const fitMode = (root.getAttribute('data-pixelate-render-fit') || 'cover').toLowerCase();
-
       const elRenderDuration = Number.isFinite(durAttr) ? Math.max(16, durAttr) : renderDuration;
       const elRenderSteps = Number.isFinite(stepsAttr) ? Math.max(1, stepsAttr) : renderSteps;
       const elRenderColumns = Number.isFinite(colsAttr) ? Math.max(1, colsAttr) : renderColumns;
@@ -550,13 +481,10 @@
         if (!playing) return;
         if (!lastTime) lastTime = t;
         const delta = t - lastTime;
-
         if (delta >= elRenderDuration) {
-          if (stageIndex < targetIndex) {
-             stageIndex++;
-          } else if (stageIndex > targetIndex) {
-             stageIndex--;
-          } else {
+          if (stageIndex < targetIndex) stageIndex++;
+          else if (stageIndex > targetIndex) stageIndex--;
+          else {
              playing = false;
              draw(steps[stageIndex]);
              return; 
@@ -629,7 +557,7 @@
     pixelateInstances = [];
   }
 
-  // ================== mwg_effect005 EFFECT (NO ScrollTrigger) ==================
+  // ================== mwg_effect005 EFFECT ==================
   function initMWGEffect005NoST() {
     if (typeof gsap === 'undefined') return;
     destroyMWGEffect005NoST();
@@ -639,10 +567,7 @@
     const paragraph = scope.querySelector('.paragraph');
     if (paragraph && !paragraph.querySelector('.word')) {
       const text = (paragraph.textContent || '').trim();
-      paragraph.innerHTML = text
-        .split(/\s+/)
-        .map((word) => `<span class="word">${word}</span>`)
-        .join(' ');
+      paragraph.innerHTML = text.split(/\s+/).map((word) => `<span class="word">${word}</span>`).join(' ');
     }
 
     const pinHeight = scope.querySelector('.pin-height');
@@ -654,8 +579,7 @@
     container.style.top = '0';
 
     const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
-    const easeInOut4 = (p) =>
-      p < 0.5 ? 8 * p * p * p * p : 1 - Math.pow(-2 * p + 2, 4) / 2;
+    const easeInOut4 = (p) => p < 0.5 ? 8 * p * p * p * p : 1 - Math.pow(-2 * p + 2, 4) / 2;
     const getTranslateX = (el) => {
       const t = getComputedStyle(el).transform;
       if (!t || t === 'none') return 0;
@@ -737,58 +661,31 @@
   function initLenisSmoothScroll() {
     destroyLenisSmoothScroll();
     if (typeof Lenis === 'undefined') return;
-
-    lenisInstance = new Lenis({
-      lerp: 0.1,
-      smooth: true,
-    });
-
+    lenisInstance = new Lenis({ lerp: 0.1, smooth: true });
     lenisInstance.on('scroll', ScrollTrigger.update);
-
     const loop = (time) => {
-      if (lenisInstance) {
-        lenisInstance.raf(time);
-      }
+      if (lenisInstance) lenisInstance.raf(time);
       lenisRafId = requestAnimationFrame(loop);
     };
     lenisRafId = requestAnimationFrame(loop);
   }
 
   function destroyLenisSmoothScroll() {
-    if (lenisRafId) {
-      cancelAnimationFrame(lenisRafId);
-      lenisRafId = null;
-    }
-    if (lenisInstance) {
-      lenisInstance.destroy();
-      lenisInstance = null;
-    }
+    if (lenisRafId) { cancelAnimationFrame(lenisRafId); lenisRafId = null; }
+    if (lenisInstance) { lenisInstance.destroy(); lenisInstance = null; }
   }
 
   function initGlobalParallax() {
-    if (parallaxContext) {
-      parallaxContext();
-      parallaxContext = null;
-    }
-
+    if (parallaxContext) { parallaxContext(); parallaxContext = null; }
     if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') return;
-
-    if (typeof gsap.registerPlugin === 'function') {
-      try {
-        gsap.registerPlugin(ScrollTrigger);
-      } catch (e) {}
-    }
+    if (typeof gsap.registerPlugin === 'function') { try { gsap.registerPlugin(ScrollTrigger); } catch (e) {} }
 
     const triggersCreated = [];
-
     const setupParallaxCore = (conditions) => {
       const { isMobile, isMobileLandscape, isTablet } = conditions || {};
       document.querySelectorAll('[data-parallax="trigger"]').forEach((trigger) => {
         const disable = trigger.getAttribute("data-parallax-disable");
-        const disableMobile = disable === "mobile" && isMobile;
-        const disableMobileLandscape = disable === "mobileLandscape" && isMobileLandscape;
-        const disableTablet = disable === "tablet" && isTablet;
-        if (disableMobile || disableMobileLandscape || disableTablet) return;
+        if ((disable === "mobile" && isMobile) || (disable === "mobileLandscape" && isMobileLandscape) || (disable === "tablet" && isTablet)) return;
 
         const target = trigger.querySelector('[data-parallax="target"]') || trigger;
         const direction = trigger.getAttribute("data-parallax-direction") || "vertical";
@@ -799,63 +696,32 @@
         const startVal = startAttr !== null ? parseFloat(startAttr) : 20;
         const endAttr = trigger.getAttribute("data-parallax-end");
         const endVal = endAttr !== null ? parseFloat(endAttr) : -20;
-        const scrollStartRaw = trigger.getAttribute("data-parallax-scroll-start") || "top bottom";
-        const scrollStart = `clamp(${scrollStartRaw})`;
-        const scrollEndRaw = trigger.getAttribute("data-parallax-scroll-end") || "bottom top";
-        const scrollEnd = `clamp(${scrollEndRaw})`;
+        const scrollStart = `clamp(${trigger.getAttribute("data-parallax-scroll-start") || "top bottom"})`;
+        const scrollEnd = `clamp(${trigger.getAttribute("data-parallax-scroll-end") || "bottom top"})`;
 
-        const tween = gsap.fromTo(
-          target,
+        const tween = gsap.fromTo(target,
           { [prop]: startVal },
-          {
-            [prop]: endVal,
-            ease: "none",
-            scrollTrigger: {
-              trigger,
-              start: scrollStart,
-              end: scrollEnd,
-              scrub,
-            },
-          }
+          { [prop]: endVal, ease: "none", scrollTrigger: { trigger, start: scrollStart, end: scrollEnd, scrub } }
         );
-
-        if (tween && tween.scrollTrigger) {
-          triggersCreated.push(tween.scrollTrigger);
-        }
+        if (tween && tween.scrollTrigger) triggersCreated.push(tween.scrollTrigger);
       });
     };
 
-    const cleanup = () => {
-      triggersCreated.forEach(t => t.kill());
-      triggersCreated.length = 0;
-    };
-
+    const cleanup = () => { triggersCreated.forEach(t => t.kill()); triggersCreated.length = 0; };
     const hasMatchMedia = typeof gsap.matchMedia === 'function';
     const hasContext = typeof gsap.context === 'function';
 
     if (hasMatchMedia && hasContext) {
       const mm = gsap.matchMedia();
       mm.add(
-        {
-          isMobile: "(max-width:479px)",
-          isMobileLandscape: "(max-width:767px)",
-          isTablet: "(max-width:991px)",
-          isDesktop: "(min-width:992px)"
-        },
+        { isMobile: "(max-width:479px)", isMobileLandscape: "(max-width:767px)", isTablet: "(max-width:991px)", isDesktop: "(min-width:992px)" },
         (context) => {
           const destroyLocal = () => cleanup();
-          gsap.context(() => {
-            setupParallaxCore(context.conditions);
-          });
-          return () => {
-            destroyLocal();
-          };
+          gsap.context(() => { setupParallaxCore(context.conditions); });
+          return () => { destroyLocal(); };
         }
       );
-      parallaxContext = () => {
-        cleanup();
-        mm.revert && mm.revert();
-      };
+      parallaxContext = () => { cleanup(); mm.revert && mm.revert(); };
     } else {
       const simpleConditions = {
         isMobile: window.matchMedia("(max-width:479px)").matches,
@@ -868,10 +734,7 @@
   }
 
   function destroyGlobalParallax() {
-    if (parallaxContext) {
-      parallaxContext();
-      parallaxContext = null;
-    }
+    if (parallaxContext) { parallaxContext(); parallaxContext = null; }
   }
 
   function initProjectTemplateAnimations() {
@@ -879,47 +742,18 @@
     initGlobalParallax();
     initMWGEffect005NoST();
     initPixelateImageRenderEffect();
-
     const sliderContainer = document.getElementById("slider");
     if (sliderContainer && typeof THREE !== 'undefined') {
       const existingCanvases = sliderContainer.querySelectorAll('canvas');
-      if (existingCanvases.length > 0) {
-        existingCanvases.forEach(canvas => {
-          try {
-            sliderContainer.removeChild(canvas);
-          } catch (e) {}
-        });
-      }
+      if (existingCanvases.length > 0) { existingCanvases.forEach(canvas => { try { sliderContainer.removeChild(canvas); } catch (e) {} }); }
       
       sketchInstance = new Sketch({
         debug: false,
-        uniforms: {
-          intensity: { value: 1, type: 'f', min: 0., max: 3 }
-        },
+        uniforms: { intensity: { value: 1, type: 'f', min: 0., max: 3 } },
         fragment: `
-          uniform float time;
-          uniform float progress;
-          uniform float intensity;
-          uniform float width;
-          uniform float scaleX;
-          uniform float scaleY;
-          uniform float transition;
-          uniform float radius;
-          uniform float swipe;
-          uniform sampler2D texture1;
-          uniform sampler2D texture2;
-          uniform sampler2D displacement;
-          uniform vec4 resolution;
-          varying vec2 vUv;
-          mat2 getRotM(float angle) {
-              float s = sin(angle);
-              float c = cos(angle);
-              return mat2(c, -s, s, c);
-          }
-          const float PI = 3.1415;
-          const float angle1 = PI *0.25;
-          const float angle2 = -PI *0.75;
-
+          uniform float time; uniform float progress; uniform float intensity; uniform float width; uniform float scaleX; uniform float scaleY; uniform float transition; uniform float radius; uniform float swipe; uniform sampler2D texture1; uniform sampler2D texture2; uniform sampler2D displacement; uniform vec4 resolution; varying vec2 vUv;
+          mat2 getRotM(float angle) { float s = sin(angle); float c = cos(angle); return mat2(c, -s, s, c); }
+          const float PI = 3.1415; const float angle1 = PI *0.25; const float angle2 = -PI *0.75;
           void main()	{
             vec2 newUV = (vUv - vec2(0.5))*resolution.zw + vec2(0.5);
             vec4 disp = texture2D(displacement, newUV);
@@ -936,10 +770,7 @@
   }
 
   function destroyProjectTemplateAnimations() {
-    if (sketchInstance) {
-      sketchInstance.destroy();
-      sketchInstance = null;
-    }
+    if (sketchInstance) { sketchInstance.destroy(); sketchInstance = null; }
     destroyPixelateImageRenderEffect();
     destroyMWGEffect005NoST();
     destroyGlobalParallax();
@@ -948,7 +779,7 @@
 
   // ================== HOME PAGE (Canvas + Time) ==================
   
-  // MODIFICA CRITICA: Home Canvas con Greyscale Hover Robusto
+  // MODIFICA CRITICA: Home Canvas con Greyscale Hover Robusto + Fix Link Parent
   function initHomeCanvas() {
     destroyHomeCanvas();
 
@@ -1037,7 +868,7 @@
   }
   `;
 
-    // Uniforms di base, definiti prima
+    // Uniforms di base
     const baseUniforms = {
       u_texture: { value: new THREE.Texture() },
       u_res: { value: new THREE.Vector2(1, 1) },
@@ -1066,7 +897,7 @@
         
         // Clona materiale
         this.material = material.clone();
-        // Assicuriamoci che l'uniform del greyscale sia indipendente per questa istanza
+        // Reset variabile grayscale per istanza
         this.material.uniforms.u_grayscale = { value: 1.0 };
         
         // Carica texture
@@ -1086,7 +917,10 @@
         this.add(this.mesh);
         this.resize();
 
-        // --- HOVER EVENTS ---
+        // --- HOVER EVENTS FIX ---
+        // Trova il genitore link cliccabile (js-plane-link) o usa se stesso se non lo trova
+        this.hoverTrigger = this.el.closest('.js-plane-link') || this.el;
+
         this.onMouseEnter = () => {
           gsap.to(this.material.uniforms.u_grayscale, {
             value: 0,
@@ -1105,9 +939,9 @@
           });
         };
 
-        // Aggiungiamo i listener all'elemento DOM originale
-        this.el.addEventListener('mouseenter', this.onMouseEnter);
-        this.el.addEventListener('mouseleave', this.onMouseLeave);
+        // Attacca l'evento al LINK, non al div interno
+        this.hoverTrigger.addEventListener('mouseenter', this.onMouseEnter);
+        this.hoverTrigger.addEventListener('mouseleave', this.onMouseLeave);
       }
 
       update = (x, y, max, velo) => {
@@ -1141,35 +975,25 @@
       }
       
       destroy() {
-         if (this.el) {
-           this.el.removeEventListener('mouseenter', this.onMouseEnter);
-           this.el.removeEventListener('mouseleave', this.onMouseLeave);
+         if (this.hoverTrigger) {
+           this.hoverTrigger.removeEventListener('mouseenter', this.onMouseEnter);
+           this.hoverTrigger.removeEventListener('mouseleave', this.onMouseLeave);
          }
       }
     }
 
     class Core {
       constructor() {
-        this.tx = 0;
-        this.ty = 0;
-        this.cx = 0;
-        this.cy = 0;
-        this.velo = { x: 0, y: 0 };
-        this.diff = 0;
-        this.wheel = { x: 0, y: 0 };
-        this.on = { x: 0, y: 0 };
-        this.max = { x: 0, y: 0 };
-        this.isDragging = false;
-
+        this.tx = 0; this.ty = 0; this.cx = 0; this.cy = 0;
+        this.velo = { x: 0, y: 0 }; this.diff = 0;
+        this.wheel = { x: 0, y: 0 }; this.on = { x: 0, y: 0 };
+        this.max = { x: 0, y: 0 }; this.isDragging = false;
         this.tl = gsap.timeline({ paused: true });
-
         this.el = gridEl;
         this.el.style.touchAction = 'none';
 
         this.scene = new THREE.Scene();
-        this.camera = new THREE.OrthographicCamera(
-          ww / -2, ww / 2, wh / 2, wh / -2, 1, 1000
-        );
+        this.camera = new THREE.OrthographicCamera(ww / -2, ww / 2, wh / 2, wh / -2, 1, 1000);
         this.camera.lookAt(this.scene.position);
         this.camera.position.z = 1;
 
@@ -1179,16 +1003,8 @@
         this.renderer.setClearColor(0xE7E7E7, 1);
         const canvasEl = this.renderer.domElement;
         
-        canvasEl.style.position = 'fixed';
-        canvasEl.style.top = '0';
-        canvasEl.style.left = '0';
-        canvasEl.style.width = '100%';
-        canvasEl.style.height = '100%';
-        canvasEl.style.pointerEvents = 'none';
-        canvasEl.style.zIndex = '-1';
-        if (canvasEl.parentNode) {
-          canvasEl.parentNode.removeChild(canvasEl);
-        }
+        canvasEl.style.position = 'fixed'; canvasEl.style.top = '0'; canvasEl.style.left = '0'; canvasEl.style.width = '100%'; canvasEl.style.height = '100%'; canvasEl.style.pointerEvents = 'none'; canvasEl.style.zIndex = '-1';
+        if (canvasEl.parentNode) canvasEl.parentNode.removeChild(canvasEl);
         document.body.appendChild(canvasEl);
 
         this.addPlanes();
@@ -1221,89 +1037,45 @@
       tick = () => {
         const xDiff = this.tx - this.cx;
         const yDiff = this.ty - this.cy;
-
-        this.cx += xDiff * 0.085;
-        this.cx = Math.round(this.cx * 100) / 100;
-
-        this.cy += yDiff * 0.085;
-        this.cy = Math.round(this.cy * 100) / 100;
-
-        this.diff = Math.max(
-          Math.abs(yDiff * 0.0001), 
-          Math.abs(xDiff * 0.0001)
-        );
-
+        this.cx += xDiff * 0.085; this.cx = Math.round(this.cx * 100) / 100;
+        this.cy += yDiff * 0.085; this.cy = Math.round(this.cy * 100) / 100;
+        this.diff = Math.max(Math.abs(yDiff * 0.0001), Math.abs(xDiff * 0.0001));
         const intensity = 0.025;
-        this.velo.x = xDiff * intensity;
-        this.velo.y = yDiff * intensity;
-
-        this.planes && this.planes.forEach(plane => 
-          plane.update(this.cx, this.cy, this.max, this.velo)
-        );
-
+        this.velo.x = xDiff * intensity; this.velo.y = yDiff * intensity;
+        this.planes && this.planes.forEach(plane => plane.update(this.cx, this.cy, this.max, this.velo));
         this.renderer.render(this.scene, this.camera);
       }
 
       onMouseMove = ({ clientX, clientY }) => {
         if (!this.isDragging) return;
-        this.tx = this.on.x + clientX * 2.5;
-        this.ty = this.on.y - clientY * 2.5;
+        this.tx = this.on.x + clientX * 2.5; this.ty = this.on.y - clientY * 2.5;
       }
-
       onMouseDown = ({ clientX, clientY }) => {
         if (this.isDragging) return;
-        this.isDragging = true;
-        this.on.x = this.tx - clientX * 2.5;
-        this.on.y = this.ty + clientY * 2.5;
+        this.isDragging = true; this.on.x = this.tx - clientX * 2.5; this.on.y = this.ty + clientY * 2.5;
       }
-
-      onMouseUp = () => {
-        if (!this.isDragging) return;
-        this.isDragging = false;
-      }
-
+      onMouseUp = () => { if (!this.isDragging) return; this.isDragging = false; }
       onTouchStart = (e) => {
         if (this.isDragging) return;
-        this.isDragging = true;
-        this.on.x = this.tx - e.touches[0].clientX * 2.5;
-        this.on.y = this.ty + e.touches[0].clientY * 2.5;
+        this.isDragging = true; this.on.x = this.tx - e.touches[0].clientX * 2.5; this.on.y = this.ty + e.touches[0].clientY * 2.5;
       }
-
       onTouchMove = (e) => {
         if (!this.isDragging) return;
-        e.preventDefault();
-        this.tx = this.on.x + e.touches[0].clientX * 2.5;
-        this.ty = this.on.y - e.touches[0].clientY * 2.5;
+        e.preventDefault(); this.tx = this.on.x + e.touches[0].clientX * 2.5; this.ty = this.on.y - e.touches[0].clientY * 2.5;
       }
-
-      onTouchEnd = () => {
-        if (!this.isDragging) return;
-        this.isDragging = false;
-      }
-
+      onTouchEnd = () => { if (!this.isDragging) return; this.isDragging = false; }
       onWheel = (e) => {
         const { mouse, firefox } = multipliers;
-        this.wheel.x = e.wheelDeltaX || e.deltaX * -1;
-        this.wheel.y = e.wheelDeltaY || e.deltaY * -1;
-        if (isFirefox && e.deltaMode === 1) {
-          this.wheel.x *= firefox;
-          this.wheel.y *= firefox;
-        }
-        this.wheel.y *= mouse;
-        this.wheel.x *= mouse;
-        this.tx += this.wheel.x;
-        this.ty -= this.wheel.y;
+        this.wheel.x = e.wheelDeltaX || e.deltaX * -1; this.wheel.y = e.wheelDeltaY || e.deltaY * -1;
+        if (isFirefox && e.deltaMode === 1) { this.wheel.x *= firefox; this.wheel.y *= firefox; }
+        this.wheel.y *= mouse; this.wheel.x *= mouse;
+        this.tx += this.wheel.x; this.ty -= this.wheel.y;
       }
-
       resize = () => {
-        ww = window.innerWidth;
-        wh = window.innerHeight;
+        ww = window.innerWidth; wh = window.innerHeight;
         const { bottom, right } = this.el.getBoundingClientRect();
-        this.max.x = right;
-        this.max.y = bottom;
-        if (this.planes) {
-          this.planes.forEach(plane => plane.resize());
-        }
+        this.max.x = right; this.max.y = bottom;
+        if (this.planes) { this.planes.forEach(plane => plane.resize()); }
         this.renderer.setSize(ww, wh);
       }
     }
@@ -1312,10 +1084,7 @@
 
     homeCanvasCleanup = () => {
       if (core) {
-        if (core.planes) {
-          core.planes.forEach(plane => plane.destroy && plane.destroy());
-        }
-
+        if (core.planes) { core.planes.forEach(plane => plane.destroy && plane.destroy()); }
         gsap.ticker.remove(core.tick);
         window.removeEventListener('mousemove', core.onMouseMove);
         window.removeEventListener('mousedown', core.onMouseDown);
@@ -1325,12 +1094,8 @@
         window.removeEventListener('touchmove', core.onTouchMove);
         window.removeEventListener('touchend', core.onTouchEnd);
         window.removeEventListener('resize', core.resize);
-        if (core.renderer && core.renderer.domElement && core.renderer.domElement.parentNode) {
-          core.renderer.domElement.parentNode.removeChild(core.renderer.domElement);
-        }
-        if (core.el) {
-          core.el.style.touchAction = '';
-        }
+        if (core.renderer && core.renderer.domElement && core.renderer.domElement.parentNode) core.renderer.domElement.parentNode.removeChild(core.renderer.domElement);
+        if (core.el) core.el.style.touchAction = '';
       }
     };
   }
@@ -1344,25 +1109,13 @@
 
   function initHomeTime() {
     destroyHomeTime();
-
     const defaultTimezone = "Europe/Amsterdam";
-    const createFormatter = (timezone) => new Intl.DateTimeFormat([], {
-      timeZone: timezone,
-      timeZoneName: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    });
-
+    const createFormatter = (timezone) => new Intl.DateTimeFormat([], { timeZone: timezone, timeZoneName: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
     const parseFormattedTime = (formattedDateTime) => {
       const match = formattedDateTime.match(/(\d+):(\d+):(\d+)\s*([\w+]+)/);
-      if (match) {
-        return { hours: match[1], minutes: match[2], seconds: match[3], timezone: match[4] };
-      }
+      if (match) return { hours: match[1], minutes: match[2], seconds: match[3], timezone: match[4] };
       return null;
     };
-
     const updateTime = () => {
       document.querySelectorAll('[data-current-time]').forEach((element) => {
         const timezone = element.getAttribute('data-current-time') || defaultTimezone;
@@ -1383,7 +1136,6 @@
         }
       });
     };
-
     updateTime();
     const intervalId = setInterval(updateTime, 1000);
     homeTimeCleanup = () => clearInterval(intervalId);
@@ -1407,46 +1159,30 @@
     destroyHomeTime();
   }
 
-  // ================== ABOUT PAGE (Draggable Loop) ==================
   function initDraggableInfiniteGSAPSlider() {
-    if (typeof gsap === 'undefined' || typeof Draggable === 'undefined' || typeof InertiaPlugin === 'undefined') {
-      return;
-    }
-
+    if (typeof gsap === 'undefined' || typeof Draggable === 'undefined' || typeof InertiaPlugin === 'undefined') return;
     const wrapper = document.querySelector('[data-slider="list"]');
     if (!wrapper) return;
-
     const slides = gsap.utils.toArray('[data-slider="slide"]');
     if (!slides.length) return;
-
     destroyDraggableInfiniteGSAPSlider();
-
     let activeElement = null;
     let currentEl = null;
     let currentIndex = 0;
-
     const mq = window.matchMedia('(min-width: 992px)');
     let useNextForActive = mq.matches;
-
     const onMQChange = (e) => {
       useNextForActive = e.matches;
-      if (currentEl) {
-        applyActive(currentEl);
-      }
+      if (currentEl) applyActive(currentEl);
     };
     mq.addEventListener('change', onMQChange);
-
-    function resolveActive(el) {
-      return useNextForActive ? (el.nextElementSibling || slides[0]) : el;
-    }
-
+    function resolveActive(el) { return useNextForActive ? (el.nextElementSibling || slides[0]) : el; }
     function applyActive(el) {
       if (activeElement) activeElement.classList.remove('active');
       const target = resolveActive(el);
       target.classList.add('active');
       activeElement = target;
     }
-
     function horizontalLoop(items, config) {
       items = gsap.utils.toArray(items);
       config = config || {};
@@ -1456,13 +1192,9 @@
         defaults: { ease: "none" },
         onUpdate: config.onChange && function () {
           const i = tl.closestIndex();
-          if (tl._lastIndex !== i) {
-            tl._lastIndex = i;
-            config.onChange(items[i], i);
-          }
+          if (tl._lastIndex !== i) { tl._lastIndex = i; config.onChange(items[i], i); }
         }
       });
-
       const snap = config.snap === false ? (v) => v : gsap.utils.snap(config.snap || 1);
       const center = config.center === true ? items[0].parentNode : gsap.utils.toArray(config.center)[0] || items[0].parentNode;
       const widths = [];
@@ -1473,7 +1205,6 @@
       let timeWrap;
       let curIndex = 0;
       let proxy;
-
       const populate = () => {
         const startX = items[0].offsetLeft;
         const spaceBefore = [];
@@ -1488,7 +1219,6 @@
         gsap.set(items, { xPercent: i => xPercents[i] });
         totalWidth = items[items.length - 1].offsetLeft + xPercents[items.length - 1] / 100 * widths[items.length - 1] - startX + spaceBefore[0] + items[items.length - 1].offsetWidth * gsap.getProperty(items[items.length - 1], "scaleX") + (parseFloat(config.paddingRight) || 0);
       };
-
       const populateTimeline = () => {
         tl.clear();
         times.length = 0;
@@ -1498,20 +1228,14 @@
           const distanceToStart = item.offsetLeft + curX - startX;
           const distanceToLoop = distanceToStart + widths[i] * gsap.getProperty(item, "scaleX");
           tl.to(item, { xPercent: snap((curX - distanceToLoop) / widths[i] * 100), duration: distanceToLoop / pixelsPerSecond }, 0)
-            .fromTo(item, { xPercent: snap((curX - distanceToLoop + totalWidth) / widths[i] * 100) }, {
-              xPercent: xPercents[i],
-              duration: (curX - distanceToLoop + totalWidth - curX) / pixelsPerSecond,
-              immediateRender: false
-            }, distanceToLoop / pixelsPerSecond)
+            .fromTo(item, { xPercent: snap((curX - distanceToLoop + totalWidth) / widths[i] * 100) }, { xPercent: xPercents[i], duration: (curX - distanceToLoop + totalWidth - curX) / pixelsPerSecond, immediateRender: false }, distanceToLoop / pixelsPerSecond)
             .add("label" + i, distanceToStart / pixelsPerSecond);
           times[i] = distanceToStart / pixelsPerSecond;
         });
         timeWrap = gsap.utils.wrap(0, tl.duration());
       };
-
       populate();
       populateTimeline();
-
       const refresh = () => {
         const progress = tl.progress();
         tl.progress(0, true);
@@ -1519,53 +1243,32 @@
         populateTimeline();
         tl.progress(progress, true);
       };
-
       const onResize = () => refresh(true);
       window.addEventListener("resize", onResize);
-
       function toIndex(index, vars) {
         vars = vars || {};
-        if (Math.abs(index - curIndex) > items.length / 2) {
-          index += index > curIndex ? -items.length : items.length;
-        }
+        if (Math.abs(index - curIndex) > items.length / 2) { index += index > curIndex ? -items.length : items.length; }
         let newIndex = gsap.utils.wrap(0, items.length, index);
         let time = times[newIndex];
-        if ((time > tl.time()) !== (index > curIndex) && index !== curIndex) {
-          time += tl.duration() * (index > curIndex ? 1 : -1);
-        }
-        if (time < 0 || time > tl.duration()) {
-          vars.modifiers = { time: timeWrap };
-        }
+        if ((time > tl.time()) !== (index > curIndex) && index !== curIndex) { time += tl.duration() * (index > curIndex ? 1 : -1); }
+        if (time < 0 || time > tl.duration()) { vars.modifiers = { time: timeWrap }; }
         curIndex = newIndex;
         vars.overwrite = true;
         gsap.killTweensOf(proxy);
         return vars.duration === 0 ? tl.time(timeWrap(time)) : tl.tweenTo(time, vars);
       }
-
       tl.toIndex = (index, vars) => toIndex(index, vars);
       tl.closestIndex = (setCurrent) => {
         let index = getClosest(times, tl.time(), tl.duration());
-        if (setCurrent) {
-          curIndex = index;
-          tl._lastIndex = index;
-        }
+        if (setCurrent) { curIndex = index; tl._lastIndex = index; }
         return index;
       };
       tl.current = () => curIndex;
-
       function getClosest(values, value, wrap) {
         let i = values.length, closest = 1e10, index = 0, d;
-        while (i--) {
-          d = Math.abs(values[i] - value);
-          if (d > wrap / 2) d = wrap - d;
-          if (d < closest) {
-            closest = d;
-            index = i;
-          }
-        }
+        while (i--) { d = Math.abs(values[i] - value); if (d > wrap / 2) d = wrap - d; if (d < closest) { closest = d; index = i; } }
         return index;
       }
-
       let draggable;
       let wasPlaying = false;
       let startProgress = 0;
@@ -1573,9 +1276,7 @@
       let initChangeX = 0;
       let lastSnap = 0;
       const wrap = gsap.utils.wrap(0, 1);
-
       proxy = document.createElement("div");
-
       draggable = Draggable.create(proxy, {
         trigger: items[0].parentNode,
         type: "x",
@@ -1589,18 +1290,12 @@
           initChangeX = (startProgress / -ratio) - this.x;
           gsap.set(proxy, { x: startProgress / -ratio });
         },
-        onDrag() {
-          align();
-        },
-        onThrowUpdate() {
-          align();
-        },
+        onDrag() { align(); },
+        onThrowUpdate() { align(); },
         overshootTolerance: 0,
         inertia: true,
         snap(value) {
-          if (Math.abs(startProgress / -ratio - this.x) < 10) {
-            return lastSnap + initChangeX;
-          }
+          if (Math.abs(startProgress / -ratio - this.x) < 10) return lastSnap + initChangeX;
           let time = -(value * ratio) * tl.duration();
           let wrappedTime = timeWrap(time);
           let snapTime = times[getClosest(times, wrappedTime, tl.duration())];
@@ -1609,53 +1304,26 @@
           lastSnap = (time + dif) / tl.duration() / -ratio;
           return lastSnap;
         },
-        onRelease() {
-          syncIndex();
-          this.isThrowing && (tl._indexIsDirty = true);
-        },
-        onThrowComplete() {
-          syncIndex();
-          wasPlaying && tl.play();
-        }
+        onRelease() { syncIndex(); this.isThrowing && (tl._indexIsDirty = true); },
+        onThrowComplete() { syncIndex(); wasPlaying && tl.play(); }
       })[0];
-
-      function align() {
-        tl.progress(wrap(startProgress + (draggable.startX - draggable.x) * ratio));
-      }
-
-      function syncIndex() {
-        tl.closestIndex(true);
-      }
-
+      function align() { tl.progress(wrap(startProgress + (draggable.startX - draggable.x) * ratio)); }
+      function syncIndex() { tl.closestIndex(true); }
       tl.draggable = draggable;
       tl.closestIndex(true);
       tl._lastIndex = curIndex;
       config.onChange && config.onChange(items[curIndex], curIndex);
-
       return () => {
         window.removeEventListener("resize", onResize);
         draggable && draggable.kill();
         tl && tl.kill();
       };
     }
-
     const loopCleanup = horizontalLoop(slides, {
-      paused: true,
-      draggable: true,
-      center: false,
-      onChange: (element, index) => {
-        currentEl = element;
-        currentIndex = index;
-        applyActive(element);
-      }
+      paused: true, draggable: true, center: false,
+      onChange: (element, index) => { currentEl = element; currentIndex = index; applyActive(element); }
     });
-
-    if (!currentEl && slides[0]) {
-      currentEl = slides[0];
-      currentIndex = 0;
-      applyActive(currentEl);
-    }
-
+    if (!currentEl && slides[0]) { currentEl = slides[0]; currentIndex = 0; applyActive(currentEl); }
     aboutSliderCleanup = () => {
       if (loopCleanup) loopCleanup();
       mq.removeEventListener('change', onMQChange);

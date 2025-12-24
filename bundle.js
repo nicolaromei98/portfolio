@@ -103,9 +103,8 @@
     }
   }
 
-
   // ============================================================================
-  // CLASS SKETCH (THREE.JS INFINITE GALLERY) - UPDATED
+  // SKETCH CLASS (THREE.JS) - FIXED RESIZE
   // ============================================================================
 
   class Sketch {
@@ -120,8 +119,15 @@
       this.fragment = opts.fragment;
       this.uniforms = opts.uniforms;
       this.renderer = new THREE.WebGLRenderer();
-      this.width = window.innerWidth;
-      this.height = window.innerHeight;
+      
+      // Usa le dimensioni iniziali del container, non window, per rispettare la griglia
+      this.container = document.getElementById("slider");
+      if (!this.container) {
+        return;
+      }
+      this.width = this.container.offsetWidth;
+      this.height = this.container.offsetHeight;
+
       this.renderer.setPixelRatio(window.devicePixelRatio);
       this.renderer.setSize(this.width, this.height);
       this.renderer.setClearColor(0xeeeeee, 1);
@@ -130,11 +136,6 @@
       this.easing = opts.easing || 'easeInOut';
       this.clicker = document.getElementById("next");
       this.clicker2 = document.getElementById("prev");
-      this.container = document.getElementById("slider");
-      
-      if (!this.container) {
-        return;
-      }
       
       // Clean up any existing canvas in the container before adding new one
       const existingCanvas = this.container.querySelector('canvas');
@@ -161,12 +162,11 @@
       this.renderer.domElement.style.pointerEvents = 'none';
 
       this.images = JSON.parse(this.container.getAttribute('data-images'));
-      this.width = this.container.offsetWidth;
-      this.height = this.container.offsetHeight;
       this.container.appendChild(this.renderer.domElement);
+      
       this.camera = new THREE.PerspectiveCamera(
         70,
-        window.innerWidth / window.innerHeight,
+        this.width / this.height,
         0.001,
         1000
       );
@@ -237,49 +237,48 @@
       window.addEventListener("resize", this.resizeHandler);
     }
 
-    // --- FIX APPLIED HERE ---
+    // --- FIX: LOGICA RESIZE CORRETTA ---
     resize() {
       if (!this.container) return;
       
-      // 1. Update Container Dimensions
+      // 1. Usa le dimensioni del container, non della finestra, per non rompere la grid
       this.width = this.container.offsetWidth;
       this.height = this.container.offsetHeight;
       
-      // 2. Update Renderer and Camera Aspect
       this.renderer.setSize(this.width, this.height);
       this.camera.aspect = this.width / this.height;
       
-      // 3. Update FOV to fit height exactly (height = 1 at distance)
+      // 2. Calcola FOV corretto (distance-based) per mantenere 1 unit = full height
       const dist = this.camera.position.z;
       const height = 1;
       this.camera.fov = 2 * (180 / Math.PI) * Math.atan(height / (2 * dist));
       
-      // 4. Update Projection Matrix (Critical for resize)
+      // 3. Importante: Aggiorna la matrice
       this.camera.updateProjectionMatrix();
-
-      // 5. Scale the plane to match the camera aspect ratio
+      
+      // 4. Scala il piano per coprire la vista
       if (this.plane) {
         this.plane.scale.x = this.camera.aspect;
         this.plane.scale.y = 1;
       }
       
-      // 6. Calculate UVs for "Background-Size: Cover"
+      // 5. Calcola UV per effetto "cover" (evita stretching)
       if (this.textures && this.textures[0] && this.textures[0].image) {
         const image = this.textures[0].image;
         const screenAspect = this.width / this.height;
         const imageAspect = image.width / image.height;
         
         let a1, a2;
-        
-        // Logic to cover the area without stretching
         if (screenAspect > imageAspect) {
-          a1 = (this.width / this.height) / imageAspect;
+          // Screen più largo: adatta width (zooma height)
+          a1 = (this.width / this.height) / imageAspect; 
           a2 = 1;
         } else {
+          // Screen più alto: adatta height (zooma width)
           a1 = 1;
           a2 = imageAspect / (this.width / this.height);
         }
-
+        
         this.material.uniforms.resolution.value.x = this.width;
         this.material.uniforms.resolution.value.y = this.height;
         this.material.uniforms.resolution.value.z = a1;

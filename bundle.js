@@ -104,7 +104,7 @@
   }
 
   // ============================================================================
-  // SKETCH CLASS (THREE.JS) - FIXED RESIZE
+  // THREE.JS SKETCH (Infinite Gallery) - FIX APPLIED HERE
   // ============================================================================
 
   class Sketch {
@@ -119,15 +119,8 @@
       this.fragment = opts.fragment;
       this.uniforms = opts.uniforms;
       this.renderer = new THREE.WebGLRenderer();
-      
-      // Usa le dimensioni iniziali del container, non window, per rispettare la griglia
-      this.container = document.getElementById("slider");
-      if (!this.container) {
-        return;
-      }
-      this.width = this.container.offsetWidth;
-      this.height = this.container.offsetHeight;
-
+      this.width = window.innerWidth;
+      this.height = window.innerHeight;
       this.renderer.setPixelRatio(window.devicePixelRatio);
       this.renderer.setSize(this.width, this.height);
       this.renderer.setClearColor(0xeeeeee, 1);
@@ -136,6 +129,11 @@
       this.easing = opts.easing || 'easeInOut';
       this.clicker = document.getElementById("next");
       this.clicker2 = document.getElementById("prev");
+      this.container = document.getElementById("slider");
+      
+      if (!this.container) {
+        return;
+      }
       
       // Clean up any existing canvas in the container before adding new one
       const existingCanvas = this.container.querySelector('canvas');
@@ -162,11 +160,12 @@
       this.renderer.domElement.style.pointerEvents = 'none';
 
       this.images = JSON.parse(this.container.getAttribute('data-images'));
+      this.width = this.container.offsetWidth;
+      this.height = this.container.offsetHeight;
       this.container.appendChild(this.renderer.domElement);
-      
       this.camera = new THREE.PerspectiveCamera(
         70,
-        this.width / this.height,
+        window.innerWidth / window.innerHeight,
         0.001,
         1000
       );
@@ -237,46 +236,34 @@
       window.addEventListener("resize", this.resizeHandler);
     }
 
-    // --- FIX: LOGICA RESIZE CORRETTA ---
+    // --- FIX: UPDATED RESIZE FUNCTION ---
     resize() {
       if (!this.container) return;
       
-      // 1. Usa le dimensioni del container, non della finestra, per non rompere la grid
+      // 1. Setup dimensioni render e camera
       this.width = this.container.offsetWidth;
       this.height = this.container.offsetHeight;
-      
       this.renderer.setSize(this.width, this.height);
       this.camera.aspect = this.width / this.height;
       
-      // 2. Calcola FOV corretto (distance-based) per mantenere 1 unit = full height
-      const dist = this.camera.position.z;
-      const height = 1;
-      this.camera.fov = 2 * (180 / Math.PI) * Math.atan(height / (2 * dist));
-      
-      // 3. Importante: Aggiorna la matrice
-      this.camera.updateProjectionMatrix();
-      
-      // 4. Scala il piano per coprire la vista
-      if (this.plane) {
-        this.plane.scale.x = this.camera.aspect;
-        this.plane.scale.y = 1;
-      }
-      
-      // 5. Calcola UV per effetto "cover" (evita stretching)
-      if (this.textures && this.textures[0] && this.textures[0].image) {
-        const image = this.textures[0].image;
-        const screenAspect = this.width / this.height;
-        const imageAspect = image.width / image.height;
+      // 2. Calcolo "Cover" per le texture
+      if (this.textures && this.textures.length > 0 && this.textures[0].image) {
+        const img = this.textures[0].image;
+        
+        // Calcoliamo i ratio (Larghezza / Altezza)
+        const iAspect = img.width / img.height;
+        const sAspect = this.width / this.height;
         
         let a1, a2;
-        if (screenAspect > imageAspect) {
-          // Screen più largo: adatta width (zooma height)
-          a1 = (this.width / this.height) / imageAspect; 
-          a2 = 1;
-        } else {
-          // Screen più alto: adatta height (zooma width)
+        
+        if (sAspect > iAspect) {
+          // Schermo più largo dell'immagine
           a1 = 1;
-          a2 = imageAspect / (this.width / this.height);
+          a2 = iAspect / sAspect; 
+        } else {
+          // Schermo più alto dell'immagine
+          a1 = sAspect / iAspect;
+          a2 = 1;
         }
         
         this.material.uniforms.resolution.value.x = this.width;
@@ -284,6 +271,18 @@
         this.material.uniforms.resolution.value.z = a1;
         this.material.uniforms.resolution.value.w = a2;
       }
+      
+      // 3. Adattamento geometrico del piano al Frustum
+      const dist = this.camera.position.z;
+      const height = 1; 
+      this.camera.fov = 2 * (180 / Math.PI) * Math.atan(height / (2 * dist));
+      
+      if (this.plane) {
+        this.plane.scale.x = this.camera.aspect;
+        this.plane.scale.y = 1;
+      }
+      
+      this.camera.updateProjectionMatrix();
     }
     // --- END FIX ---
 
@@ -484,9 +483,9 @@
     // Clean up existing instances
     destroyPixelateImageRenderEffect();
     
-    let renderDuration = 100;  // Velocizzato leggermente per l'hover
-    let renderSteps = 20;      // Più step per fluidità
-    let renderColumns = 10;    // Blocchi iniziali
+    let renderDuration = 100;  
+    let renderSteps = 20;      
+    let renderColumns = 10;    
 
     const pixelateElements = document.querySelectorAll('[data-pixelate-render]');
     pixelateElements.forEach(setupPixelate);
@@ -495,7 +494,6 @@
       const img = root.querySelector('[data-pixelate-render-img]');
       if (!img) return;
 
-      // Selettore trigger (hover è il focus qui)
       const trigger = (root.getAttribute('data-pixelate-render-trigger') || 'load').toLowerCase();
 
       const durAttr = parseInt(root.getAttribute('data-pixelate-render-duration'), 10);
@@ -513,7 +511,7 @@
       canvas.style.inset = '0';
       canvas.style.width = '100%';
       canvas.style.height = '100%';
-      canvas.style.pointerEvents = 'none'; // Importante: lascia passare il mouse all'img sotto
+      canvas.style.pointerEvents = 'none'; 
       root.style.position ||= 'relative';
       root.appendChild(canvas);
 
@@ -528,7 +526,7 @@
       let naturalW = 0, naturalH = 0;
       let playing = false;
       let stageIndex = 0;
-      let targetIndex = 0; // Dove vogliamo arrivare (0 = pixelato, MAX = nitido)
+      let targetIndex = 0; 
       let lastTime = 0;
       let backDirty = true, resizeTimeout = 0;
       let steps = [elRenderColumns];
@@ -582,8 +580,6 @@
         const cols = Math.max(1, Math.floor(columns));
         const rows = Math.max(1, Math.round(cols * (ch / cw)));
         
-        // Se siamo alla massima risoluzione, puliamo il canvas per mostrare l'IMG originale sotto
-        // (Opzionale: rimuovi questo IF se vuoi che il canvas rimanga sempre sopra)
         if (stageIndex === steps.length - 1 && targetIndex === steps.length - 1) {
            ctx.clearRect(0, 0, cw, ch);
            return;
@@ -604,58 +600,43 @@
         pixelate(stepCols);
       }
 
-      // Nuova logica di animazione bidirezionale
       function animate(t) {
         if (!playing) return;
-
-        // Gestione del timing
         if (!lastTime) lastTime = t;
         const delta = t - lastTime;
-
-        // Se è passato abbastanza tempo, facciamo un frame
         if (delta >= elRenderDuration) {
           if (stageIndex < targetIndex) {
-              stageIndex++; // Andiamo verso il nitido
+              stageIndex++; 
           } else if (stageIndex > targetIndex) {
-              stageIndex--; // Torniamo verso il pixelato
+              stageIndex--; 
           } else {
-              // Siamo arrivati a destinazione
               playing = false;
-              // Ultimo disegno per assicurarsi che sia pulito o pixelato
               draw(steps[stageIndex]);
               return; 
           }
-          
           draw(steps[stageIndex]);
           lastTime = t;
         }
-        
         requestAnimationFrame(animate);
       }
 
       function setTarget(isHovering) {
-         // Se hover: target è l'ultimo step (nitido)
-         // Se no hover: target è 0 (pixelato)
          targetIndex = isHovering ? steps.length - 1 : 0;
-         
          if (!playing) {
              playing = true;
-             lastTime = 0; // Reset timer
+             lastTime = 0; 
              requestAnimationFrame(animate);
          }
       }
 
       function init() {
-          naturalW = img.naturalWidth; naturalH = img.naturalHeight;
-          if (!naturalW || !naturalH) return;
-          
-          fitCanvas();
-          
-          // Stato Iniziale: Pixelato (stageIndex 0)
-          stageIndex = 0;
-          targetIndex = 0;
-          backDirty = true;
-          draw(steps[0]);
+         naturalW = img.naturalWidth; naturalH = img.naturalHeight;
+         if (!naturalW || !naturalH) return;
+         fitCanvas();
+         stageIndex = 0;
+         targetIndex = 0;
+         backDirty = true;
+         draw(steps[0]);
       }
 
       function onWindowResize() {
@@ -666,7 +647,6 @@
         }, 250);
       }
 
-      // Gestione Trigger
       if (img.complete && img.naturalWidth) init(); 
       else img.addEventListener('load', init, { once: true });
 
@@ -676,21 +656,11 @@
         root.addEventListener('mouseenter', () => setTarget(true));
         root.addEventListener('mouseleave', () => setTarget(false));
       } else {
-         // Se usi altri trigger (load, inview), facciamo solo l'entrata classica
-         // ma manteniamo la struttura compatibile
-         if(trigger === 'load') setTarget(true); // Parte subito
+         if(trigger === 'load') setTarget(true); 
       }
 
-      // Store instance for cleanup
       pixelateInstances.push({
-        root,
-        canvas,
-        back,
-        tiny,
-        img,
-        onWindowResize,
-        setTarget,
-        trigger
+        root, canvas, back, tiny, img, onWindowResize, setTarget, trigger
       });
     }
   }
@@ -705,11 +675,10 @@
     pixelateInstances = [];
   }
 
-  // ================== mwg_effect005 EFFECT (NO ScrollTrigger) ==================
+  // ================== mwg_effect005 EFFECT (FIXED RESIZE) ==================
   function initMWGEffect005NoST() {
     if (typeof gsap === 'undefined') return;
 
-    // Clean previous
     destroyMWGEffect005NoST();
 
     const scope = document.querySelector('.mwg_effect005');
@@ -728,13 +697,13 @@
     const words = scope.querySelectorAll('.word');
     if (!(pinHeight && container && words.length)) return;
 
-    // Sticky pin
     container.style.position = 'sticky';
     container.style.top = '0';
 
     const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
     const easeInOut4 = (p) =>
       p < 0.5 ? 8 * p * p * p * p : 1 - Math.pow(-2 * p + 2, 4) / 2;
+    
     const getTranslateX = (el) => {
       const t = getComputedStyle(el).transform;
       if (!t || t === 'none') return 0;
@@ -743,10 +712,13 @@
       return 0;
     };
 
-    const baseX = Array.from(words, (el) => getTranslateX(el));
+    // Calculate initial positions
+    let baseX = Array.from(words, (el) => getTranslateX(el));
     baseX.forEach((x, i) => gsap.set(words[i], { x }));
-    const setX = Array.from(words, (el) => gsap.quickSetter(el, 'x', 'px'));
-    const setO = Array.from(words, (el) => gsap.quickSetter(el, 'opacity'));
+    
+    // Setters
+    let setX = Array.from(words, (el) => gsap.quickSetter(el, 'x', 'px'));
+    let setO = Array.from(words, (el) => gsap.quickSetter(el, 'opacity'));
 
     let startY = 0;
     let endY = 0;
@@ -756,8 +728,8 @@
     function measure() {
       const rect = pinHeight.getBoundingClientRect();
       const y = window.scrollY;
-      startY = y + rect.top - window.innerHeight * 0.7; // start: top 70%
-      endY = y + rect.bottom - window.innerHeight; // end: bottom bottom
+      startY = y + rect.top - window.innerHeight * 0.7; 
+      endY = y + rect.bottom - window.innerHeight; 
       range = Math.max(1, endY - startY);
     }
 
@@ -784,14 +756,28 @@
       requestAnimationFrame(update);
     }
 
+    // --- FIX: UPDATED RESIZE HANDLER FOR MWG ---
     function onResize() {
+      // 1. Resettiamo le proprietà di GSAP per leggere i valori CSS originali puliti
+      gsap.set(words, { clearProps: 'transform,opacity' });
+
+      // 2. Ricalcoliamo la metrica di scorrimento verticale
       measure();
-      for (let i = 0; i < words.length; i++) {
-        baseX[i] = getTranslateX(words[i]);
-        gsap.set(words[i], { x: baseX[i] });
-      }
+
+      // 3. Rileggiamo le posizioni X originali dal CSS (ora che abbiamo pulito GSAP)
+      baseX = Array.from(words, (el) => getTranslateX(el));
+      
+      // 4. Ripristiniamo la posizione iniziale su GSAP per evitare glitch
+      baseX.forEach((x, i) => gsap.set(words[i], { x }));
+      
+      // 5. Ricreiamo i quickSetter (per sicurezza, nel caso il riferimento DOM sia cambiato, anche se raro)
+      setX = Array.from(words, (el) => gsap.quickSetter(el, 'x', 'px'));
+      setO = Array.from(words, (el) => gsap.quickSetter(el, 'opacity'));
+
+      // 6. Forziamo un aggiornamento immediato basato sulla posizione di scroll attuale
       update();
     }
+    // --- END FIX ---
 
     measure();
     update();
@@ -814,23 +800,19 @@
   }
 
   function initLenisSmoothScroll() {
-    // Destroy existing instance if any
     destroyLenisSmoothScroll();
 
     if (typeof Lenis === 'undefined') {
       return;
     }
 
-    // Initialize a new Lenis instance for smooth scrolling
     lenisInstance = new Lenis({
       lerp: 0.1,
       smooth: true,
     });
 
-    // Synchronize Lenis scrolling with GSAP's ScrollTrigger plugin
     lenisInstance.on('scroll', ScrollTrigger.update);
 
-    // Create animation loop (single runner)
     const loop = (time) => {
       if (lenisInstance) {
         lenisInstance.raf(time);
@@ -841,7 +823,6 @@
   }
 
   function destroyLenisSmoothScroll() {
-    // Destroy Lenis instance
     if (lenisRafId) {
       cancelAnimationFrame(lenisRafId);
       lenisRafId = null;
@@ -853,7 +834,6 @@
   }
 
   function initGlobalParallax() {
-    // Destroy existing parallax context
     if (parallaxContext) {
       parallaxContext();
       parallaxContext = null;
@@ -863,12 +843,10 @@
       return;
     }
 
-    // Ensure ScrollTrigger is registered with GSAP (needed on some setups)
     if (typeof gsap.registerPlugin === 'function') {
       try {
         gsap.registerPlugin(ScrollTrigger);
       } catch (e) {
-        // Ignore if already registered
       }
     }
 
@@ -952,7 +930,6 @@
         mm.revert && mm.revert();
       };
     } else {
-      // Fallback for older GSAP: single pass without context
       const simpleConditions = {
         isMobile: window.matchMedia("(max-width:479px)").matches,
         isMobileLandscape: window.matchMedia("(max-width:767px)").matches,
@@ -971,29 +948,19 @@
   }
 
   function initProjectTemplateAnimations() {
-    // Initialize Lenis smooth scroll first
     initLenisSmoothScroll();
-
-    // Initialize global parallax
     initGlobalParallax();
-
-    // Initialize mwg_effect005 (no ScrollTrigger)
     initMWGEffect005NoST();
-
-    // Initialize pixelate effect
     initPixelateImageRenderEffect();
 
-    // Initialize Three.js Sketch (planetary effect)
     const sliderContainer = document.getElementById("slider");
     if (sliderContainer && typeof THREE !== 'undefined') {
-      // Clean up container before creating new instance
       const existingCanvases = sliderContainer.querySelectorAll('canvas');
       if (existingCanvases.length > 0) {
         existingCanvases.forEach(canvas => {
           try {
             sliderContainer.removeChild(canvas);
           } catch (e) {
-            // Ignore errors
           }
         });
       }
@@ -1047,22 +1014,13 @@
   }
 
   function destroyProjectTemplateAnimations() {
-    // Destroy Sketch instance
     if (sketchInstance) {
       sketchInstance.destroy();
       sketchInstance = null;
     }
-
-    // Destroy pixelate effects
     destroyPixelateImageRenderEffect();
-
-    // Destroy mwg_effect005 (no ScrollTrigger)
     destroyMWGEffect005NoST();
-
-    // Destroy parallax
     destroyGlobalParallax();
-
-    // Destroy Lenis
     destroyLenisSmoothScroll();
   }
 
@@ -1092,61 +1050,61 @@
     const loader = new THREE.TextureLoader();
 
     const vertexShader = `
-  precision mediump float;
-  uniform vec2 u_velo;
-  uniform vec2 u_viewSize;
-  varying vec2 vUv;
-  #define M_PI 3.1415926535897932384626433832795
-  void main(){
-    vUv = uv;
-    vec4 worldPos = modelMatrix * vec4(position, 1.0);
-    float normalizedX = worldPos.x / u_viewSize.x;
-    float curvature = cos(normalizedX * M_PI);
-    worldPos.y -= curvature * u_velo.y * 0.6;
-    gl_Position = projectionMatrix * viewMatrix * worldPos;
-  }
-  `;
+    precision mediump float;
+    uniform vec2 u_velo;
+    uniform vec2 u_viewSize;
+    varying vec2 vUv;
+    #define M_PI 3.1415926535897932384626433832795
+    void main(){
+      vUv = uv;
+      vec4 worldPos = modelMatrix * vec4(position, 1.0);
+      float normalizedX = worldPos.x / u_viewSize.x;
+      float curvature = cos(normalizedX * M_PI);
+      worldPos.y -= curvature * u_velo.y * 0.6;
+      gl_Position = projectionMatrix * viewMatrix * worldPos;
+    }
+    `;
 
     const fragmentShader = `
-  precision mediump float;
-  uniform vec2 u_res;
-  uniform vec2 u_size;
-  uniform vec2 u_velo; 
-  uniform sampler2D u_texture;
-  varying vec2 vUv;
+    precision mediump float;
+    uniform vec2 u_res;
+    uniform vec2 u_size;
+    uniform vec2 u_velo; 
+    uniform sampler2D u_texture;
+    varying vec2 vUv;
 
-  float random(vec2 p) {
-    return fract(sin(dot(p.xy, vec2(12.9898, 78.233))) * 43758.5453);
-  }
+    float random(vec2 p) {
+      return fract(sin(dot(p.xy, vec2(12.9898, 78.233))) * 43758.5453);
+    }
 
-  vec2 cover(vec2 screenSize, vec2 imageSize, vec2 uv) {
-    float screenRatio = screenSize.x / screenSize.y;
-    float imageRatio = imageSize.x / imageSize.y;
-    vec2 newSize = screenRatio < imageRatio 
-      ? vec2(imageSize.x * (screenSize.y / imageSize.y), screenSize.y)
-      : vec2(screenSize.x, imageSize.y * (screenSize.x / imageSize.x));
-    vec2 newOffset = (screenRatio < imageRatio 
-      ? vec2((newSize.x - screenSize.x) / 2.0, 0.0) 
-      : vec2(0.0, (newSize.y - screenSize.y) / 2.0)) / newSize;
-    return uv * screenSize / newSize + newOffset;
-  }
+    vec2 cover(vec2 screenSize, vec2 imageSize, vec2 uv) {
+      float screenRatio = screenSize.x / screenSize.y;
+      float imageRatio = imageSize.x / imageSize.y;
+      vec2 newSize = screenRatio < imageRatio 
+        ? vec2(imageSize.x * (screenSize.y / imageSize.y), screenSize.y)
+        : vec2(screenSize.x, imageSize.y * (screenSize.x / imageSize.x));
+      vec2 newOffset = (screenRatio < imageRatio 
+        ? vec2((newSize.x - screenSize.x) / 2.0, 0.0) 
+        : vec2(0.0, (newSize.y - screenSize.y) / 2.0)) / newSize;
+      return uv * screenSize / newSize + newOffset;
+    }
 
-  void main() {
-    vec2 uv = vUv;
-    vec2 uvCover = cover(u_res, u_size, uv);
-    vec2 rgbOffset = u_velo * 0.0002;
-    float r = texture2D(u_texture, uvCover + rgbOffset).r;
-    float g = texture2D(u_texture, uvCover).g;
-    float b = texture2D(u_texture, uvCover - rgbOffset).b;
-    vec4 color = vec4(r, g, b, 1.0);
-    float noise = random(uvCover * 550.0); 
-    color.rgb += (noise - 0.5) * 0.08;
-    float dist = distance(vUv, vec2(0.5, 0.5));
-    float vignette = smoothstep(0.8, 0.2, dist * 0.9);
-    color.rgb *= vignette;
-    gl_FragColor = color;
-  }
-  `;
+    void main() {
+      vec2 uv = vUv;
+      vec2 uvCover = cover(u_res, u_size, uv);
+      vec2 rgbOffset = u_velo * 0.0002;
+      float r = texture2D(u_texture, uvCover + rgbOffset).r;
+      float g = texture2D(u_texture, uvCover).g;
+      float b = texture2D(u_texture, uvCover - rgbOffset).b;
+      vec4 color = vec4(r, g, b, 1.0);
+      float noise = random(uvCover * 550.0); 
+      color.rgb += (noise - 0.5) * 0.08;
+      float dist = distance(vUv, vec2(0.5, 0.5));
+      float vignette = smoothstep(0.8, 0.2, dist * 0.9);
+      color.rgb *= vignette;
+      gl_FragColor = color;
+    }
+    `;
 
     const geometry = new THREE.PlaneBufferGeometry(1, 1, 32, 32);
     const material = new THREE.ShaderMaterial({ fragmentShader, vertexShader });
@@ -1235,7 +1193,7 @@
         this.renderer.setPixelRatio(gsap.utils.clamp(1, 1.5, window.devicePixelRatio));
         this.renderer.setClearColor(0xE7E7E7, 1);
         const canvasEl = this.renderer.domElement;
-        // Keep canvas full-viewport, behind UI, and non-blocking
+        
         canvasEl.style.position = 'fixed';
         canvasEl.style.top = '0';
         canvasEl.style.left = '0';
@@ -1472,14 +1430,12 @@
     const slides = gsap.utils.toArray('[data-slider="slide"]');
     if (!slides.length) return;
 
-    // Cleanup existing
     destroyDraggableInfiniteGSAPSlider();
 
     let activeElement = null;
     let currentEl = null;
     let currentIndex = 0;
 
-    // Responsive: decide which element is active
     const mq = window.matchMedia('(min-width: 992px)');
     let useNextForActive = mq.matches;
 
@@ -1502,7 +1458,6 @@
       activeElement = target;
     }
 
-    // Helper: horizontal loop (simplified from provided code)
     function horizontalLoop(items, config) {
       items = gsap.utils.toArray(items);
       config = config || {};
@@ -1622,7 +1577,6 @@
         return index;
       }
 
-      // Draggable
       let draggable;
       let wasPlaying = false;
       let startProgress = 0;
@@ -1742,20 +1696,20 @@
     destroyLenisSmoothScroll();
   }
 
-   // Initialize on DOM ready without Barba
-   document.addEventListener("DOMContentLoaded", () => {
-     const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
-     if (namespace === 'project-template') {
-       initProjectTemplateAnimations();
-     } else if (namespace === 'about') {
-       initAboutAnimations();
-     } else if (namespace === 'home') {
-       initHomeAnimations();
-     }
-     ensureLenisRunning();
-     if (typeof ScrollTrigger !== 'undefined') {
-       ScrollTrigger.refresh();
-     }
-   });
+  // Initialize on DOM ready
+  document.addEventListener("DOMContentLoaded", () => {
+    const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
+    if (namespace === 'project-template') {
+      initProjectTemplateAnimations();
+    } else if (namespace === 'about') {
+      initAboutAnimations();
+    } else if (namespace === 'home') {
+      initHomeAnimations();
+    }
+    ensureLenisRunning();
+    if (typeof ScrollTrigger !== 'undefined') {
+      ScrollTrigger.refresh();
+    }
+  });
 
 })();

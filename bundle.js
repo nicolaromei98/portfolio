@@ -966,6 +966,7 @@
         uniforms: {
           intensity: { value: 1, type: 'f', min: 0., max: 3 }
         },
+        // --- UPDATED FRAGMENT SHADER WITH RGB SHIFT ---
         fragment: `
           uniform float time;
           uniform float progress;
@@ -981,30 +982,51 @@
           uniform sampler2D displacement;
           uniform vec4 resolution;
           varying vec2 vUv;
+          
           mat2 getRotM(float angle) {
               float s = sin(angle);
               float c = cos(angle);
               return mat2(c, -s, s, c);
           }
           const float PI = 3.1415;
-          const float angle1 = PI *0.25;
-          const float angle2 = -PI *0.75;
+          const float angle1 = PI * 0.25;
+          const float angle2 = -PI * 0.75;
 
           void main()	{
-            vec2 newUV = (vUv - vec2(0.5))*resolution.zw + vec2(0.5);
-
+            vec2 newUV = (vUv - vec2(0.5)) * resolution.zw + vec2(0.5);
             vec4 disp = texture2D(displacement, newUV);
             vec2 dispVec = vec2(disp.r, disp.g);
 
-            vec2 distortedPosition1 = newUV + getRotM(angle1) * dispVec * intensity * progress;
-            vec4 t1 = texture2D(texture1, distortedPosition1);
+            // Calculate base distortion vector based on intensity and progress
+            vec2 distVector1 = getRotM(angle1) * dispVec * intensity * progress;
+            vec2 distVector2 = getRotM(angle2) * dispVec * intensity * (1.0 - progress);
 
-            vec2 distortedPosition2 = newUV + getRotM(angle2) * dispVec * intensity * (1.0 - progress);
-            vec4 t2 = texture2D(texture2, distortedPosition2);
+            // RGB Shift Strength (scaling with intensity)
+            float rgbShiftStrength = 0.03 * intensity;
+
+            // --- TEXTURE 1 (Outgoing) ---
+            vec2 uv1 = newUV + distVector1;
+            // Separate channels along the distortion vector
+            vec4 t1 = vec4(
+                texture2D(texture1, uv1 + distVector1 * rgbShiftStrength).r,
+                texture2D(texture1, uv1).g,
+                texture2D(texture1, uv1 - distVector1 * rgbShiftStrength).b,
+                1.0
+            );
+
+            // --- TEXTURE 2 (Incoming) ---
+            vec2 uv2 = newUV + distVector2;
+            vec4 t2 = vec4(
+                texture2D(texture2, uv2 + distVector2 * rgbShiftStrength).r,
+                texture2D(texture2, uv2).g,
+                texture2D(texture2, uv2 - distVector2 * rgbShiftStrength).b,
+                1.0
+            );
 
             gl_FragColor = mix(t1, t2, progress);
           }
         `
+        // --- END UPDATED SHADER ---
       });
     }
   }
@@ -1306,33 +1328,26 @@
         this.ty -= this.wheel.y;
       }
 
-      // --- FIX: UPDATED HOME CANVAS RESIZE ---
       resize = () => {
-        // 1. Update dimensions
         ww = window.innerWidth;
         wh = window.innerHeight;
         
-        // 2. Update Camera Frustum (CRITICAL FOR STRETCHING)
         this.camera.left = ww / -2;
         this.camera.right = ww / 2;
         this.camera.top = wh / 2;
         this.camera.bottom = wh / -2;
         this.camera.updateProjectionMatrix();
 
-        // 3. Update Renderer
         this.renderer.setSize(ww, wh);
 
-        // 4. Update Grid Max Values
         const { bottom, right } = this.el.getBoundingClientRect();
         this.max.x = right;
         this.max.y = bottom;
         
-        // 5. Update individual planes
         if (this.planes) {
           this.planes.forEach(plane => plane.resize());
         }
       }
-      // --- END FIX ---
     }
 
     const core = new Core();

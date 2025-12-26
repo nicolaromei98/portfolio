@@ -104,7 +104,7 @@
   }
 
   // ============================================================================
-  // THREE.JS SKETCH (Infinite Gallery) - FIX APPLIED HERE
+  // THREE.JS SKETCH (Infinite Gallery)
   // ============================================================================
 
   class Sketch {
@@ -236,7 +236,6 @@
       window.addEventListener("resize", this.resizeHandler);
     }
 
-    // --- FIX: UPDATED RESIZE FUNCTION ---
     resize() {
       if (!this.container) return;
       
@@ -284,7 +283,6 @@
       
       this.camera.updateProjectionMatrix();
     }
-    // --- END FIX ---
 
     addObjects() {
       let that = this;
@@ -675,7 +673,7 @@
     pixelateInstances = [];
   }
 
-  // ================== mwg_effect005 EFFECT (FIXED RESIZE) ==================
+  // ================== mwg_effect005 EFFECT ==================
   function initMWGEffect005NoST() {
     if (typeof gsap === 'undefined') return;
 
@@ -756,7 +754,6 @@
       requestAnimationFrame(update);
     }
 
-    // --- FIX: UPDATED RESIZE HANDLER FOR MWG ---
     function onResize() {
       // 1. Resettiamo le proprietà di GSAP per leggere i valori CSS originali puliti
       gsap.set(words, { clearProps: 'transform,opacity' });
@@ -777,7 +774,6 @@
       // 6. Forziamo un aggiornamento immediato basato sulla posizione di scroll attuale
       update();
     }
-    // --- END FIX ---
 
     measure();
     update();
@@ -1310,17 +1306,33 @@
         this.ty -= this.wheel.y;
       }
 
+      // --- FIX: UPDATED HOME CANVAS RESIZE ---
       resize = () => {
+        // 1. Update dimensions
         ww = window.innerWidth;
         wh = window.innerHeight;
+        
+        // 2. Update Camera Frustum (CRITICAL FOR STRETCHING)
+        this.camera.left = ww / -2;
+        this.camera.right = ww / 2;
+        this.camera.top = wh / 2;
+        this.camera.bottom = wh / -2;
+        this.camera.updateProjectionMatrix();
+
+        // 3. Update Renderer
+        this.renderer.setSize(ww, wh);
+
+        // 4. Update Grid Max Values
         const { bottom, right } = this.el.getBoundingClientRect();
         this.max.x = right;
         this.max.y = bottom;
+        
+        // 5. Update individual planes
         if (this.planes) {
           this.planes.forEach(plane => plane.resize());
         }
-        this.renderer.setSize(ww, wh);
       }
+      // --- END FIX ---
     }
 
     const core = new Core();

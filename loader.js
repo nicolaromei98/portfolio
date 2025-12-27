@@ -1,5 +1,6 @@
 (() => {
-  if (!window.gsap) return;
+  // Controllo dipendenze
+  if (!window.gsap || !window.SplitText) return;
 
   /* ==========================================================================
    * CONFIGURATION
@@ -24,14 +25,19 @@
       in: 0.6,
       out: 0.6,
       ease: "sine.inOut"
+    },
+    reveal: {
+      lines: { duration: 0.8, stagger: 0.08 },
+      words: { duration: 0.6, stagger: 0.06 },
+      chars: { duration: 0.4, stagger: 0.01 }
     }
   };
 
   /* ==========================================================================
    * DOM ELEMENTS
    * ========================================================================== */
-  const select = (sel, root = document) => root.querySelector(sel);
-  const selectAll = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const select = (sel) => document.querySelector(sel);
+  const selectAll = (sel) => Array.from(document.querySelectorAll(sel));
 
   const DOM = {
     preloader: select(".preloader"),
@@ -39,7 +45,8 @@
     overlay: select(".page-transition"),
     blinkTexts: selectAll("[data-blink-text]"),
     eyebrows: selectAll("[data-eyebrow]"),
-    heroTab: select(".hero__tab-wrap"), // Nuovo elemento
+    headings: selectAll('[data-split="heading"]'),
+    heroTab: select(".hero__tab-wrap"),
   };
 
   const UI = DOM.preloader ? {
@@ -53,35 +60,72 @@
   let isAnimationRunning = false;
 
   /* ==========================================================================
-   * SHARED ANIMATION: SPLIT TEXT
+   * ANIMATION: MASK TEXT REVEAL (Sostituisce ScrollTrigger)
    * ========================================================================== */
-  const runSplitAnimation = (elements, config = ANIM_CONFIG.preloader.text) => {
-    if (!window.SplitText || !elements.length) return;
+  const initMaskTextReveal = () => {
+    DOM.headings.forEach(heading => {
+      if (heading.dataset.revealDone) return;
 
-    elements.forEach(el => {
-      if (el.dataset.splitDone) return;
-      
-      const split = new SplitText(el, { type: "words, chars", charsClass: "st-char" });
-      gsap.set(split.chars, { opacity: 0 });
-      
-      gsap.to(split.chars, {
-        opacity: 1,
+      // Rende visibile l'elemento prima dello split
+      gsap.set(heading, { autoAlpha: 1 });
+
+      const type = heading.dataset.splitReveal || 'lines';
+      const typesToSplit = type === 'lines' ? 'lines' : (type === 'words' ? 'lines,words' : 'lines,words,chars');
+
+      // 1. Esegui lo split
+      const split = new SplitText(heading, {
+        type: typesToSplit,
+        linesClass: "split-line"
+      });
+
+      // 2. Crea l'effetto maschera (overflow:hidden) avvolgendo ogni linea
+      split.lines.forEach(line => {
+        const wrap = document.createElement('div');
+        wrap.className = "line-mask";
+        Object.assign(wrap.style, { overflow: 'hidden', display: 'block' });
+        line.parentNode.insertBefore(wrap, line);
+        wrap.appendChild(line);
+      });
+
+      // 3. Animazione GSAP immediata
+      const targets = split[type];
+      const config = ANIM_CONFIG.reveal[type];
+
+      gsap.from(targets, {
+        yPercent: 110,
         duration: config.duration,
-        ease: config.ease,
         stagger: config.stagger,
-        onComplete: () => {
-          el.dataset.splitDone = "1";
+        ease: 'expo.out',
+        onComplete: () => { 
+            heading.dataset.revealDone = "1";
+            // Opzionale: pulizia split per accessibilità/resize
+            // split.revert(); 
         }
       });
     });
   };
 
   /* ==========================================================================
-   * LOGIC: BLINK TEXT EFFECT + EYEBROWS
+   * SHARED ANIMATIONS: BLINK & EYEBROWS
    * ========================================================================== */
+  const runSplitAnimation = (elements, config = ANIM_CONFIG.preloader.text) => {
+    if (!elements.length) return;
+    elements.forEach(el => {
+      if (el.dataset.splitDone) return;
+      const split = new SplitText(el, { type: "words, chars", charsClass: "st-char" });
+      gsap.set(split.chars, { opacity: 0 });
+      gsap.to(split.chars, {
+        opacity: 1,
+        duration: config.duration,
+        ease: config.ease,
+        stagger: config.stagger,
+        onComplete: () => { el.dataset.splitDone = "1"; }
+      });
+    });
+  };
+
   const initBlinkAndEyebrows = () => {
     runSplitAnimation(DOM.eyebrows);
-
     DOM.blinkTexts.forEach((el, index) => {
       if (!el.dataset.wrapped) {
         const raw = el.innerHTML.replace(/<br\s*\/?>/gi, "\n");
@@ -92,14 +136,7 @@
         }).join("");
         el.dataset.wrapped = "1";
       }
-
       const chars = el.querySelectorAll(".blink-char");
-      let hoverTL;
-
-      const settleAll = () => gsap.to(chars, { 
-        opacity: 1, filter: "brightness(1)", duration: 0.5, stagger: 0.01, ease: "power2.out", overwrite: "auto" 
-      });
-
       const createFlash = (target) => {
         const tl = gsap.timeline();
         tl.to(target, { opacity: 1, filter: "brightness(2)", duration: 0.05, ease: "none" })
@@ -107,122 +144,72 @@
           .to(target, { opacity: 1, filter: "brightness(1)", duration: 0.1, ease: "none" });
         return tl;
       };
-
-      const getRandomChar = () => chars[gsap.utils.random(0, chars.length - 1, 1)];
-
       const doBurst = () => {
-        if (hoverTL) hoverTL.kill();
         const tl = gsap.timeline({ delay: index * 0.1 });
-        const flashesCount = Math.min(30, chars.length * 2); 
-        for (let i = 0; i < flashesCount; i++) {
-          tl.add(createFlash(getRandomChar()), gsap.utils.random(0, 0.6));
+        for (let i = 0; i < Math.min(30, chars.length * 2); i++) {
+          tl.add(createFlash(chars[gsap.utils.random(0, chars.length - 1, 1)]), gsap.utils.random(0, 0.6));
         }
-        tl.add(settleAll(), 0.5);
+        tl.to(chars, { opacity: 1, filter: "brightness(1)", duration: 0.5, stagger: 0.01, ease: "power2.out" }, 0.5);
       };
-
-      const startHover = () => {
-        if (hoverTL) hoverTL.kill();
-        gsap.set(chars, { opacity: 1 });
-        hoverTL = gsap.timeline({ repeat: -1 });
-        const flashes = Math.max(5, Math.floor(chars.length / 3));
-        for (let i = 0; i < flashes; i++) {
-          hoverTL.add(createFlash(getRandomChar()), gsap.utils.random(0, 1.5));
-        }
-      };
-
-      const stopHover = () => { 
-        if (hoverTL) hoverTL.kill(); 
-        gsap.to(chars, { opacity: 1, filter: "brightness(1)", duration: 0.3, overwrite: "auto" });
-      };
-
       doBurst();
-      el.addEventListener("mouseenter", startHover, { passive: true });
-      el.addEventListener("mouseleave", stopHover, { passive: true });
     });
   };
 
+  // Funzione master che avvia tutte le animazioni d'entrata
+  const runAllEntryAnimations = () => {
+    initBlinkAndEyebrows();
+    initMaskTextReveal();
+  };
+
   /* ==========================================================================
-   * PAGE TRANSITIONS LOGIC
+   * TRANSITIONS LOGIC
    * ========================================================================== */
   const shouldInterceptLink = (a) => {
     if (!a || (a.target && a.target !== "_self") || a.hasAttribute("download")) return false;
-    
     const href = a.getAttribute("href");
     if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) return false;
-    
     try {
       const url = new URL(a.href, window.location.origin);
       return url.hostname === window.location.hostname;
-    } catch (e) {
-      return false;
-    }
+    } catch (e) { return false; }
   };
 
-  const handlePageLoadTransition = (onAnimationStart) => {
+  const handlePageLoadTransition = () => {
     if (!DOM.overlay) return false;
-    
     if (sessionStorage.getItem(STORAGE_KEYS.PENDING) === "1") {
       sessionStorage.removeItem(STORAGE_KEYS.PENDING);
-      
       gsap.fromTo(DOM.overlay, 
         { opacity: 1, display: "block", pointerEvents: "all" },
         { 
           opacity: 0, 
           duration: ANIM_CONFIG.pageTransition.out, 
           ease: ANIM_CONFIG.pageTransition.ease,
-          onStart: () => { if (onAnimationStart) onAnimationStart(); },
+          onStart: runAllEntryAnimations,
           onComplete: () => gsap.set(DOM.overlay, { display: "none", pointerEvents: "none" })
         }
       );
       return true;
     }
-    
-    gsap.set(DOM.overlay, { opacity: 0, display: "none", pointerEvents: "none" });
     return false;
   };
 
   const handleInternalLinkClick = (e) => {
-    if (isAnimationRunning) return;
     const link = e.target.closest("a");
-    
-    if (!shouldInterceptLink(link)) return;
-
+    if (isAnimationRunning || !shouldInterceptLink(link)) return;
     e.preventDefault();
     sessionStorage.setItem(STORAGE_KEYS.PENDING, "1");
-
     gsap.to(DOM.overlay, {
-      display: "block",
-      opacity: 1,
-      duration: ANIM_CONFIG.pageTransition.in,
-      ease: ANIM_CONFIG.pageTransition.ease,
-      pointerEvents: "all",
-      onComplete: () => {
-        window.location.href = link.href;
-      },
+      display: "block", opacity: 1, duration: ANIM_CONFIG.pageTransition.in,
+      ease: ANIM_CONFIG.pageTransition.ease, pointerEvents: "all",
+      onComplete: () => { window.location.href = link.href; }
     });
   };
-
-  /* ==========================================================================
-   * BFCache / BACK BUTTON FIX
-   * ========================================================================== */
-  window.addEventListener("pageshow", (event) => {
-    if (event.persisted) {
-      isAnimationRunning = false;
-      sessionStorage.removeItem(STORAGE_KEYS.PENDING);
-      if (DOM.overlay) {
-        gsap.set(DOM.overlay, { opacity: 0, display: "none", pointerEvents: "none" });
-      }
-      if (DOM.heroTab) gsap.set(DOM.heroTab, { opacity: 1 });
-      DOM.eyebrows.forEach(el => delete el.dataset.splitDone);
-      initBlinkAndEyebrows();
-    }
-  });
 
   /* ==========================================================================
    * MAIN INITIALIZATION
    * ========================================================================== */
   const init = () => {
-    const hasRequiredUI = DOM.preloader && images.length && UI.count && UI.lineWrap && UI.lineFill;
+    const hasRequiredUI = DOM.preloader && images.length && UI.count && UI.lineFill;
     const hasSeenPreloader = sessionStorage.getItem(STORAGE_KEYS.SEEN) === "1";
 
     document.addEventListener("click", handleInternalLinkClick);
@@ -230,80 +217,70 @@
     if (hasRequiredUI && !hasSeenPreloader) {
       isAnimationRunning = true;
       
-      const setupInitialState = () => {
-        Object.assign(DOM.preloader.style, { position: "fixed", inset: "0", zIndex: "2147483647", display: "flex", opacity: "1" });
-        UI.count.textContent = "0";
-        Object.assign(UI.lineFill.style, { transformOrigin: "left center", transform: "scaleX(0)" });
-        
-        // Imposta stato iniziale per heroTab
-        if (DOM.heroTab) gsap.set(DOM.heroTab, { opacity: 0 });
+      // Setup iniziale
+      gsap.set(DOM.preloader, { position: "fixed", inset: "0", zIndex: "2147483647", display: "flex", opacity: 1 });
+      gsap.set(UI.lineFill, { transformOrigin: "left center", scaleX: 0 });
+      if (DOM.heroTab) gsap.set(DOM.heroTab, { opacity: 0 });
+      images.forEach((img, i) => {
+        img.style.zIndex = i + 1;
+        gsap.set(img, { clipPath: "inset(0 0 100% 0)" });
+      });
 
-        images.forEach((img, i) => {
-           img.style.zIndex = String(i + 1);
-           gsap.set(img, { clipPath: "inset(0 0 100% 0)" });
-        });
-      };
+      // Timeline Preloader
+      const C = ANIM_CONFIG.preloader;
+      const tl = gsap.timeline({ defaults: { ease: C.clipEase } });
+      const endAt = C.durationMs / 1000;
 
-      const runPreloader = () => {
-        const C = ANIM_CONFIG.preloader;
-        const tl = gsap.timeline({ defaults: { ease: C.clipEase } });
-        const endAt = C.durationMs / 1000;
-
-        const progress = { val: 0 };
-        tl.to(progress, {
-          val: 100, duration: endAt, ease: "none",
-          onUpdate: () => {
-            const p = progress.val | 0;
-            UI.count.textContent = p;
-            gsap.set(UI.lineFill, { scaleX: p / 100 });
-          }
-        }, 0);
-
-        if (UI.text) {
-            tl.add(() => runSplitAnimation([UI.text]), 0);
+      tl.to({ val: 0 }, {
+        val: 100, duration: endAt, ease: "none",
+        onUpdate: function() {
+          const p = this.targets()[0].val | 0;
+          UI.count.textContent = p;
+          gsap.set(UI.lineFill, { scaleX: p / 100 });
         }
+      }, 0);
 
-        images.forEach((img, i) => { 
-            tl.to(img, { clipPath: "inset(0 0 0% 0)", duration: C.open.duration }, C.clipDelay + (i * C.open.stagger)); 
-        });
-        
-        const uiElements = [UI.lineWrap, UI.count, UI.text].filter(Boolean);
-        tl.to(uiElements, { opacity: 0, duration: C.uiFade, ease: "power2.out" }, endAt - 0.1);
+      if (UI.text) tl.add(() => runSplitAnimation([UI.text]), 0);
 
-        const reversedImages = [...images].reverse();
-        reversedImages.forEach((img, i) => { 
-            tl.to(img, { clipPath: "inset(0 0 100% 0)", duration: C.close.duration }, endAt + (i * C.close.stagger)); 
-        });
+      images.forEach((img, i) => {
+        tl.to(img, { clipPath: "inset(0 0 0% 0)", duration: C.open.duration }, C.clipDelay + (i * C.open.stagger));
+      });
 
-        const totalCloseTime = (C.close.stagger * (reversedImages.length - 1)) + C.close.duration;
-        const fadeOutStartTime = endAt + totalCloseTime + 0.06;
+      tl.to([UI.lineWrap, UI.count, UI.text].filter(Boolean), { opacity: 0, duration: C.uiFade }, endAt - 0.1);
 
-        tl.call(initBlinkAndEyebrows, null, fadeOutStartTime);
-        
-        // Animazione HERO TAB in contemporanea alla chiusura preloader
-        if (DOM.heroTab) {
-          tl.to(DOM.heroTab, { opacity: 1, duration: 1, ease: "power2.out" }, fadeOutStartTime);
-        }
+      [...images].reverse().forEach((img, i) => {
+        tl.to(img, { clipPath: "inset(0 0 100% 0)", duration: C.close.duration }, endAt + (i * C.close.stagger));
+      });
 
-        tl.to(DOM.preloader, { opacity: 0, duration: C.out.duration, ease: C.out.ease }, fadeOutStartTime);
-        tl.set(DOM.preloader, { display: "none" })
-          .add(() => {
-            sessionStorage.setItem(STORAGE_KEYS.SEEN, "1");
-            isAnimationRunning = false;
-          });
-      };
+      const fadeOutStartTime = endAt + (C.close.stagger * (images.length - 1)) + C.close.duration + 0.06;
 
-      setupInitialState();
-      runPreloader();
+      tl.call(runAllEntryAnimations, null, fadeOutStartTime);
+      if (DOM.heroTab) tl.to(DOM.heroTab, { opacity: 1, duration: 1 }, fadeOutStartTime);
+      
+      tl.to(DOM.preloader, { opacity: 0, duration: C.out.duration, ease: C.out.ease }, fadeOutStartTime);
+      tl.set(DOM.preloader, { display: "none" }).add(() => {
+        sessionStorage.setItem(STORAGE_KEYS.SEEN, "1");
+        isAnimationRunning = false;
+      });
 
     } else {
       if (DOM.preloader) DOM.preloader.style.display = "none";
-      if (DOM.heroTab) gsap.set(DOM.heroTab, { opacity: 1 }); // Sempre visibile se preloader saltato
-      const isTransitioning = handlePageLoadTransition(initBlinkAndEyebrows);
-      if (!isTransitioning) initBlinkAndEyebrows();
+      if (DOM.heroTab) gsap.set(DOM.heroTab, { opacity: 1 });
+      const isTransitioning = handlePageLoadTransition();
+      if (!isTransitioning) runAllEntryAnimations();
     }
   };
 
-  init();
+  // Fix BFCache
+  window.addEventListener("pageshow", (e) => {
+    if (e.persisted) {
+      isAnimationRunning = false;
+      sessionStorage.removeItem(STORAGE_KEYS.PENDING);
+      if (DOM.overlay) gsap.set(DOM.overlay, { opacity: 0, display: "none" });
+      DOM.headings.forEach(h => delete h.dataset.revealDone);
+      runAllEntryAnimations();
+    }
+  });
 
+  init();
 })();

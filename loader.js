@@ -27,7 +27,7 @@
       ease: "sine.inOut"
     },
     reveal: {
-      lines: { duration: 0.8, stagger: 0.08 },
+      lines: { duration: 0.8, stagger: 0.03 },
       words: { duration: 0.6, stagger: 0.06 },
       chars: { duration: 0.4, stagger: 0.01 }
     }

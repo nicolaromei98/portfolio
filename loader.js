@@ -27,7 +27,7 @@
       ease: "sine.inOut"
     },
     reveal: {
-      lines: { duration: 0.85, stagger: 0.02 },
+      lines: { duration: 0.8, stagger: 0.08 },
       words: { duration: 0.6, stagger: 0.06 },
       chars: { duration: 0.4, stagger: 0.01 }
     }
@@ -60,25 +60,21 @@
   let isAnimationRunning = false;
 
   /* ==========================================================================
-   * ANIMATION: MASK TEXT REVEAL (Sostituisce ScrollTrigger)
+   * ANIMATIONS LOGIC
    * ========================================================================== */
+  
   const initMaskTextReveal = () => {
     DOM.headings.forEach(heading => {
       if (heading.dataset.revealDone) return;
-
-      // Rende visibile l'elemento prima dello split
-      gsap.set(heading, { autoAlpha: 1 });
-
+      
       const type = heading.dataset.splitReveal || 'lines';
       const typesToSplit = type === 'lines' ? 'lines' : (type === 'words' ? 'lines,words' : 'lines,words,chars');
 
-      // 1. Esegui lo split
       const split = new SplitText(heading, {
         type: typesToSplit,
         linesClass: "split-line"
       });
 
-      // 2. Crea l'effetto maschera (overflow:hidden) avvolgendo ogni linea
       split.lines.forEach(line => {
         const wrap = document.createElement('div');
         wrap.className = "line-mask";
@@ -87,33 +83,31 @@
         wrap.appendChild(line);
       });
 
-      // 3. Animazione GSAP immediata
       const targets = split[type];
       const config = ANIM_CONFIG.reveal[type];
 
-      gsap.from(targets, {
-        yPercent: 110,
+      gsap.set(targets, { yPercent: 110 });
+      gsap.set(heading, { autoAlpha: 1 });
+
+      gsap.to(targets, {
+        yPercent: 0,
         duration: config.duration,
         stagger: config.stagger,
         ease: 'expo.out',
-        onComplete: () => { 
-            heading.dataset.revealDone = "1";
-            // Opzionale: pulizia split per accessibilità/resize
-            // split.revert(); 
-        }
+        onComplete: () => { heading.dataset.revealDone = "1"; }
       });
     });
   };
 
-  /* ==========================================================================
-   * SHARED ANIMATIONS: BLINK & EYEBROWS
-   * ========================================================================== */
   const runSplitAnimation = (elements, config = ANIM_CONFIG.preloader.text) => {
     if (!elements.length) return;
     elements.forEach(el => {
       if (el.dataset.splitDone) return;
       const split = new SplitText(el, { type: "words, chars", charsClass: "st-char" });
+      
       gsap.set(split.chars, { opacity: 0 });
+      gsap.set(el, { autoAlpha: 1 }); // Rende visibile l'elemento solo dopo lo split
+
       gsap.to(split.chars, {
         opacity: 1,
         duration: config.duration,
@@ -155,7 +149,6 @@
     });
   };
 
-  // Funzione master che avvia tutte le animazioni d'entrata
   const runAllEntryAnimations = () => {
     initBlinkAndEyebrows();
     initMaskTextReveal();
@@ -209,7 +202,7 @@
    * MAIN INITIALIZATION
    * ========================================================================== */
   const init = () => {
-    const hasRequiredUI = DOM.preloader && images.length && UI.count && UI.lineFill;
+    const hasRequiredUI = DOM.preloader && UI.count && UI.lineFill;
     const hasSeenPreloader = sessionStorage.getItem(STORAGE_KEYS.SEEN) === "1";
 
     document.addEventListener("click", handleInternalLinkClick);
@@ -217,20 +210,23 @@
     if (hasRequiredUI && !hasSeenPreloader) {
       isAnimationRunning = true;
       
-      // Setup iniziale
-      gsap.set(DOM.preloader, { position: "fixed", inset: "0", zIndex: "2147483647", display: "flex", opacity: 1 });
-      gsap.set(UI.lineFill, { transformOrigin: "left center", scaleX: 0 });
+      // SETUP INIZIALE (Reset e preparazione per evitare flash)
+      gsap.set(DOM.preloader, { display: "flex", opacity: 1 });
+      gsap.set(UI.lineFill, { scaleX: 0, transformOrigin: "left center" });
+      gsap.set(UI.count, { opacity: 1 }); // Lo mostriamo solo ora che siamo pronti a contare
       if (DOM.heroTab) gsap.set(DOM.heroTab, { opacity: 0 });
+      
       images.forEach((img, i) => {
         img.style.zIndex = i + 1;
         gsap.set(img, { clipPath: "inset(0 0 100% 0)" });
       });
 
-      // Timeline Preloader
+      // TIMELINE PRELOADER
       const C = ANIM_CONFIG.preloader;
       const tl = gsap.timeline({ defaults: { ease: C.clipEase } });
       const endAt = C.durationMs / 1000;
 
+      // 1. Animazione Counter e Linea
       tl.to({ val: 0 }, {
         val: 100, duration: endAt, ease: "none",
         onUpdate: function() {
@@ -240,20 +236,27 @@
         }
       }, 0);
 
-      if (UI.text) tl.add(() => runSplitAnimation([UI.text]), 0);
+      // 2. Animazione Testo "Loading" (SplitText)
+      if (UI.text) {
+        tl.add(() => runSplitAnimation([UI.text]), 0);
+      }
 
+      // 3. Immagini centrali
       images.forEach((img, i) => {
         tl.to(img, { clipPath: "inset(0 0 0% 0)", duration: C.open.duration }, C.clipDelay + (i * C.open.stagger));
       });
 
+      // 4. Fade out UI (linea, count, testo)
       tl.to([UI.lineWrap, UI.count, UI.text].filter(Boolean), { opacity: 0, duration: C.uiFade }, endAt - 0.1);
 
+      // 5. Chiusura immagini
       [...images].reverse().forEach((img, i) => {
         tl.to(img, { clipPath: "inset(0 0 100% 0)", duration: C.close.duration }, endAt + (i * C.close.stagger));
       });
 
       const fadeOutStartTime = endAt + (C.close.stagger * (images.length - 1)) + C.close.duration + 0.06;
 
+      // 6. Uscita finale e avvio animazioni pagina
       tl.call(runAllEntryAnimations, null, fadeOutStartTime);
       if (DOM.heroTab) tl.to(DOM.heroTab, { opacity: 1, duration: 1 }, fadeOutStartTime);
       
@@ -264,6 +267,7 @@
       });
 
     } else {
+      // Se il preloader non serve, puliamo tutto
       if (DOM.preloader) DOM.preloader.style.display = "none";
       if (DOM.heroTab) gsap.set(DOM.heroTab, { opacity: 1 });
       const isTransitioning = handlePageLoadTransition();

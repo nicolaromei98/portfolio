@@ -104,7 +104,7 @@
   }
 
   // ============================================================================
-  // THREE.JS SKETCH (Infinite Gallery)
+  // THREE.JS SKETCH (Infinite Gallery - UPDATED WITH FIX)
   // ============================================================================
 
   class Sketch {
@@ -116,7 +116,7 @@
 
       this.scene = new THREE.Scene();
       this.vertex = `varying vec2 vUv;void main() {vUv = uv;gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );}`;
-      this.fragment = opts.fragment;
+      // Note: Fragment shader is now defined inside addObjects
       this.uniforms = opts.uniforms;
       this.renderer = new THREE.WebGLRenderer();
       this.width = window.innerWidth;
@@ -245,31 +245,12 @@
       this.renderer.setSize(this.width, this.height);
       this.camera.aspect = this.width / this.height;
       
-      // 2. Calcolo "Cover" per le texture
-      if (this.textures && this.textures.length > 0 && this.textures[0].image) {
-        const img = this.textures[0].image;
-        
-        // Calcoliamo i ratio (Larghezza / Altezza)
-        const iAspect = img.width / img.height;
-        const sAspect = this.width / this.height;
-        
-        let a1, a2;
-        
-        if (sAspect > iAspect) {
-          // Schermo più largo dell'immagine
-          a1 = 1;
-          a2 = iAspect / sAspect; 
-        } else {
-          // Schermo più alto dell'immagine
-          a1 = sAspect / iAspect;
-          a2 = 1;
-        }
-        
-        this.material.uniforms.resolution.value.x = this.width;
-        this.material.uniforms.resolution.value.y = this.height;
-        this.material.uniforms.resolution.value.z = a1;
-        this.material.uniforms.resolution.value.w = a2;
-      }
+      // 2. Passiamo solo le dimensioni dello schermo a resolution.xy
+      // La logica "Cover" ora è gestita nello Shader
+      this.material.uniforms.resolution.value.x = this.width;
+      this.material.uniforms.resolution.value.y = this.height;
+      this.material.uniforms.resolution.value.z = 1;
+      this.material.uniforms.resolution.value.w = 1;
       
       // 3. Adattamento geometrico del piano al Frustum
       const dist = this.camera.position.z;
@@ -286,71 +267,122 @@
 
     addObjects() {
       let that = this;
+      
+      // Definiamo i valori iniziali per res1 e res2 se le texture esistono
+      let w1 = 1, h1 = 1, w2 = 1, h2 = 1;
+      if (this.textures.length > 0 && this.textures[0].image) {
+          w1 = this.textures[0].image.width;
+          h1 = this.textures[0].image.height;
+      }
+      if (this.textures.length > 1 && this.textures[1].image) {
+          w2 = this.textures[1].image.width;
+          h2 = this.textures[1].image.height;
+      }
+
       this.material = new THREE.ShaderMaterial({
         extensions: {
           derivatives: "#extension GL_OES_standard_derivatives : enable"
         },
         side: THREE.DoubleSide,
         uniforms: {
-          time: {
-            type: "f",
-            value: 0
-          },
-          progress: {
-            type: "f",
-            value: 0
-          },
-          border: {
-            type: "f",
-            value: 0
-          },
-          intensity: {
-            type: "f",
-            value: 0
-          },
-          scaleX: {
-            type: "f",
-            value: 40
-          },
-          scaleY: {
-            type: "f",
-            value: 40
-          },
-          transition: {
-            type: "f",
-            value: 40
-          },
-          swipe: {
-            type: "f",
-            value: 0
-          },
-          width: {
-            type: "f",
-            value: 0
-          },
-          radius: {
-            type: "f",
-            value: 0
-          },
-          texture1: {
-            type: "f",
-            value: this.textures[0]
-          },
-          texture2: {
-            type: "f",
-            value: this.textures[1]
-          },
-          displacement: {
-            type: "f",
-            value: new THREE.TextureLoader().load('https://uploads-ssl.webflow.com/5dc1ae738cab24fef27d7fd2/5dcae913c897156755170518_disp1.jpg')
-          },
-          resolution: {
-            type: "v4",
-            value: new THREE.Vector4()
-          },
+          time: { type: "f", value: 0 },
+          progress: { type: "f", value: 0 },
+          border: { type: "f", value: 0 },
+          intensity: { type: "f", value: 0 },
+          scaleX: { type: "f", value: 40 },
+          scaleY: { type: "f", value: 40 },
+          transition: { type: "f", value: 40 },
+          swipe: { type: "f", value: 0 },
+          width: { type: "f", value: 0 },
+          radius: { type: "f", value: 0 },
+          texture1: { type: "f", value: this.textures[0] },
+          texture2: { type: "f", value: this.textures[1] },
+          // Aggiungiamo le risoluzioni per il calcolo cover nello shader
+          res1: { type: "v2", value: new THREE.Vector2(w1, h1) },
+          res2: { type: "v2", value: new THREE.Vector2(w2, h2) },
+          displacement: { type: "f", value: new THREE.TextureLoader().load('https://uploads-ssl.webflow.com/5dc1ae738cab24fef27d7fd2/5dcae913c897156755170518_disp1.jpg') },
+          resolution: { type: "v4", value: new THREE.Vector4() },
         },
         vertexShader: this.vertex,
-        fragmentShader: this.fragment
+        fragmentShader: `
+            uniform float time;
+            uniform float progress;
+            uniform float intensity;
+            uniform sampler2D texture1;
+            uniform sampler2D texture2;
+            uniform sampler2D displacement;
+            uniform vec4 resolution; // resolution.xy è la larghezza/altezza schermo
+            uniform vec2 res1; // Risoluzione Immagine 1
+            uniform vec2 res2; // Risoluzione Immagine 2
+            
+            varying vec2 vUv;
+            
+            mat2 getRotM(float angle) {
+                float s = sin(angle);
+                float c = cos(angle);
+                return mat2(c, -s, s, c);
+            }
+            
+            // Funzione per calcolare l'UV "Cover"
+            vec2 getCoverUV(vec2 uv, vec2 screenRes, vec2 imgRes) {
+                float sAspect = screenRes.x / screenRes.y;
+                float iAspect = imgRes.x / imgRes.y;
+                float rs = sAspect / iAspect;
+                vec2 newScale = vec2(1.0);
+                
+                if (rs > 1.0) { 
+                    // Schermo più largo dell'immagine: scala Y
+                    newScale.y = 1.0 / rs; 
+                } else { 
+                    // Schermo più alto dell'immagine: scala X
+                    newScale.x = rs; 
+                }
+                
+                // Centra l'UV
+                return (uv - 0.5) * newScale + 0.5;
+            }
+
+            const float PI = 3.1415;
+            const float angle1 = PI * 0.25;
+            const float angle2 = -PI * 0.75;
+
+            void main()	{
+              vec2 newUV = vUv; // Usiamo l'UV base
+
+              vec4 disp = texture2D(displacement, newUV);
+              vec2 dispVec = vec2(disp.r, disp.g);
+
+              vec2 distVector1 = getRotM(angle1) * dispVec * intensity * progress;
+              vec2 distVector2 = getRotM(angle2) * dispVec * intensity * (1.0 - progress);
+              float rgbShiftStrength = 0.03 * intensity;
+
+              // --- CALCOLO UV COVER SEPARATO ---
+              // Calcoliamo l'UV corretto per l'immagine 1
+              vec2 uvCover1 = getCoverUV(newUV, resolution.xy, res1);
+              // Calcoliamo l'UV corretto per l'immagine 2
+              vec2 uvCover2 = getCoverUV(newUV, resolution.xy, res2);
+
+              // --- TEXTURE 1 (Outgoing) ---
+              vec2 uv1 = uvCover1 + distVector1;
+              vec4 t1 = vec4(
+                  texture2D(texture1, uv1 + distVector1 * rgbShiftStrength).r,
+                  texture2D(texture1, uv1).g,
+                  texture2D(texture1, uv1 - distVector1 * rgbShiftStrength).b,
+                  1.0
+              );
+
+              // --- TEXTURE 2 (Incoming) ---
+              vec2 uv2 = uvCover2 + distVector2;
+              vec4 t2 = vec4(
+                  texture2D(texture2, uv2 + distVector2 * rgbShiftStrength).r,
+                  texture2D(texture2, uv2).g,
+                  texture2D(texture2, uv2 - distVector2 * rgbShiftStrength).b,
+                  1.0
+              );
+
+              gl_FragColor = mix(t1, t2, progress);
+            }
+        `
       });
       this.geometry = new THREE.PlaneGeometry(1, 1, 2, 2);
       this.plane = new THREE.Mesh(this.geometry, this.material);
@@ -371,7 +403,13 @@
       this.isRunning = true;
       let len = this.textures.length;
       let nextTexture = this.textures[(this.current + 1) % len];
+      
+      // Setup incoming texture and its resolution
       this.material.uniforms.texture2.value = nextTexture;
+      if (nextTexture.image) {
+         this.material.uniforms.res2.value.set(nextTexture.image.width, nextTexture.image.height);
+      }
+
       let tl = new TimelineMax();
       tl.to(this.material.uniforms.progress, this.duration, {
         value: 1,
@@ -379,6 +417,10 @@
         onComplete: () => {
           this.current = (this.current + 1) % len;
           this.material.uniforms.texture1.value = nextTexture;
+          // After transition, the "current" texture (res1) needs to match what is now visible
+          if (nextTexture.image) {
+             this.material.uniforms.res1.value.set(nextTexture.image.width, nextTexture.image.height);
+          }
           this.material.uniforms.progress.value = 0;
           this.isRunning = false;
         }
@@ -391,7 +433,13 @@
       let len = this.textures.length;
       const prevIndex = this.current === 0 ? len - 1 : this.current - 1;
       let prevTexture = this.textures[prevIndex];
+      
+      // Setup incoming texture and its resolution
       this.material.uniforms.texture2.value = prevTexture;
+      if (prevTexture.image) {
+         this.material.uniforms.res2.value.set(prevTexture.image.width, prevTexture.image.height);
+      }
+      
       let tl = new TimelineMax();
       tl.to(this.material.uniforms.progress, this.duration, {
         value: 1,
@@ -399,6 +447,10 @@
         onComplete: () => {
           this.current = prevIndex;
           this.material.uniforms.texture1.value = prevTexture;
+          // After transition, the "current" texture (res1) needs to match what is now visible
+          if (prevTexture.image) {
+             this.material.uniforms.res1.value.set(prevTexture.image.width, prevTexture.image.height);
+          }
           this.material.uniforms.progress.value = 0;
           this.isRunning = false;
         }
@@ -482,8 +534,8 @@
     destroyPixelateImageRenderEffect();
     
     let renderDuration = 100;  
-    let renderSteps = 20;      
-    let renderColumns = 10;    
+    let renderSteps = 20;       
+    let renderColumns = 10;     
 
     const pixelateElements = document.querySelectorAll('[data-pixelate-render]');
     pixelateElements.forEach(setupPixelate);
@@ -579,8 +631,8 @@
         const rows = Math.max(1, Math.round(cols * (ch / cw)));
         
         if (stageIndex === steps.length - 1 && targetIndex === steps.length - 1) {
-           ctx.clearRect(0, 0, cw, ch);
-           return;
+            ctx.clearRect(0, 0, cw, ch);
+            return;
         }
 
         if (tiny.width !== cols || tiny.height !== rows) { tiny.width = cols; tiny.height = rows; }
@@ -965,68 +1017,7 @@
         debug: false,
         uniforms: {
           intensity: { value: 1, type: 'f', min: 0., max: 3 }
-        },
-        // --- UPDATED FRAGMENT SHADER WITH RGB SHIFT ---
-        fragment: `
-          uniform float time;
-          uniform float progress;
-          uniform float intensity;
-          uniform float width;
-          uniform float scaleX;
-          uniform float scaleY;
-          uniform float transition;
-          uniform float radius;
-          uniform float swipe;
-          uniform sampler2D texture1;
-          uniform sampler2D texture2;
-          uniform sampler2D displacement;
-          uniform vec4 resolution;
-          varying vec2 vUv;
-          
-          mat2 getRotM(float angle) {
-              float s = sin(angle);
-              float c = cos(angle);
-              return mat2(c, -s, s, c);
-          }
-          const float PI = 3.1415;
-          const float angle1 = PI * 0.25;
-          const float angle2 = -PI * 0.75;
-
-          void main()	{
-            vec2 newUV = (vUv - vec2(0.5)) * resolution.zw + vec2(0.5);
-            vec4 disp = texture2D(displacement, newUV);
-            vec2 dispVec = vec2(disp.r, disp.g);
-
-            // Calculate base distortion vector based on intensity and progress
-            vec2 distVector1 = getRotM(angle1) * dispVec * intensity * progress;
-            vec2 distVector2 = getRotM(angle2) * dispVec * intensity * (1.0 - progress);
-
-            // RGB Shift Strength (scaling with intensity)
-            float rgbShiftStrength = 0.03 * intensity;
-
-            // --- TEXTURE 1 (Outgoing) ---
-            vec2 uv1 = newUV + distVector1;
-            // Separate channels along the distortion vector
-            vec4 t1 = vec4(
-                texture2D(texture1, uv1 + distVector1 * rgbShiftStrength).r,
-                texture2D(texture1, uv1).g,
-                texture2D(texture1, uv1 - distVector1 * rgbShiftStrength).b,
-                1.0
-            );
-
-            // --- TEXTURE 2 (Incoming) ---
-            vec2 uv2 = newUV + distVector2;
-            vec4 t2 = vec4(
-                texture2D(texture2, uv2 + distVector2 * rgbShiftStrength).r,
-                texture2D(texture2, uv2).g,
-                texture2D(texture2, uv2 - distVector2 * rgbShiftStrength).b,
-                1.0
-            );
-
-            gl_FragColor = mix(t1, t2, progress);
-          }
-        `
-        // --- END UPDATED SHADER ---
+        }
       });
     }
   }

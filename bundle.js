@@ -5,6 +5,12 @@
   // GLOBAL VARIABLES
   // ============================================================================
    
+  // FORZA IL BROWSER A TORNARE IN CIMA AL REFRESH PER EVITARE GLITCH DI CALCOLO
+  if ('scrollRestoration' in history) {
+    history.scrollRestoration = 'manual';
+  }
+  window.scrollTo(0, 0);
+
   // Register ScrollTrigger plugin immediately
   if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
     gsap.registerPlugin(ScrollTrigger);
@@ -104,19 +110,17 @@
   }
 
   // ============================================================================
-  // THREE.JS SKETCH (Infinite Gallery - UPDATED WITH FIX)
+  // THREE.JS SKETCH (Infinite Gallery)
   // ============================================================================
 
   class Sketch {
     constructor(opts) {
-      // Guard: ensure Three.js is loaded before using it
       if (typeof THREE === 'undefined') {
         return;
       }
 
       this.scene = new THREE.Scene();
       this.vertex = `varying vec2 vUv;void main() {vUv = uv;gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );}`;
-      // Note: Fragment shader is now defined inside addObjects
       this.uniforms = opts.uniforms;
       this.renderer = new THREE.WebGLRenderer();
       this.width = window.innerWidth;
@@ -135,22 +139,17 @@
         return;
       }
        
-      // Clean up any existing canvas in the container before adding new one
       const existingCanvas = this.container.querySelector('canvas');
       if (existingCanvas) {
         try {
           this.container.removeChild(existingCanvas);
-        } catch (e) {
-          // Canvas might already be removed
-        }
+        } catch (e) {}
       }
        
-      // Ensure the container can anchor the canvas
       if (getComputedStyle(this.container).position === 'static') {
         this.container.style.position = 'relative';
       }
 
-      // Make the renderer fill the container without affecting layout
       this.renderer.domElement.style.position = 'absolute';
       this.renderer.domElement.style.top = '0';
       this.renderer.domElement.style.left = '0';
@@ -238,37 +237,26 @@
 
     resize() {
       if (!this.container) return;
-       
-      // 1. Setup dimensioni render e camera
       this.width = this.container.offsetWidth;
       this.height = this.container.offsetHeight;
       this.renderer.setSize(this.width, this.height);
       this.camera.aspect = this.width / this.height;
-       
-      // 2. Passiamo solo le dimensioni dello schermo a resolution.xy
-      // La logica "Cover" ora è gestita nello Shader
       this.material.uniforms.resolution.value.x = this.width;
       this.material.uniforms.resolution.value.y = this.height;
       this.material.uniforms.resolution.value.z = 1;
       this.material.uniforms.resolution.value.w = 1;
-       
-      // 3. Adattamento geometrico del piano al Frustum
       const dist = this.camera.position.z;
       const height = 1; 
       this.camera.fov = 2 * (180 / Math.PI) * Math.atan(height / (2 * dist));
-       
       if (this.plane) {
         this.plane.scale.x = this.camera.aspect;
         this.plane.scale.y = 1;
       }
-       
       this.camera.updateProjectionMatrix();
     }
 
     addObjects() {
       let that = this;
-       
-      // Definiamo i valori iniziali per res1 e res2 se le texture esistono
       let w1 = 1, h1 = 1, w2 = 1, h2 = 1;
       if (this.textures.length > 0 && this.textures[0].image) {
           w1 = this.textures[0].image.width;
@@ -297,7 +285,6 @@
           radius: { type: "f", value: 0 },
           texture1: { type: "f", value: this.textures[0] },
           texture2: { type: "f", value: this.textures[1] },
-          // Aggiungiamo le risoluzioni per il calcolo cover nello shader
           res1: { type: "v2", value: new THREE.Vector2(w1, h1) },
           res2: { type: "v2", value: new THREE.Vector2(w2, h2) },
           displacement: { type: "f", value: new THREE.TextureLoader().load('https://uploads-ssl.webflow.com/5dc1ae738cab24fef27d7fd2/5dcae913c897156755170518_disp1.jpg') },
@@ -311,58 +298,39 @@
             uniform sampler2D texture1;
             uniform sampler2D texture2;
             uniform sampler2D displacement;
-            uniform vec4 resolution; // resolution.xy è la larghezza/altezza schermo
-            uniform vec2 res1; // Risoluzione Immagine 1
-            uniform vec2 res2; // Risoluzione Immagine 2
-             
+            uniform vec4 resolution;
+            uniform vec2 res1;
+            uniform vec2 res2;
             varying vec2 vUv;
-             
             mat2 getRotM(float angle) {
                 float s = sin(angle);
                 float c = cos(angle);
                 return mat2(c, -s, s, c);
             }
-             
-            // Funzione per calcolare l'UV "Cover"
             vec2 getCoverUV(vec2 uv, vec2 screenRes, vec2 imgRes) {
                 float sAspect = screenRes.x / screenRes.y;
                 float iAspect = imgRes.x / imgRes.y;
                 float rs = sAspect / iAspect;
                 vec2 newScale = vec2(1.0);
-                 
                 if (rs > 1.0) { 
-                    // Schermo più largo dell'immagine: scala Y
                     newScale.y = 1.0 / rs; 
                 } else { 
-                    // Schermo più alto dell'immagine: scala X
                     newScale.x = rs; 
                 }
-                 
-                // Centra l'UV
                 return (uv - 0.5) * newScale + 0.5;
             }
-
             const float PI = 3.1415;
             const float angle1 = PI * 0.25;
             const float angle2 = -PI * 0.75;
-
             void main()	{
-              vec2 newUV = vUv; // Usiamo l'UV base
-
+              vec2 newUV = vUv;
               vec4 disp = texture2D(displacement, newUV);
               vec2 dispVec = vec2(disp.r, disp.g);
-
               vec2 distVector1 = getRotM(angle1) * dispVec * intensity * progress;
               vec2 distVector2 = getRotM(angle2) * dispVec * intensity * (1.0 - progress);
               float rgbShiftStrength = 0.03 * intensity;
-
-              // --- CALCOLO UV COVER SEPARATO ---
-              // Calcoliamo l'UV corretto per l'immagine 1
               vec2 uvCover1 = getCoverUV(newUV, resolution.xy, res1);
-              // Calcoliamo l'UV corretto per l'immagine 2
               vec2 uvCover2 = getCoverUV(newUV, resolution.xy, res2);
-
-              // --- TEXTURE 1 (Outgoing) ---
               vec2 uv1 = uvCover1 + distVector1;
               vec4 t1 = vec4(
                   texture2D(texture1, uv1 + distVector1 * rgbShiftStrength).r,
@@ -370,8 +338,6 @@
                   texture2D(texture1, uv1 - distVector1 * rgbShiftStrength).b,
                   1.0
               );
-
-              // --- TEXTURE 2 (Incoming) ---
               vec2 uv2 = uvCover2 + distVector2;
               vec4 t2 = vec4(
                   texture2D(texture2, uv2 + distVector2 * rgbShiftStrength).r,
@@ -379,7 +345,6 @@
                   texture2D(texture2, uv2 - distVector2 * rgbShiftStrength).b,
                   1.0
               );
-
               gl_FragColor = mix(t1, t2, progress);
             }
         `
@@ -403,13 +368,10 @@
       this.isRunning = true;
       let len = this.textures.length;
       let nextTexture = this.textures[(this.current + 1) % len];
-       
-      // Setup incoming texture and its resolution
       this.material.uniforms.texture2.value = nextTexture;
       if (nextTexture.image) {
          this.material.uniforms.res2.value.set(nextTexture.image.width, nextTexture.image.height);
       }
-
       let tl = new TimelineMax();
       tl.to(this.material.uniforms.progress, this.duration, {
         value: 1,
@@ -417,7 +379,6 @@
         onComplete: () => {
           this.current = (this.current + 1) % len;
           this.material.uniforms.texture1.value = nextTexture;
-          // After transition, the "current" texture (res1) needs to match what is now visible
           if (nextTexture.image) {
              this.material.uniforms.res1.value.set(nextTexture.image.width, nextTexture.image.height);
           }
@@ -433,13 +394,10 @@
       let len = this.textures.length;
       const prevIndex = this.current === 0 ? len - 1 : this.current - 1;
       let prevTexture = this.textures[prevIndex];
-       
-      // Setup incoming texture and its resolution
       this.material.uniforms.texture2.value = prevTexture;
       if (prevTexture.image) {
          this.material.uniforms.res2.value.set(prevTexture.image.width, prevTexture.image.height);
       }
-       
       let tl = new TimelineMax();
       tl.to(this.material.uniforms.progress, this.duration, {
         value: 1,
@@ -447,7 +405,6 @@
         onComplete: () => {
           this.current = prevIndex;
           this.material.uniforms.texture1.value = prevTexture;
-          // After transition, the "current" texture (res1) needs to match what is now visible
           if (prevTexture.image) {
              this.material.uniforms.res1.value.set(prevTexture.image.width, prevTexture.image.height);
           }
@@ -470,8 +427,6 @@
 
     destroy() {
       this.stop();
-       
-      // Remove event listeners
       if (this.clicker && this.nextHandler) {
         this.clicker.removeEventListener('click', this.nextHandler);
         this.nextHandler = null;
@@ -484,19 +439,13 @@
         window.removeEventListener("resize", this.resizeHandler);
         this.resizeHandler = null;
       }
-       
-      // Remove canvas from DOM first
       if (this.container && this.renderer && this.renderer.domElement) {
         try {
           if (this.renderer.domElement.parentNode === this.container) {
             this.container.removeChild(this.renderer.domElement);
           }
-        } catch (e) {
-          // Ignore errors
-        }
+        } catch (e) {}
       }
-       
-      // Dispose Three.js resources
       if (this.renderer) {
         this.renderer.dispose();
         this.renderer = null;
@@ -517,8 +466,6 @@
         });
         this.textures = [];
       }
-       
-      // Clear scene
       if (this.scene) {
         while(this.scene.children.length > 0) {
           this.scene.remove(this.scene.children[0]);
@@ -528,33 +475,24 @@
     }
   }
 
-
   function initPixelateImageRenderEffect() {
-    // Clean up existing instances
     destroyPixelateImageRenderEffect();
-     
     let renderDuration = 100;  
     let renderSteps = 20;        
     let renderColumns = 10;      
-
     const pixelateElements = document.querySelectorAll('[data-pixelate-render]');
     pixelateElements.forEach(setupPixelate);
-
     function setupPixelate(root) {
       const img = root.querySelector('[data-pixelate-render-img]');
       if (!img) return;
-
       const trigger = (root.getAttribute('data-pixelate-render-trigger') || 'load').toLowerCase();
-
       const durAttr = parseInt(root.getAttribute('data-pixelate-render-duration'), 10);
       const stepsAttr = parseInt(root.getAttribute('data-pixelate-render-steps'), 10);
       const colsAttr = parseInt(root.getAttribute('data-pixelate-render-columns'), 10);
       const fitMode = (root.getAttribute('data-pixelate-render-fit') || 'cover').toLowerCase();
-
       const elRenderDuration = Number.isFinite(durAttr) ? Math.max(16, durAttr) : renderDuration;
       const elRenderSteps = Number.isFinite(stepsAttr) ? Math.max(1, stepsAttr) : renderSteps;
       const elRenderColumns = Number.isFinite(colsAttr) ? Math.max(1, colsAttr) : renderColumns;
-
       const canvas = document.createElement('canvas');
       canvas.setAttribute('data-pixelate-canvas', '');
       canvas.style.position = 'absolute';
@@ -564,15 +502,12 @@
       canvas.style.pointerEvents = 'none'; 
       root.style.position ||= 'relative';
       root.appendChild(canvas);
-
       const ctx = canvas.getContext('2d', { alpha: true });
       ctx.imageSmoothingEnabled = false;
-
       const back = document.createElement('canvas');
       const tiny = document.createElement('canvas');
       const bctx = back.getContext('2d', { alpha: true });
       const tctx = tiny.getContext('2d', { alpha: true });
-
       let naturalW = 0, naturalH = 0;
       let playing = false;
       let stageIndex = 0;
@@ -580,7 +515,6 @@
       let lastTime = 0;
       let backDirty = true, resizeTimeout = 0;
       let steps = [elRenderColumns];
-
       function fitCanvas() {
         const r = root.getBoundingClientRect();
         const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
@@ -593,7 +527,6 @@
         }
         regenerateSteps();
       }
-
       function regenerateSteps() {
         const cw = Math.max(1, canvas.width);
         const startCols = Math.min(elRenderColumns, cw);
@@ -607,7 +540,6 @@
         for (let i = 1; i < a.length; i++) if (a[i] <= a[i - 1]) a[i] = a[i - 1] + 1;
         steps = a.length ? a : [startCols];
       }
-
       function drawImageToBack() {
         if (!backDirty || !naturalW || !naturalH) return;
         const cw = back.width, ch = back.height;
@@ -624,17 +556,14 @@
         bctx.drawImage(img, dx, dy, dw, dh);
         backDirty = false;
       }
-
       function pixelate(columns) {
         const cw = canvas.width, ch = canvas.height;
         const cols = Math.max(1, Math.floor(columns));
         const rows = Math.max(1, Math.round(cols * (ch / cw)));
-         
         if (stageIndex === steps.length - 1 && targetIndex === steps.length - 1) {
             ctx.clearRect(0, 0, cw, ch);
             return;
         }
-
         if (tiny.width !== cols || tiny.height !== rows) { tiny.width = cols; tiny.height = rows; }
         tctx.imageSmoothingEnabled = false;
         tctx.clearRect(0, 0, cols, rows);
@@ -643,13 +572,11 @@
         ctx.clearRect(0, 0, cw, ch);
         ctx.drawImage(tiny, 0, 0, cols, rows, 0, 0, cw, ch);
       }
-
       function draw(stepCols) {
         if (!canvas.width || !canvas.height) return;
         drawImageToBack();
         pixelate(stepCols);
       }
-
       function animate(t) {
         if (!playing) return;
         if (!lastTime) lastTime = t;
@@ -669,7 +596,6 @@
         }
         requestAnimationFrame(animate);
       }
-
       function setTarget(isHovering) {
          targetIndex = isHovering ? steps.length - 1 : 0;
          if (!playing) {
@@ -678,7 +604,6 @@
              requestAnimationFrame(animate);
          }
       }
-
       function init() {
          naturalW = img.naturalWidth; naturalH = img.naturalHeight;
          if (!naturalW || !naturalH) return;
@@ -688,7 +613,6 @@
          backDirty = true;
          draw(steps[0]);
       }
-
       function onWindowResize() {
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(() => {
@@ -696,19 +620,15 @@
             draw(steps[stageIndex]);
         }, 250);
       }
-
       if (img.complete && img.naturalWidth) init(); 
       else img.addEventListener('load', init, { once: true });
-
       window.addEventListener('resize', onWindowResize);
-
       if (trigger === 'hover') {
         root.addEventListener('mouseenter', () => setTarget(true));
         root.addEventListener('mouseleave', () => setTarget(false));
       } else {
          if(trigger === 'load') setTarget(true); 
       }
-
       pixelateInstances.push({
         root, canvas, back, tiny, img, onWindowResize, setTarget, trigger
       });
@@ -728,9 +648,7 @@
   // ================== mwg_effect005 EFFECT ==================
   function initMWGEffect005NoST() {
     if (typeof gsap === 'undefined') return;
-
     destroyMWGEffect005NoST();
-
     const scope = document.querySelector('.mwg_effect005');
     if (!scope) return;
     const paragraph = scope.querySelector('.paragraph');
@@ -741,19 +659,15 @@
         .map((word) => `<span class="word">${word}</span>`)
         .join(' ');
     }
-
     const pinHeight = scope.querySelector('.pin-height');
     const container = scope.querySelector('.container');
     const words = scope.querySelectorAll('.word');
     if (!(pinHeight && container && words.length)) return;
-
     container.style.position = 'sticky';
     container.style.top = '0';
-
     const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
     const easeInOut4 = (p) =>
       p < 0.5 ? 8 * p * p * p * p : 1 - Math.pow(-2 * p + 2, 4) / 2;
-     
     const getTranslateX = (el) => {
       const t = getComputedStyle(el).transform;
       if (!t || t === 'none') return 0;
@@ -761,20 +675,14 @@
       if (t.startsWith('matrix3d(')) return parseFloat(t.split(',')[12]) || 0;
       return 0;
     };
-
-    // Calculate initial positions
     let baseX = Array.from(words, (el) => getTranslateX(el));
     baseX.forEach((x, i) => gsap.set(words[i], { x }));
-     
-    // Setters
     let setX = Array.from(words, (el) => gsap.quickSetter(el, 'x', 'px'));
     let setO = Array.from(words, (el) => gsap.quickSetter(el, 'opacity'));
-
     let startY = 0;
     let endY = 0;
     let range = 1;
     let ticking = false;
-
     function measure() {
       const rect = pinHeight.getBoundingClientRect();
       const y = window.scrollY;
@@ -782,7 +690,6 @@
       endY = y + rect.bottom - window.innerHeight; 
       range = Math.max(1, endY - startY);
     }
-
     function update() {
       ticking = false;
       const t = clamp01((window.scrollY - startY) / range);
@@ -790,7 +697,6 @@
       const stagger = 0.02;
       const totalStagger = stagger * (n - 1);
       const animWindow = Math.max(0.0001, 1 - totalStagger);
-
       for (let i = 0; i < n; i++) {
         const localStart = i * stagger;
         const p = clamp01((t - localStart) / animWindow);
@@ -799,40 +705,24 @@
         setO[i](eased);
       }
     }
-
     function onScroll() {
       if (ticking) return;
       ticking = true;
       requestAnimationFrame(update);
     }
-
     function onResize() {
-      // 1. Resettiamo le proprietà di GSAP per leggere i valori CSS originali puliti
       gsap.set(words, { clearProps: 'transform,opacity' });
-
-      // 2. Ricalcoliamo la metrica di scorrimento verticale
       measure();
-
-      // 3. Rileggiamo le posizioni X originali dal CSS (ora che abbiamo pulito GSAP)
       baseX = Array.from(words, (el) => getTranslateX(el));
-       
-      // 4. Ripristiniamo la posizione iniziale su GSAP per evitare glitch
       baseX.forEach((x, i) => gsap.set(words[i], { x }));
-       
-      // 5. Ricreiamo i quickSetter (per sicurezza, nel caso il riferimento DOM sia cambiato, anche se raro)
       setX = Array.from(words, (el) => gsap.quickSetter(el, 'x', 'px'));
       setO = Array.from(words, (el) => gsap.quickSetter(el, 'opacity'));
-
-      // 6. Forziamo un aggiornamento immediato basato sulla posizione di scroll attuale
       update();
     }
-
     measure();
     update();
-
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize);
-
     mwgEffect005Cleanup = () => {
       window.removeEventListener('scroll', onScroll, { passive: true });
       window.removeEventListener('resize', onResize);
@@ -849,18 +739,14 @@
 
   function initLenisSmoothScroll() {
     destroyLenisSmoothScroll();
-
     if (typeof Lenis === 'undefined') {
       return;
     }
-
     lenisInstance = new Lenis({
       lerp: 0.1,
       smooth: true,
     });
-
     lenisInstance.on('scroll', ScrollTrigger.update);
-
     const loop = (time) => {
       if (lenisInstance) {
         lenisInstance.raf(time);
@@ -886,20 +772,16 @@
       parallaxContext();
       parallaxContext = null;
     }
-
     if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
       return;
     }
-
     if (typeof gsap.registerPlugin === 'function') {
       try {
         gsap.registerPlugin(ScrollTrigger);
       } catch (e) {
       }
     }
-
     const triggersCreated = [];
-
     const setupParallaxCore = (conditions) => {
       const { isMobile, isMobileLandscape, isTablet } = conditions || {};
       document.querySelectorAll('[data-parallax="trigger"]').forEach((trigger) => {
@@ -910,7 +792,6 @@
         if (disableMobile || disableMobileLandscape || disableTablet) {
           return;
         }
-
         const target = trigger.querySelector('[data-parallax="target"]') || trigger;
         const direction = trigger.getAttribute("data-parallax-direction") || "vertical";
         const prop = direction === "horizontal" ? "xPercent" : "yPercent";
@@ -924,7 +805,6 @@
         const scrollStart = `clamp(${scrollStartRaw})`;
         const scrollEndRaw = trigger.getAttribute("data-parallax-scroll-end") || "bottom top";
         const scrollEnd = `clamp(${scrollEndRaw})`;
-
         const tween = gsap.fromTo(
           target,
           { [prop]: startVal },
@@ -939,21 +819,17 @@
             },
           }
         );
-
         if (tween && tween.scrollTrigger) {
           triggersCreated.push(tween.scrollTrigger);
         }
       });
     };
-
     const cleanup = () => {
       triggersCreated.forEach(t => t.kill());
       triggersCreated.length = 0;
     };
-
     const hasMatchMedia = typeof gsap.matchMedia === 'function';
     const hasContext = typeof gsap.context === 'function';
-
     if (hasMatchMedia && hasContext) {
       const mm = gsap.matchMedia();
       mm.add(
@@ -1000,7 +876,6 @@
     initGlobalParallax();
     initMWGEffect005NoST();
     initPixelateImageRenderEffect();
-
     const sliderContainer = document.getElementById("slider");
     if (sliderContainer && typeof THREE !== 'undefined') {
       const existingCanvases = sliderContainer.querySelectorAll('canvas');
@@ -1012,7 +887,6 @@
           }
         });
       }
-       
       sketchInstance = new Sketch({
         debug: false,
         uniforms: {
@@ -1157,8 +1031,18 @@
         this.position.y = this.y;
       }
       resize() {
+        // =================================================================
+        // FIX: CALCOLO POSIZIONE ASSOLUTA CON SCROLL (WINDOW.SCROLLX/Y)
+        // =================================================================
         this.rect = this.el.getBoundingClientRect();
-        const { left, top, width, height } = this.rect;
+        
+        // Calcoliamo la posizione 'assoluta' nella pagina, non nel viewport
+        // Questo previene glitch se la pagina è scrollata al reload
+        const width = this.rect.width;
+        const height = this.rect.height;
+        const left = this.rect.left + window.scrollX;
+        const top = this.rect.top + window.scrollY;
+
         const { u_res, u_viewSize } = this.material.uniforms;
         this.xOffset = (left + (width / 2)) - (ww / 2);
         this.yOffset = (top + (height / 2)) - (wh / 2);
@@ -1383,7 +1267,6 @@
 
   function initHomeTime() {
     destroyHomeTime();
-
     const defaultTimezone = "Europe/Amsterdam";
     const createFormatter = (timezone) => new Intl.DateTimeFormat([], {
       timeZone: timezone,
@@ -1393,7 +1276,6 @@
       second: '2-digit',
       hour12: false,
     });
-
     const parseFormattedTime = (formattedDateTime) => {
       const match = formattedDateTime.match(/(\d+):(\d+):(\d+)\s*([\w+]+)/);
       if (match) {
@@ -1401,7 +1283,6 @@
       }
       return null;
     };
-
     const updateTime = () => {
       document.querySelectorAll('[data-current-time]').forEach((element) => {
         const timezone = element.getAttribute('data-current-time') || defaultTimezone;
@@ -1422,7 +1303,6 @@
         }
       });
     };
-
     updateTime();
     const intervalId = setInterval(updateTime, 1000);
     homeTimeCleanup = () => clearInterval(intervalId);
@@ -1451,22 +1331,16 @@
     if (typeof gsap === 'undefined' || typeof Draggable === 'undefined' || typeof InertiaPlugin === 'undefined') {
       return;
     }
-
     const wrapper = document.querySelector('[data-slider="list"]');
     if (!wrapper) return;
-
     const slides = gsap.utils.toArray('[data-slider="slide"]');
     if (!slides.length) return;
-
     destroyDraggableInfiniteGSAPSlider();
-
     let activeElement = null;
     let currentEl = null;
     let currentIndex = 0;
-
     const mq = window.matchMedia('(min-width: 992px)');
     let useNextForActive = mq.matches;
-
     const onMQChange = (e) => {
       useNextForActive = e.matches;
       if (currentEl) {
@@ -1474,18 +1348,15 @@
       }
     };
     mq.addEventListener('change', onMQChange);
-
     function resolveActive(el) {
       return useNextForActive ? (el.nextElementSibling || slides[0]) : el;
     }
-
     function applyActive(el) {
       if (activeElement) activeElement.classList.remove('active');
       const target = resolveActive(el);
       target.classList.add('active');
       activeElement = target;
     }
-
     function horizontalLoop(items, config) {
       items = gsap.utils.toArray(items);
       config = config || {};
@@ -1501,7 +1372,6 @@
           }
         }
       });
-
       const snap = config.snap === false ? (v) => v : gsap.utils.snap(config.snap || 1);
       const center = config.center === true ? items[0].parentNode : gsap.utils.toArray(config.center)[0] || items[0].parentNode;
       const widths = [];
@@ -1512,7 +1382,6 @@
       let timeWrap;
       let curIndex = 0;
       let proxy;
-
       const populate = () => {
         const startX = items[0].offsetLeft;
         const spaceBefore = [];
@@ -1527,7 +1396,6 @@
         gsap.set(items, { xPercent: i => xPercents[i] });
         totalWidth = items[items.length - 1].offsetLeft + xPercents[items.length - 1] / 100 * widths[items.length - 1] - startX + spaceBefore[0] + items[items.length - 1].offsetWidth * gsap.getProperty(items[items.length - 1], "scaleX") + (parseFloat(config.paddingRight) || 0);
       };
-
       const populateTimeline = () => {
         tl.clear();
         times.length = 0;
@@ -1547,10 +1415,8 @@
         });
         timeWrap = gsap.utils.wrap(0, tl.duration());
       };
-
       populate();
       populateTimeline();
-
       const refresh = () => {
         const progress = tl.progress();
         tl.progress(0, true);
@@ -1558,10 +1424,8 @@
         populateTimeline();
         tl.progress(progress, true);
       };
-
       const onResize = () => refresh(true);
       window.addEventListener("resize", onResize);
-
       function toIndex(index, vars) {
         vars = vars || {};
         if (Math.abs(index - curIndex) > items.length / 2) {
@@ -1580,7 +1444,6 @@
         gsap.killTweensOf(proxy);
         return vars.duration === 0 ? tl.time(timeWrap(time)) : tl.tweenTo(time, vars);
       }
-
       tl.toIndex = (index, vars) => toIndex(index, vars);
       tl.closestIndex = (setCurrent) => {
         let index = getClosest(times, tl.time(), tl.duration());
@@ -1591,7 +1454,6 @@
         return index;
       };
       tl.current = () => curIndex;
-
       function getClosest(values, value, wrap) {
         let i = values.length, closest = 1e10, index = 0, d;
         while (i--) {
@@ -1604,7 +1466,6 @@
         }
         return index;
       }
-
       let draggable;
       let wasPlaying = false;
       let startProgress = 0;
@@ -1612,9 +1473,7 @@
       let initChangeX = 0;
       let lastSnap = 0;
       const wrap = gsap.utils.wrap(0, 1);
-
       proxy = document.createElement("div");
-
       draggable = Draggable.create(proxy, {
         trigger: items[0].parentNode,
         type: "x",
@@ -1657,27 +1516,22 @@
           wasPlaying && tl.play();
         }
       })[0];
-
       function align() {
         tl.progress(wrap(startProgress + (draggable.startX - draggable.x) * ratio));
       }
-
       function syncIndex() {
         tl.closestIndex(true);
       }
-
       tl.draggable = draggable;
       tl.closestIndex(true);
       tl._lastIndex = curIndex;
       config.onChange && config.onChange(items[curIndex], curIndex);
-
       return () => {
         window.removeEventListener("resize", onResize);
         draggable && draggable.kill();
         tl && tl.kill();
       };
     }
-
     const loopCleanup = horizontalLoop(slides, {
       paused: true,
       draggable: true,
@@ -1688,13 +1542,11 @@
         applyActive(element);
       }
     });
-
     if (!currentEl && slides[0]) {
       currentEl = slides[0];
       currentIndex = 0;
       applyActive(currentEl);
     }
-
     aboutSliderCleanup = () => {
       if (loopCleanup) loopCleanup();
       mq.removeEventListener('change', onMQChange);

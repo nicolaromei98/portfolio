@@ -4,12 +4,12 @@
   // ============================================================================
   // GLOBAL VARIABLES
   // ============================================================================
-  
+   
   // Register ScrollTrigger plugin immediately
   if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
     gsap.registerPlugin(ScrollTrigger);
   }
-  
+   
   // Store instances for cleanup
   let parallaxContext = null;
   let lenisInstance = null;
@@ -130,11 +130,11 @@
       this.clicker = document.getElementById("next");
       this.clicker2 = document.getElementById("prev");
       this.container = document.getElementById("slider");
-      
+       
       if (!this.container) {
         return;
       }
-      
+       
       // Clean up any existing canvas in the container before adding new one
       const existingCanvas = this.container.querySelector('canvas');
       if (existingCanvas) {
@@ -144,7 +144,7 @@
           // Canvas might already be removed
         }
       }
-      
+       
       // Ensure the container can anchor the canvas
       if (getComputedStyle(this.container).position === 'static') {
         this.container.style.position = 'relative';
@@ -175,7 +175,7 @@
       this.textures = [];
       this.paused = true;
       this.isRunning = false;
-      
+       
       this.initiate(() => {
         this.setupResize();
         this.settings();
@@ -238,36 +238,36 @@
 
     resize() {
       if (!this.container) return;
-      
+       
       // 1. Setup dimensioni render e camera
       this.width = this.container.offsetWidth;
       this.height = this.container.offsetHeight;
       this.renderer.setSize(this.width, this.height);
       this.camera.aspect = this.width / this.height;
-      
+       
       // 2. Passiamo solo le dimensioni dello schermo a resolution.xy
       // La logica "Cover" ora è gestita nello Shader
       this.material.uniforms.resolution.value.x = this.width;
       this.material.uniforms.resolution.value.y = this.height;
       this.material.uniforms.resolution.value.z = 1;
       this.material.uniforms.resolution.value.w = 1;
-      
+       
       // 3. Adattamento geometrico del piano al Frustum
       const dist = this.camera.position.z;
       const height = 1; 
       this.camera.fov = 2 * (180 / Math.PI) * Math.atan(height / (2 * dist));
-      
+       
       if (this.plane) {
         this.plane.scale.x = this.camera.aspect;
         this.plane.scale.y = 1;
       }
-      
+       
       this.camera.updateProjectionMatrix();
     }
 
     addObjects() {
       let that = this;
-      
+       
       // Definiamo i valori iniziali per res1 e res2 se le texture esistono
       let w1 = 1, h1 = 1, w2 = 1, h2 = 1;
       if (this.textures.length > 0 && this.textures[0].image) {
@@ -314,22 +314,22 @@
             uniform vec4 resolution; // resolution.xy è la larghezza/altezza schermo
             uniform vec2 res1; // Risoluzione Immagine 1
             uniform vec2 res2; // Risoluzione Immagine 2
-            
+             
             varying vec2 vUv;
-            
+             
             mat2 getRotM(float angle) {
                 float s = sin(angle);
                 float c = cos(angle);
                 return mat2(c, -s, s, c);
             }
-            
+             
             // Funzione per calcolare l'UV "Cover"
             vec2 getCoverUV(vec2 uv, vec2 screenRes, vec2 imgRes) {
                 float sAspect = screenRes.x / screenRes.y;
                 float iAspect = imgRes.x / imgRes.y;
                 float rs = sAspect / iAspect;
                 vec2 newScale = vec2(1.0);
-                
+                 
                 if (rs > 1.0) { 
                     // Schermo più largo dell'immagine: scala Y
                     newScale.y = 1.0 / rs; 
@@ -337,7 +337,7 @@
                     // Schermo più alto dell'immagine: scala X
                     newScale.x = rs; 
                 }
-                
+                 
                 // Centra l'UV
                 return (uv - 0.5) * newScale + 0.5;
             }
@@ -403,7 +403,7 @@
       this.isRunning = true;
       let len = this.textures.length;
       let nextTexture = this.textures[(this.current + 1) % len];
-      
+       
       // Setup incoming texture and its resolution
       this.material.uniforms.texture2.value = nextTexture;
       if (nextTexture.image) {
@@ -433,13 +433,13 @@
       let len = this.textures.length;
       const prevIndex = this.current === 0 ? len - 1 : this.current - 1;
       let prevTexture = this.textures[prevIndex];
-      
+       
       // Setup incoming texture and its resolution
       this.material.uniforms.texture2.value = prevTexture;
       if (prevTexture.image) {
          this.material.uniforms.res2.value.set(prevTexture.image.width, prevTexture.image.height);
       }
-      
+       
       let tl = new TimelineMax();
       tl.to(this.material.uniforms.progress, this.duration, {
         value: 1,
@@ -470,7 +470,7 @@
 
     destroy() {
       this.stop();
-      
+       
       // Remove event listeners
       if (this.clicker && this.nextHandler) {
         this.clicker.removeEventListener('click', this.nextHandler);
@@ -484,7 +484,7 @@
         window.removeEventListener("resize", this.resizeHandler);
         this.resizeHandler = null;
       }
-      
+       
       // Remove canvas from DOM first
       if (this.container && this.renderer && this.renderer.domElement) {
         try {
@@ -495,7 +495,7 @@
           // Ignore errors
         }
       }
-      
+       
       // Dispose Three.js resources
       if (this.renderer) {
         this.renderer.dispose();
@@ -517,7 +517,7 @@
         });
         this.textures = [];
       }
-      
+       
       // Clear scene
       if (this.scene) {
         while(this.scene.children.length > 0) {
@@ -532,10 +532,10 @@
   function initPixelateImageRenderEffect() {
     // Clean up existing instances
     destroyPixelateImageRenderEffect();
-    
+     
     let renderDuration = 100;  
-    let renderSteps = 20;       
-    let renderColumns = 10;     
+    let renderSteps = 20;        
+    let renderColumns = 10;      
 
     const pixelateElements = document.querySelectorAll('[data-pixelate-render]');
     pixelateElements.forEach(setupPixelate);
@@ -629,7 +629,7 @@
         const cw = canvas.width, ch = canvas.height;
         const cols = Math.max(1, Math.floor(columns));
         const rows = Math.max(1, Math.round(cols * (ch / cw)));
-        
+         
         if (stageIndex === steps.length - 1 && targetIndex === steps.length - 1) {
             ctx.clearRect(0, 0, cw, ch);
             return;
@@ -753,7 +753,7 @@
     const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
     const easeInOut4 = (p) =>
       p < 0.5 ? 8 * p * p * p * p : 1 - Math.pow(-2 * p + 2, 4) / 2;
-    
+     
     const getTranslateX = (el) => {
       const t = getComputedStyle(el).transform;
       if (!t || t === 'none') return 0;
@@ -765,7 +765,7 @@
     // Calculate initial positions
     let baseX = Array.from(words, (el) => getTranslateX(el));
     baseX.forEach((x, i) => gsap.set(words[i], { x }));
-    
+     
     // Setters
     let setX = Array.from(words, (el) => gsap.quickSetter(el, 'x', 'px'));
     let setO = Array.from(words, (el) => gsap.quickSetter(el, 'opacity'));
@@ -815,10 +815,10 @@
 
       // 3. Rileggiamo le posizioni X originali dal CSS (ora che abbiamo pulito GSAP)
       baseX = Array.from(words, (el) => getTranslateX(el));
-      
+       
       // 4. Ripristiniamo la posizione iniziale su GSAP per evitare glitch
       baseX.forEach((x, i) => gsap.set(words[i], { x }));
-      
+       
       // 5. Ricreiamo i quickSetter (per sicurezza, nel caso il riferimento DOM sia cambiato, anche se raro)
       setX = Array.from(words, (el) => gsap.quickSetter(el, 'x', 'px'));
       setO = Array.from(words, (el) => gsap.quickSetter(el, 'opacity'));
@@ -1012,7 +1012,7 @@
           }
         });
       }
-      
+       
       sketchInstance = new Sketch({
         debug: false,
         uniforms: {
@@ -1201,7 +1201,13 @@
         this.renderer.setSize(ww, wh);
         this.renderer.setPixelRatio(gsap.utils.clamp(1, 1.5, window.devicePixelRatio));
         this.renderer.setClearColor(0xE7E7E7, 1);
+        
         const canvasEl = this.renderer.domElement;
+        
+        // =========================================================
+        // FIX: Assegniamo un ID e forziamo la rimozione di duplicati
+        // =========================================================
+        canvasEl.id = 'home-canvas-webgl';
         
         canvasEl.style.position = 'fixed';
         canvasEl.style.top = '0';
@@ -1210,9 +1216,13 @@
         canvasEl.style.height = '100%';
         canvasEl.style.pointerEvents = 'none';
         canvasEl.style.zIndex = '-1';
-        if (canvasEl.parentNode) {
-          canvasEl.parentNode.removeChild(canvasEl);
+        
+        // Controllo se esiste già un canvas con questo ID nel DOM
+        const existingCanvas = document.getElementById('home-canvas-webgl');
+        if (existingCanvas && existingCanvas.parentNode) {
+            existingCanvas.parentNode.removeChild(existingCanvas);
         }
+        
         document.body.appendChild(canvasEl);
 
         this.addPlanes();
@@ -1322,7 +1332,7 @@
       resize = () => {
         ww = window.innerWidth;
         wh = window.innerHeight;
-        
+         
         this.camera.left = ww / -2;
         this.camera.right = ww / 2;
         this.camera.top = wh / 2;
@@ -1334,7 +1344,7 @@
         const { bottom, right } = this.el.getBoundingClientRect();
         this.max.x = right;
         this.max.y = bottom;
-        
+         
         if (this.planes) {
           this.planes.forEach(plane => plane.resize());
         }

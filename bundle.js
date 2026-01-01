@@ -1035,7 +1035,7 @@
         // FIX: CALCOLO POSIZIONE ASSOLUTA CON SCROLL (WINDOW.SCROLLX/Y)
         // =================================================================
         this.rect = this.el.getBoundingClientRect();
-        
+         
         // Calcoliamo la posizione 'assoluta' nella pagina, non nel viewport
         // Questo previene glitch se la pagina è scrollata al reload
         const width = this.rect.width;
@@ -1085,14 +1085,14 @@
         this.renderer.setSize(ww, wh);
         this.renderer.setPixelRatio(gsap.utils.clamp(1, 1.5, window.devicePixelRatio));
         this.renderer.setClearColor(0xE7E7E7, 1);
-        
+         
         const canvasEl = this.renderer.domElement;
-        
+         
         // =========================================================
         // FIX: Assegniamo un ID e forziamo la rimozione di duplicati
         // =========================================================
         canvasEl.id = 'home-canvas-webgl';
-        
+         
         canvasEl.style.position = 'fixed';
         canvasEl.style.top = '0';
         canvasEl.style.left = '0';
@@ -1100,13 +1100,13 @@
         canvasEl.style.height = '100%';
         canvasEl.style.pointerEvents = 'none';
         canvasEl.style.zIndex = '-1';
-        
+         
         // Controllo se esiste già un canvas con questo ID nel DOM
         const existingCanvas = document.getElementById('home-canvas-webgl');
         if (existingCanvas && existingCanvas.parentNode) {
             existingCanvas.parentNode.removeChild(existingCanvas);
         }
-        
+         
         document.body.appendChild(canvasEl);
 
         this.addPlanes();
@@ -1140,10 +1140,17 @@
         const xDiff = this.tx - this.cx;
         const yDiff = this.ty - this.cy;
 
-        this.cx += xDiff * 0.085;
+        // =================================================================
+        // FIX: LERP DINAMICO
+        // Se si trascina (isDragging), l'ease è 0.25 (più reattivo).
+        // Se si scrolla, l'ease è 0.085 (più morbido).
+        // =================================================================
+        const ease = this.isDragging ? 0.25 : 0.085;
+
+        this.cx += xDiff * ease;
         this.cx = Math.round(this.cx * 100) / 100;
 
-        this.cy += yDiff * 0.085;
+        this.cy += yDiff * ease;
         this.cy = Math.round(this.cy * 100) / 100;
 
         this.diff = Math.max(
@@ -1162,17 +1169,22 @@
         this.renderer.render(this.scene, this.camera);
       }
 
+      // =================================================================
+      // FIX: MULTIPLIER RIDOTTO PER GRAB PIÙ CONTROLLATO
+      // Da 2.5 a 1.4 per evitare lo "scivolamento" eccessivo.
+      // =================================================================
+
       onMouseMove = ({ clientX, clientY }) => {
         if (!this.isDragging) return;
-        this.tx = this.on.x + clientX * 2.5;
-        this.ty = this.on.y - clientY * 2.5;
+        this.tx = this.on.x + clientX * 1.4;
+        this.ty = this.on.y - clientY * 1.4;
       }
 
       onMouseDown = ({ clientX, clientY }) => {
         if (this.isDragging) return;
         this.isDragging = true;
-        this.on.x = this.tx - clientX * 2.5;
-        this.on.y = this.ty + clientY * 2.5;
+        this.on.x = this.tx - clientX * 1.4;
+        this.on.y = this.ty + clientY * 1.4;
       }
 
       onMouseUp = () => {
@@ -1183,15 +1195,15 @@
       onTouchStart = (e) => {
         if (this.isDragging) return;
         this.isDragging = true;
-        this.on.x = this.tx - e.touches[0].clientX * 2.5;
-        this.on.y = this.ty + e.touches[0].clientY * 2.5;
+        this.on.x = this.tx - e.touches[0].clientX * 1.4;
+        this.on.y = this.ty + e.touches[0].clientY * 1.4;
       }
 
       onTouchMove = (e) => {
         if (!this.isDragging) return;
         e.preventDefault();
-        this.tx = this.on.x + e.touches[0].clientX * 2.5;
-        this.ty = this.on.y - e.touches[0].clientY * 2.5;
+        this.tx = this.on.x + e.touches[0].clientX * 1.4;
+        this.ty = this.on.y - e.touches[0].clientY * 1.4;
       }
 
       onTouchEnd = () => {
@@ -1216,7 +1228,7 @@
       resize = () => {
         ww = window.innerWidth;
         wh = window.innerHeight;
-         
+          
         this.camera.left = ww / -2;
         this.camera.right = ww / 2;
         this.camera.top = wh / 2;
@@ -1228,7 +1240,7 @@
         const { bottom, right } = this.el.getBoundingClientRect();
         this.max.x = right;
         this.max.y = bottom;
-         
+          
         if (this.planes) {
           this.planes.forEach(plane => plane.resize());
         }

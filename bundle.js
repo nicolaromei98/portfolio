@@ -88,27 +88,6 @@
     }
   }
 
-  function resetWebflow(data) {
-    const parser = new DOMParser();
-    const dom = parser.parseFromString(data.next.html, "text/html");
-    const webflowPageId = dom.querySelector("html").getAttribute("data-wf-page");
-
-    document.querySelector("html").setAttribute("data-wf-page", webflowPageId);
-
-    if (window.Webflow) {
-      try {
-        window.Webflow.destroy();
-        window.Webflow.ready();
-        const ix2 = window.Webflow.require && window.Webflow.require("ix2");
-        if (ix2 && typeof ix2.init === "function") {
-          ix2.init();
-        }
-      } catch (e) {
-        // Silently ignore if Webflow is not fully available
-      }
-    }
-  }
-
   // ============================================================================
   // THREE.JS SKETCH (Infinite Gallery)
   // ============================================================================
@@ -1142,10 +1121,10 @@
 
         // =================================================================
         // FIX: LERP DINAMICO
-        // Se si trascina (isDragging), l'ease è 0.25 (più reattivo).
-        // Se si scrolla, l'ease è 0.085 (più morbido).
+        // Se isDragging è true, usiamo 1.0 (NESSUN RITARDO, movimento 1:1)
+        // Se non stiamo trascinando (scroll), manteniamo la fluidità a 0.085.
         // =================================================================
-        const ease = this.isDragging ? 0.25 : 0.085;
+        const ease = this.isDragging ? 1 : 0.085;
 
         this.cx += xDiff * ease;
         this.cx = Math.round(this.cx * 100) / 100;
@@ -1170,21 +1149,21 @@
       }
 
       // =================================================================
-      // FIX: MULTIPLIER RIDOTTO PER GRAB PIÙ CONTROLLATO
-      // Da 2.5 a 1.4 per evitare lo "scivolamento" eccessivo.
+      // FIX: MULTIPLIER BILANCIATO PER GRAB SOLIDO
+      // Impostato a 1.25 per un controllo preciso e solido
       // =================================================================
 
       onMouseMove = ({ clientX, clientY }) => {
         if (!this.isDragging) return;
-        this.tx = this.on.x + clientX * 1.4;
-        this.ty = this.on.y - clientY * 1.4;
+        this.tx = this.on.x + clientX * 1.25;
+        this.ty = this.on.y - clientY * 1.25;
       }
 
       onMouseDown = ({ clientX, clientY }) => {
         if (this.isDragging) return;
         this.isDragging = true;
-        this.on.x = this.tx - clientX * 1.4;
-        this.on.y = this.ty + clientY * 1.4;
+        this.on.x = this.tx - clientX * 1.25;
+        this.on.y = this.ty + clientY * 1.25;
       }
 
       onMouseUp = () => {
@@ -1195,15 +1174,15 @@
       onTouchStart = (e) => {
         if (this.isDragging) return;
         this.isDragging = true;
-        this.on.x = this.tx - e.touches[0].clientX * 1.4;
-        this.on.y = this.ty + e.touches[0].clientY * 1.4;
+        this.on.x = this.tx - e.touches[0].clientX * 1.25;
+        this.on.y = this.ty + e.touches[0].clientY * 1.25;
       }
 
       onTouchMove = (e) => {
         if (!this.isDragging) return;
         e.preventDefault();
-        this.tx = this.on.x + e.touches[0].clientX * 1.4;
-        this.ty = this.on.y - e.touches[0].clientY * 1.4;
+        this.tx = this.on.x + e.touches[0].clientX * 1.25;
+        this.ty = this.on.y - e.touches[0].clientY * 1.25;
       }
 
       onTouchEnd = () => {

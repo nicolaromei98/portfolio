@@ -370,7 +370,7 @@
       let nextTexture = this.textures[(this.current + 1) % len];
       this.material.uniforms.texture2.value = nextTexture;
       if (nextTexture.image) {
-         this.material.uniforms.res2.value.set(nextTexture.image.width, nextTexture.image.height);
+          this.material.uniforms.res2.value.set(nextTexture.image.width, nextTexture.image.height);
       }
       let tl = new TimelineMax();
       tl.to(this.material.uniforms.progress, this.duration, {
@@ -396,7 +396,7 @@
       let prevTexture = this.textures[prevIndex];
       this.material.uniforms.texture2.value = prevTexture;
       if (prevTexture.image) {
-         this.material.uniforms.res2.value.set(prevTexture.image.width, prevTexture.image.height);
+          this.material.uniforms.res2.value.set(prevTexture.image.width, prevTexture.image.height);
       }
       let tl = new TimelineMax();
       tl.to(this.material.uniforms.progress, this.duration, {
@@ -479,7 +479,7 @@
     destroyPixelateImageRenderEffect();
     let renderDuration = 100;  
     let renderSteps = 20;        
-    let renderColumns = 10;      
+    let renderColumns = 10;       
     const pixelateElements = document.querySelectorAll('[data-pixelate-render]');
     pixelateElements.forEach(setupPixelate);
     function setupPixelate(root) {
@@ -908,6 +908,7 @@
   }
 
   // ================== HOME PAGE (Canvas + Time) ==================
+  // ================== FIXED FOR ANDROID MOBILE  ==================
   function initHomeCanvas() {
     destroyHomeCanvas();
 
@@ -932,8 +933,9 @@
 
     const loader = new THREE.TextureLoader();
 
+    // FIX: Precision HIGH per evitare glitch su Android
     const vertexShader = `
-    precision mediump float;
+    precision highp float;
     uniform vec2 u_velo;
     uniform vec2 u_viewSize;
     varying vec2 vUv;
@@ -948,8 +950,9 @@
     }
     `;
 
+    // FIX: Precision HIGH
     const fragmentShader = `
-    precision mediump float;
+    precision highp float;
     uniform vec2 u_res;
     uniform vec2 u_size;
     uniform vec2 u_velo; 
@@ -1010,12 +1013,23 @@
         this.texture = loader.load(this.el.dataset.src, (texture) => {
           texture.minFilter = THREE.LinearFilter;
           texture.generateMipmaps = false;
+          
+          // FIX: Forziamo update texture per Android
+          texture.needsUpdate = true;
+
           const { naturalWidth, naturalHeight } = texture.image;
+          // FIX: Fallback dimensioni se loading fallisce
+          const w = naturalWidth || 1024;
+          const h = naturalHeight || 1024;
+
           const { u_size, u_texture } = this.material.uniforms;
           u_texture.value = texture;
-          u_size.value.x = naturalWidth;
-          u_size.value.y = naturalHeight;
+          u_size.value.x = w;
+          u_size.value.y = h;
+          // Rendi visibile dopo caricamento
+          if(this.mesh) this.mesh.visible = true;
         });
+        
         this.mesh = new THREE.Mesh(this.geometry, this.material);
         this.add(this.mesh);
         this.resize();
@@ -1031,13 +1045,8 @@
         this.position.y = this.y;
       }
       resize() {
-        // =================================================================
-        // FIX: CALCOLO POSIZIONE ASSOLUTA CON SCROLL (WINDOW.SCROLLX/Y)
-        // =================================================================
         this.rect = this.el.getBoundingClientRect();
         
-        // Calcoliamo la posizione 'assoluta' nella pagina, non nel viewport
-        // Questo previene glitch se la pagina è scrollata al reload
         const width = this.rect.width;
         const height = this.rect.height;
         const left = this.rect.left + window.scrollX;
@@ -1085,14 +1094,11 @@
         this.renderer.setSize(ww, wh);
         this.renderer.setPixelRatio(gsap.utils.clamp(1, 1.5, window.devicePixelRatio));
         this.renderer.setClearColor(0xE7E7E7, 1);
-        
+         
         const canvasEl = this.renderer.domElement;
-        
-        // =========================================================
-        // FIX: Assegniamo un ID e forziamo la rimozione di duplicati
-        // =========================================================
+         
         canvasEl.id = 'home-canvas-webgl';
-        
+         
         canvasEl.style.position = 'fixed';
         canvasEl.style.top = '0';
         canvasEl.style.left = '0';
@@ -1100,13 +1106,12 @@
         canvasEl.style.height = '100%';
         canvasEl.style.pointerEvents = 'none';
         canvasEl.style.zIndex = '-1';
-        
-        // Controllo se esiste già un canvas con questo ID nel DOM
+         
         const existingCanvas = document.getElementById('home-canvas-webgl');
         if (existingCanvas && existingCanvas.parentNode) {
             existingCanvas.parentNode.removeChild(existingCanvas);
         }
-        
+         
         document.body.appendChild(canvasEl);
 
         this.addPlanes();
@@ -1214,9 +1219,23 @@
       }
 
       resize = () => {
-        ww = window.innerWidth;
-        wh = window.innerHeight;
-         
+        const newWW = window.innerWidth;
+        const newWH = window.innerHeight;
+
+        // FIX ANDROID: Ignora resize se cambia solo altezza (address bar scroll) su mobile
+        const isMobile = newWW < 768; 
+        if (isMobile && newWW === ww) {
+           wh = newWH;
+           this.renderer.setSize(ww, wh);
+           this.camera.top = wh / 2;
+           this.camera.bottom = wh / -2;
+           this.camera.updateProjectionMatrix();
+           return; 
+        }
+
+        ww = newWW;
+        wh = newWH;
+          
         this.camera.left = ww / -2;
         this.camera.right = ww / 2;
         this.camera.top = wh / 2;
@@ -1228,7 +1247,7 @@
         const { bottom, right } = this.el.getBoundingClientRect();
         this.max.x = right;
         this.max.y = bottom;
-         
+          
         if (this.planes) {
           this.planes.forEach(plane => plane.resize());
         }

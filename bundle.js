@@ -1035,7 +1035,7 @@
         // FIX: CALCOLO POSIZIONE ASSOLUTA CON SCROLL (WINDOW.SCROLLX/Y)
         // =================================================================
         this.rect = this.el.getBoundingClientRect();
-        
+         
         // Calcoliamo la posizione 'assoluta' nella pagina, non nel viewport
         // Questo previene glitch se la pagina è scrollata al reload
         const width = this.rect.width;
@@ -1085,14 +1085,14 @@
         this.renderer.setSize(ww, wh);
         this.renderer.setPixelRatio(gsap.utils.clamp(1, 1.5, window.devicePixelRatio));
         this.renderer.setClearColor(0xE7E7E7, 1);
-        
+         
         const canvasEl = this.renderer.domElement;
-        
+         
         // =========================================================
         // FIX: Assegniamo un ID e forziamo la rimozione di duplicati
         // =========================================================
         canvasEl.id = 'home-canvas-webgl';
-        
+         
         canvasEl.style.position = 'fixed';
         canvasEl.style.top = '0';
         canvasEl.style.left = '0';
@@ -1100,13 +1100,13 @@
         canvasEl.style.height = '100%';
         canvasEl.style.pointerEvents = 'none';
         canvasEl.style.zIndex = '-1';
-        
+         
         // Controllo se esiste già un canvas con questo ID nel DOM
         const existingCanvas = document.getElementById('home-canvas-webgl');
         if (existingCanvas && existingCanvas.parentNode) {
             existingCanvas.parentNode.removeChild(existingCanvas);
         }
-        
+         
         document.body.appendChild(canvasEl);
 
         this.addPlanes();
@@ -1119,7 +1119,12 @@
         window.addEventListener('mousemove', this.onMouseMove);
         window.addEventListener('mousedown', this.onMouseDown);
         window.addEventListener('mouseup', this.onMouseUp);
-        window.addEventListener('wheel', this.onWheel, { passive: true });
+        
+        // =================================================
+        // FIX: PASSIVE: FALSE PER BLOCCARE SWIPE INDIETRO
+        // =================================================
+        window.addEventListener('wheel', this.onWheel, { passive: false });
+        
         window.addEventListener('touchstart', this.onTouchStart, { passive: false });
         window.addEventListener('touchmove', this.onTouchMove, { passive: false });
         window.addEventListener('touchend', this.onTouchEnd);
@@ -1200,6 +1205,14 @@
       }
 
       onWheel = (e) => {
+        // =================================================================
+        // FIX: PREVENT DEFAULT SWIPE SU MAC (AVANTI/INDIETRO)
+        // Se il movimento è orizzontale, blocca il browser.
+        // =================================================================
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+             e.preventDefault();
+        }
+        
         const { mouse, firefox } = multipliers;
         this.wheel.x = e.wheelDeltaX || e.deltaX * -1;
         this.wheel.y = e.wheelDeltaY || e.deltaY * -1;
@@ -1216,7 +1229,7 @@
       resize = () => {
         ww = window.innerWidth;
         wh = window.innerHeight;
-         
+          
         this.camera.left = ww / -2;
         this.camera.right = ww / 2;
         this.camera.top = wh / 2;
@@ -1228,7 +1241,7 @@
         const { bottom, right } = this.el.getBoundingClientRect();
         this.max.x = right;
         this.max.y = bottom;
-         
+          
         if (this.planes) {
           this.planes.forEach(plane => plane.resize());
         }
@@ -1243,7 +1256,7 @@
         window.removeEventListener('mousemove', core.onMouseMove);
         window.removeEventListener('mousedown', core.onMouseDown);
         window.removeEventListener('mouseup', core.onMouseUp);
-        window.removeEventListener('wheel', core.onWheel, { passive: true });
+        window.removeEventListener('wheel', core.onWheel, { passive: false });
         window.removeEventListener('touchstart', core.onTouchStart);
         window.removeEventListener('touchmove', core.onTouchMove);
         window.removeEventListener('touchend', core.onTouchEnd);

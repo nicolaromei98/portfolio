@@ -915,6 +915,14 @@
 
     const gridEl = document.querySelector('.js-grid');
     if (!gridEl) return;
+    
+    // =================================================================
+    // FIX DEFINITIVO: INIEZIONE CSS PER BLOCCARE LO SWIPE DEL BROWSER
+    // =================================================================
+    document.body.style.overscrollBehaviorX = 'none';
+    document.documentElement.style.overscrollBehaviorX = 'none';
+    document.body.style.overscrollBehavior = 'none';
+    document.documentElement.style.overscrollBehavior = 'none';
 
     let ww = window.innerWidth;
     let wh = window.innerHeight;
@@ -1251,6 +1259,14 @@
     const core = new Core();
 
     homeCanvasCleanup = () => {
+      // =================================================================
+      // CLEANUP: RIPRISTINIAMO LO STILE DEFAULT QUANDO LASCI LA PAGINA
+      // =================================================================
+      document.body.style.overscrollBehaviorX = '';
+      document.documentElement.style.overscrollBehaviorX = '';
+      document.body.style.overscrollBehavior = '';
+      document.documentElement.style.overscrollBehavior = '';
+
       if (core) {
         gsap.ticker.remove(core.tick);
         window.removeEventListener('mousemove', core.onMouseMove);

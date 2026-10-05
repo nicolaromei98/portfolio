@@ -1,926 +1,301 @@
-(function() {
+(function () {
   'use strict';
 
   // ============================================================================
-  // GLOBAL VARIABLES
+  // SETUP
   // ============================================================================
-   
+
   // FORZA IL BROWSER A TORNARE IN CIMA AL REFRESH PER EVITARE GLITCH DI CALCOLO
   if ('scrollRestoration' in history) {
     history.scrollRestoration = 'manual';
   }
   window.scrollTo(0, 0);
 
-  // Register ScrollTrigger plugin immediately
   if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
     gsap.registerPlugin(ScrollTrigger);
   }
-   
-  // Store instances for cleanup
-  let parallaxContext = null;
-  let lenisInstance = null;
-  let sketchInstance = null;
-  let pixelateInstances = [];
-  let mwgEffect005Cleanup = null;
-  let aboutSliderCleanup = null;
-  let homeCanvasCleanup = null;
-  let homeTimeCleanup = null;
-  let lenisRafId = null;
-  let isTransitioning = false;
 
-  function unlockScrollAfterLenisReady() {
-    const finish = () => unlockScroll();
-    if (!lenisInstance) {
-      finish();
-      return;
+  // ============================================================================
+  // LENIS SMOOTH SCROLL
+  // ============================================================================
+
+  function initLenisSmoothScroll() {
+    if (typeof Lenis === 'undefined') return;
+
+    const lenis = new Lenis({ lerp: 0.1 });
+    if (typeof ScrollTrigger !== 'undefined') {
+      lenis.on('scroll', ScrollTrigger.update);
     }
-    let attempts = 0;
-    const tick = () => {
-      attempts += 1;
-      if (typeof lenisInstance.raf === 'function') {
-        lenisInstance.raf(performance.now());
-      }
-      if (attempts >= 2) {
-        finish();
-        return;
-      }
-      requestAnimationFrame(tick);
+
+    const loop = (time) => {
+      lenis.raf(time);
+      requestAnimationFrame(loop);
     };
-    requestAnimationFrame(tick);
-  }
-
-  function ensureLenisRunning() {
-    if (!lenisInstance) return;
-    if (typeof lenisInstance.start === 'function') {
-      lenisInstance.start();
-    }
-    if (typeof lenisInstance.raf === 'function') {
-      lenisInstance.raf(performance.now());
-    }
-    if (!lenisRafId) {
-      const loop = (time) => {
-        if (lenisInstance) {
-          lenisInstance.raf(time);
-        }
-        lenisRafId = requestAnimationFrame(loop);
-      };
-      lenisRafId = requestAnimationFrame(loop);
-    }
+    requestAnimationFrame(loop);
   }
 
   // ============================================================================
-  // UTILITY FUNCTIONS
+  // GLOBAL PARALLAX ([data-parallax="trigger"])
   // ============================================================================
 
-  function lockScroll() {
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.overflow = 'hidden';
-    if (lenisInstance && typeof lenisInstance.stop === 'function') {
-      lenisInstance.stop();
-    }
-  }
+  function initGlobalParallax() {
+    if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') return;
 
-  function unlockScroll() {
-    document.documentElement.style.overflow = '';
-    document.body.style.overflow = '';
-    if (lenisInstance && typeof lenisInstance.start === 'function') {
-      lenisInstance.start();
-    }
-  }
+    const mm = gsap.matchMedia();
+    mm.add(
+      {
+        isMobile: "(max-width:479px)",
+        isMobileLandscape: "(max-width:767px)",
+        isTablet: "(max-width:991px)",
+        isDesktop: "(min-width:992px)"
+      },
+      (context) => {
+        const { isMobile, isMobileLandscape, isTablet } = context.conditions;
 
-  function resetWebflow(data) {
-    const parser = new DOMParser();
-    const dom = parser.parseFromString(data.next.html, "text/html");
-    const webflowPageId = dom.querySelector("html").getAttribute("data-wf-page");
+        document.querySelectorAll('[data-parallax="trigger"]').forEach((trigger) => {
+          const disable = trigger.getAttribute("data-parallax-disable");
+          if (
+            (disable === "mobile" && isMobile) ||
+            (disable === "mobileLandscape" && isMobileLandscape) ||
+            (disable === "tablet" && isTablet)
+          ) {
+            return;
+          }
 
-    document.querySelector("html").setAttribute("data-wf-page", webflowPageId);
+          const target = trigger.querySelector('[data-parallax="target"]') || trigger;
+          const direction = trigger.getAttribute("data-parallax-direction") || "vertical";
+          const prop = direction === "horizontal" ? "xPercent" : "yPercent";
+          const scrubAttr = trigger.getAttribute("data-parallax-scrub");
+          const scrub = scrubAttr ? parseFloat(scrubAttr) : true;
+          const startAttr = trigger.getAttribute("data-parallax-start");
+          const startVal = startAttr !== null ? parseFloat(startAttr) : 20;
+          const endAttr = trigger.getAttribute("data-parallax-end");
+          const endVal = endAttr !== null ? parseFloat(endAttr) : -20;
+          const scrollStart = `clamp(${trigger.getAttribute("data-parallax-scroll-start") || "top bottom"})`;
+          const scrollEnd = `clamp(${trigger.getAttribute("data-parallax-scroll-end") || "bottom top"})`;
 
-    if (window.Webflow) {
-      try {
-        window.Webflow.destroy();
-        window.Webflow.ready();
-        const ix2 = window.Webflow.require && window.Webflow.require("ix2");
-        if (ix2 && typeof ix2.init === "function") {
-          ix2.init();
-        }
-      } catch (e) {
-        // Silently ignore if Webflow is not fully available
+          gsap.fromTo(
+            target,
+            { [prop]: startVal },
+            {
+              [prop]: endVal,
+              ease: "none",
+              scrollTrigger: { trigger, start: scrollStart, end: scrollEnd, scrub }
+            }
+          );
+        });
       }
-    }
+    );
   }
 
   // ============================================================================
-  // THREE.JS SKETCH (Infinite Gallery)
+  // PROJECT TEMPLATE – DITHER SLIDER (#slider, #next, #prev)
   // ============================================================================
 
-  class Sketch {
-    constructor(opts) {
-      if (typeof THREE === 'undefined') {
-        return;
+  const DITHER_VERTEX = `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `;
+
+  const DITHER_FRAGMENT = `
+    precision highp float;
+    uniform sampler2D texture1;
+    uniform sampler2D texture2;
+    uniform vec2 res1;
+    uniform vec2 res2;
+    uniform vec2 resolution;
+    uniform float progress;
+    uniform float pixelSize;
+    varying vec2 vUv;
+
+    vec2 coverUV(vec2 uv, vec2 imgRes) {
+      float rs = (resolution.x / resolution.y) / (imgRes.x / imgRes.y);
+      vec2 s = rs > 1.0 ? vec2(1.0, 1.0 / rs) : vec2(rs, 1.0);
+      return (uv - 0.5) * s + 0.5;
+    }
+
+    float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+
+    // Matrici di Bayer (ordered dither)
+    float bayer2(vec2 a) { a = floor(a); return fract(a.x * 0.5 + a.y * a.y * 0.75); }
+    float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
+    float bayer8(vec2 a) { return bayer4(0.5 * a) * 0.25 + bayer2(a); }
+
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+
+    // Luminosità di una cella: ogni cella passa da A a B in un momento casuale
+    float cellLum(vec2 cell, float flip) {
+      vec2 uv = (cell + 0.5) * pixelSize / resolution;
+      float a = luma(texture2D(texture1, coverUV(uv, res1)).rgb);
+      float b = luma(texture2D(texture2, coverUV(uv, res2)).rgb);
+      return smoothstep(0.12, 0.88, mix(a, b, step(hash(cell), flip)));
+    }
+
+    void main() {
+      vec2 pos = vUv * resolution;
+      vec2 cell = floor(pos / pixelSize);
+
+      // 0 → 0.3: entra il dither | 0.3 → 0.7: i punti passano da A a B | 0.7 → 1: esce il dither
+      float amount = smoothstep(0.0, 0.3, progress) * (1.0 - smoothstep(0.7, 1.0, progress));
+      float flip = smoothstep(0.3, 0.7, progress);
+
+      // Punti LED con glow (somma delle celle vicine 3x3)
+      float light = 0.0;
+      for (int x = -1; x <= 1; x++) {
+        for (int y = -1; y <= 1; y++) {
+          vec2 c = cell + vec2(float(x), float(y));
+          float on = step(bayer4(c) + 0.03, cellLum(c, flip));
+          float d = length(pos / pixelSize - (c + 0.5));
+          light += on * (smoothstep(0.34, 0.16, d) + 0.5 * exp(-d * d * 2.2));
+        }
       }
+      vec3 dither = vec3(1.0 - exp(-light * 1.6));
+
+      vec3 clean = progress < 0.5
+        ? texture2D(texture1, coverUV(vUv, res1)).rgb
+        : texture2D(texture2, coverUV(vUv, res2)).rgb;
+
+      // Passaggio immagine ↔ dither cella per cella, con pattern ordinato
+      float m = step(bayer8(cell) + 1.0 / 128.0, amount);
+      gl_FragColor = vec4(mix(clean, dither, m), 1.0);
+    }
+  `;
+
+  class DitherSlider {
+    constructor(container, opts = {}) {
+      this.container = container;
+      this.images = JSON.parse(container.getAttribute('data-images') || '[]');
+      if (this.images.length < 2) return;
+
+      this.duration = opts.duration || 1.6;
+      this.pixelSize = opts.pixelSize || 6;
+      this.current = 0;
+      this.isRunning = false;
 
       this.scene = new THREE.Scene();
-      this.vertex = `varying vec2 vUv;void main() {vUv = uv;gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );}`;
-      this.uniforms = opts.uniforms;
+      this.camera = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, -1, 1);
       this.renderer = new THREE.WebGLRenderer();
-      this.width = window.innerWidth;
-      this.height = window.innerHeight;
-      this.renderer.setPixelRatio(window.devicePixelRatio);
-      this.renderer.setSize(this.width, this.height);
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       this.renderer.setClearColor(0xeeeeee, 1);
-      this.duration = opts.duration || 1;
-      this.debug = opts.debug || false;
-      this.easing = opts.easing || 'easeInOut';
-      this.clicker = document.getElementById("next");
-      this.clicker2 = document.getElementById("prev");
-      this.container = document.getElementById("slider");
-       
-      if (!this.container) {
-        return;
-      }
-       
-      const existingCanvas = this.container.querySelector('canvas');
-      if (existingCanvas) {
-        try {
-          this.container.removeChild(existingCanvas);
-        } catch (e) {}
-      }
-       
-      if (getComputedStyle(this.container).position === 'static') {
-        this.container.style.position = 'relative';
-      }
 
-      this.renderer.domElement.style.position = 'absolute';
-      this.renderer.domElement.style.top = '0';
-      this.renderer.domElement.style.left = '0';
-      this.renderer.domElement.style.width = '100%';
-      this.renderer.domElement.style.height = '100%';
-      this.renderer.domElement.style.display = 'block';
-      this.renderer.domElement.style.pointerEvents = 'none';
+      const canvas = this.renderer.domElement;
+      Object.assign(canvas.style, {
+        position: 'absolute', top: '0', left: '0',
+        width: '100%', height: '100%',
+        display: 'block', pointerEvents: 'none'
+      });
+      if (getComputedStyle(container).position === 'static') {
+        container.style.position = 'relative';
+      }
+      container.querySelectorAll('canvas').forEach((c) => c.remove());
+      container.appendChild(canvas);
 
-      this.images = JSON.parse(this.container.getAttribute('data-images'));
-      this.width = this.container.offsetWidth;
-      this.height = this.container.offsetHeight;
-      this.container.appendChild(this.renderer.domElement);
-      this.camera = new THREE.PerspectiveCamera(
-        70,
-        window.innerWidth / window.innerHeight,
-        0.001,
-        1000
-      );
-      this.camera.position.set(0, 0, 2);
-      this.time = 0;
-      this.current = 0;
-      this.textures = [];
-      this.paused = true;
-      this.isRunning = false;
-       
-      this.initiate(() => {
-        this.setupResize();
-        this.settings();
+      this.loadTextures().then(() => {
         this.addObjects();
         this.resize();
-        this.clickEvent();
-        this.clickEvent2();
-        this.play();
+        window.addEventListener('resize', () => this.resize());
+        document.getElementById('next')?.addEventListener('click', () => this.goTo(this.current + 1));
+        document.getElementById('prev')?.addEventListener('click', () => this.goTo(this.current - 1));
       });
     }
 
-    initiate(cb) {
-      const promises = [];
-      let that = this;
-      this.images.forEach((url, i) => {
-        let promise = new Promise(resolve => {
-          that.textures[i] = new THREE.TextureLoader().load(url, resolve);
-        });
-        promises.push(promise);
+    loadTextures() {
+      const loader = new THREE.TextureLoader();
+      return Promise.all(
+        this.images.map((url) => new Promise((resolve) => {
+          loader.load(url, (texture) => {
+            texture.minFilter = THREE.LinearFilter;
+            texture.generateMipmaps = false;
+            resolve(texture);
+          });
+        }))
+      ).then((textures) => {
+        this.textures = textures;
       });
-      Promise.all(promises).then(() => {
-        cb();
-      });
-    }
-
-    clickEvent() {
-      if (this.clicker) {
-        this.nextHandler = () => this.next();
-        this.clicker.addEventListener('click', this.nextHandler);
-      }
-    }
-
-    clickEvent2() {
-      if (this.clicker2) {
-        this.prevHandler = () => this.prev();
-        this.clicker2.addEventListener('click', this.prevHandler);
-      }
-    }
-
-    settings() {
-      let that = this;
-      if (this.debug && window.dat) {
-        this.gui = new dat.GUI();
-      }
-      this.settings = {
-        progress: 0.5
-      };
-      Object.keys(this.uniforms).forEach((item) => {
-        this.settings[item] = this.uniforms[item].value;
-        if (this.debug && this.gui) {
-          this.gui.add(this.settings, item, this.uniforms[item].min, this.uniforms[item].max, 0.01);
-        }
-      });
-    }
-
-    setupResize() {
-      this.resizeHandler = this.resize.bind(this);
-      window.addEventListener("resize", this.resizeHandler);
-    }
-
-    resize() {
-      if (!this.container) return;
-      this.width = this.container.offsetWidth;
-      this.height = this.container.offsetHeight;
-      this.renderer.setSize(this.width, this.height);
-      this.camera.aspect = this.width / this.height;
-      this.material.uniforms.resolution.value.x = this.width;
-      this.material.uniforms.resolution.value.y = this.height;
-      this.material.uniforms.resolution.value.z = 1;
-      this.material.uniforms.resolution.value.w = 1;
-      const dist = this.camera.position.z;
-      const height = 1; 
-      this.camera.fov = 2 * (180 / Math.PI) * Math.atan(height / (2 * dist));
-      if (this.plane) {
-        this.plane.scale.x = this.camera.aspect;
-        this.plane.scale.y = 1;
-      }
-      this.camera.updateProjectionMatrix();
     }
 
     addObjects() {
-      let that = this;
-      let w1 = 1, h1 = 1, w2 = 1, h2 = 1;
-      if (this.textures.length > 0 && this.textures[0].image) {
-          w1 = this.textures[0].image.width;
-          h1 = this.textures[0].image.height;
-      }
-      if (this.textures.length > 1 && this.textures[1].image) {
-          w2 = this.textures[1].image.width;
-          h2 = this.textures[1].image.height;
-      }
+      this.uniforms = {
+        texture1: { value: null },
+        texture2: { value: null },
+        res1: { value: new THREE.Vector2(1, 1) },
+        res2: { value: new THREE.Vector2(1, 1) },
+        resolution: { value: new THREE.Vector2(1, 1) },
+        progress: { value: 0 },
+        pixelSize: { value: this.pixelSize }
+      };
+      this.setTexture(1, 0);
+      this.setTexture(2, 1);
 
-      this.material = new THREE.ShaderMaterial({
-        extensions: {
-          derivatives: "#extension GL_OES_standard_derivatives : enable"
-        },
-        side: THREE.DoubleSide,
-        uniforms: {
-          time: { type: "f", value: 0 },
-          progress: { type: "f", value: 0 },
-          border: { type: "f", value: 0 },
-          intensity: { type: "f", value: 0 },
-          scaleX: { type: "f", value: 40 },
-          scaleY: { type: "f", value: 40 },
-          transition: { type: "f", value: 40 },
-          swipe: { type: "f", value: 0 },
-          width: { type: "f", value: 0 },
-          radius: { type: "f", value: 0 },
-          texture1: { type: "f", value: this.textures[0] },
-          texture2: { type: "f", value: this.textures[1] },
-          res1: { type: "v2", value: new THREE.Vector2(w1, h1) },
-          res2: { type: "v2", value: new THREE.Vector2(w2, h2) },
-          displacement: { type: "f", value: new THREE.TextureLoader().load('https://uploads-ssl.webflow.com/5dc1ae738cab24fef27d7fd2/5dcae913c897156755170518_disp1.jpg') },
-          resolution: { type: "v4", value: new THREE.Vector4() },
-        },
-        vertexShader: this.vertex,
-        fragmentShader: `
-            uniform float time;
-            uniform float progress;
-            uniform float intensity;
-            uniform sampler2D texture1;
-            uniform sampler2D texture2;
-            uniform sampler2D displacement;
-            uniform vec4 resolution;
-            uniform vec2 res1;
-            uniform vec2 res2;
-            varying vec2 vUv;
-            mat2 getRotM(float angle) {
-                float s = sin(angle);
-                float c = cos(angle);
-                return mat2(c, -s, s, c);
-            }
-            vec2 getCoverUV(vec2 uv, vec2 screenRes, vec2 imgRes) {
-                float sAspect = screenRes.x / screenRes.y;
-                float iAspect = imgRes.x / imgRes.y;
-                float rs = sAspect / iAspect;
-                vec2 newScale = vec2(1.0);
-                if (rs > 1.0) { 
-                    newScale.y = 1.0 / rs; 
-                } else { 
-                    newScale.x = rs; 
-                }
-                return (uv - 0.5) * newScale + 0.5;
-            }
-            const float PI = 3.1415;
-            const float angle1 = PI * 0.25;
-            const float angle2 = -PI * 0.75;
-            void main()	{
-              vec2 newUV = vUv;
-              vec4 disp = texture2D(displacement, newUV);
-              vec2 dispVec = vec2(disp.r, disp.g);
-              vec2 distVector1 = getRotM(angle1) * dispVec * intensity * progress;
-              vec2 distVector2 = getRotM(angle2) * dispVec * intensity * (1.0 - progress);
-              float rgbShiftStrength = 0.03 * intensity;
-              vec2 uvCover1 = getCoverUV(newUV, resolution.xy, res1);
-              vec2 uvCover2 = getCoverUV(newUV, resolution.xy, res2);
-              vec2 uv1 = uvCover1 + distVector1;
-              vec4 t1 = vec4(
-                  texture2D(texture1, uv1 + distVector1 * rgbShiftStrength).r,
-                  texture2D(texture1, uv1).g,
-                  texture2D(texture1, uv1 - distVector1 * rgbShiftStrength).b,
-                  1.0
-              );
-              vec2 uv2 = uvCover2 + distVector2;
-              vec4 t2 = vec4(
-                  texture2D(texture2, uv2 + distVector2 * rgbShiftStrength).r,
-                  texture2D(texture2, uv2).g,
-                  texture2D(texture2, uv2 - distVector2 * rgbShiftStrength).b,
-                  1.0
-              );
-              gl_FragColor = mix(t1, t2, progress);
-            }
-        `
+      const material = new THREE.ShaderMaterial({
+        uniforms: this.uniforms,
+        vertexShader: DITHER_VERTEX,
+        fragmentShader: DITHER_FRAGMENT
       });
-      this.geometry = new THREE.PlaneGeometry(1, 1, 2, 2);
-      this.plane = new THREE.Mesh(this.geometry, this.material);
-      this.scene.add(this.plane);
+      this.scene.add(new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material));
     }
 
-    stop() {
-      this.paused = true;
+    setTexture(slot, index) {
+      const texture = this.textures[index];
+      this.uniforms[`texture${slot}`].value = texture;
+      this.uniforms[`res${slot}`].value.set(texture.image.width, texture.image.height);
     }
 
-    play() {
-      this.paused = false;
+    goTo(index) {
+      if (this.isRunning || !this.uniforms) return;
+      this.isRunning = true;
+
+      const nextIndex = (index + this.textures.length) % this.textures.length;
+      this.setTexture(2, nextIndex);
+
+      gsap.fromTo(this.uniforms.progress, { value: 0 }, {
+        value: 1,
+        duration: this.duration,
+        ease: 'power1.inOut',
+        onUpdate: () => this.render(),
+        onComplete: () => {
+          this.current = nextIndex;
+          this.setTexture(1, nextIndex);
+          this.uniforms.progress.value = 0;
+          this.render();
+          this.isRunning = false;
+        }
+      });
+    }
+
+    resize() {
+      const w = this.container.offsetWidth;
+      const h = this.container.offsetHeight;
+      this.renderer.setSize(w, h);
+      this.uniforms.resolution.value.set(w, h);
       this.render();
     }
 
-    next() {
-      if (this.isRunning) return;
-      this.isRunning = true;
-      let len = this.textures.length;
-      let nextTexture = this.textures[(this.current + 1) % len];
-      this.material.uniforms.texture2.value = nextTexture;
-      if (nextTexture.image) {
-         this.material.uniforms.res2.value.set(nextTexture.image.width, nextTexture.image.height);
-      }
-      let tl = new TimelineMax();
-      tl.to(this.material.uniforms.progress, this.duration, {
-        value: 1,
-        ease: Power2[this.easing],
-        onComplete: () => {
-          this.current = (this.current + 1) % len;
-          this.material.uniforms.texture1.value = nextTexture;
-          if (nextTexture.image) {
-             this.material.uniforms.res1.value.set(nextTexture.image.width, nextTexture.image.height);
-          }
-          this.material.uniforms.progress.value = 0;
-          this.isRunning = false;
-        }
-      });
-    }
-
-    prev() {
-      if (this.isRunning) return;
-      this.isRunning = true;
-      let len = this.textures.length;
-      const prevIndex = this.current === 0 ? len - 1 : this.current - 1;
-      let prevTexture = this.textures[prevIndex];
-      this.material.uniforms.texture2.value = prevTexture;
-      if (prevTexture.image) {
-         this.material.uniforms.res2.value.set(prevTexture.image.width, prevTexture.image.height);
-      }
-      let tl = new TimelineMax();
-      tl.to(this.material.uniforms.progress, this.duration, {
-        value: 1,
-        ease: Power2[this.easing],
-        onComplete: () => {
-          this.current = prevIndex;
-          this.material.uniforms.texture1.value = prevTexture;
-          if (prevTexture.image) {
-             this.material.uniforms.res1.value.set(prevTexture.image.width, prevTexture.image.height);
-          }
-          this.material.uniforms.progress.value = 0;
-          this.isRunning = false;
-        }
-      });
-    }
-
     render() {
-      if (this.paused) return;
-      this.time += 0.05;
-      this.material.uniforms.time.value = this.time;
-      Object.keys(this.uniforms).forEach((item) => {
-        this.material.uniforms[item].value = this.settings[item];
-      });
-      requestAnimationFrame(this.render.bind(this));
       this.renderer.render(this.scene, this.camera);
     }
-
-    destroy() {
-      this.stop();
-      if (this.clicker && this.nextHandler) {
-        this.clicker.removeEventListener('click', this.nextHandler);
-        this.nextHandler = null;
-      }
-      if (this.clicker2 && this.prevHandler) {
-        this.clicker2.removeEventListener('click', this.prevHandler);
-        this.prevHandler = null;
-      }
-      if (this.resizeHandler) {
-        window.removeEventListener("resize", this.resizeHandler);
-        this.resizeHandler = null;
-      }
-      if (this.container && this.renderer && this.renderer.domElement) {
-        try {
-          if (this.renderer.domElement.parentNode === this.container) {
-            this.container.removeChild(this.renderer.domElement);
-          }
-        } catch (e) {}
-      }
-      if (this.renderer) {
-        this.renderer.dispose();
-        this.renderer = null;
-      }
-      if (this.material) {
-        this.material.dispose();
-        this.material = null;
-      }
-      if (this.geometry) {
-        this.geometry.dispose();
-        this.geometry = null;
-      }
-      if (this.textures) {
-        this.textures.forEach(texture => {
-          if (texture && texture.dispose) {
-            texture.dispose();
-          }
-        });
-        this.textures = [];
-      }
-      if (this.scene) {
-        while(this.scene.children.length > 0) {
-          this.scene.remove(this.scene.children[0]);
-        }
-        this.scene = null;
-      }
-    }
   }
 
-  function initPixelateImageRenderEffect() {
-    destroyPixelateImageRenderEffect();
-    let renderDuration = 100;  
-    let renderSteps = 20;        
-    let renderColumns = 10;      
-    const pixelateElements = document.querySelectorAll('[data-pixelate-render]');
-    pixelateElements.forEach(setupPixelate);
-    function setupPixelate(root) {
-      const img = root.querySelector('[data-pixelate-render-img]');
-      if (!img) return;
-      const trigger = (root.getAttribute('data-pixelate-render-trigger') || 'load').toLowerCase();
-      const durAttr = parseInt(root.getAttribute('data-pixelate-render-duration'), 10);
-      const stepsAttr = parseInt(root.getAttribute('data-pixelate-render-steps'), 10);
-      const colsAttr = parseInt(root.getAttribute('data-pixelate-render-columns'), 10);
-      const fitMode = (root.getAttribute('data-pixelate-render-fit') || 'cover').toLowerCase();
-      const elRenderDuration = Number.isFinite(durAttr) ? Math.max(16, durAttr) : renderDuration;
-      const elRenderSteps = Number.isFinite(stepsAttr) ? Math.max(1, stepsAttr) : renderSteps;
-      const elRenderColumns = Number.isFinite(colsAttr) ? Math.max(1, colsAttr) : renderColumns;
-      const canvas = document.createElement('canvas');
-      canvas.setAttribute('data-pixelate-canvas', '');
-      canvas.style.position = 'absolute';
-      canvas.style.inset = '0';
-      canvas.style.width = '100%';
-      canvas.style.height = '100%';
-      canvas.style.pointerEvents = 'none'; 
-      root.style.position ||= 'relative';
-      root.appendChild(canvas);
-      const ctx = canvas.getContext('2d', { alpha: true });
-      ctx.imageSmoothingEnabled = false;
-      const back = document.createElement('canvas');
-      const tiny = document.createElement('canvas');
-      const bctx = back.getContext('2d', { alpha: true });
-      const tctx = tiny.getContext('2d', { alpha: true });
-      let naturalW = 0, naturalH = 0;
-      let playing = false;
-      let stageIndex = 0;
-      let targetIndex = 0; 
-      let lastTime = 0;
-      let backDirty = true, resizeTimeout = 0;
-      let steps = [elRenderColumns];
-      function fitCanvas() {
-        const r = root.getBoundingClientRect();
-        const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
-        const w = Math.max(1, Math.round(r.width * dpr));
-        const h = Math.max(1, Math.round(r.height * dpr));
-        if (canvas.width !== w || canvas.height !== h) {
-          canvas.width = w; canvas.height = h;
-          back.width = w; back.height = h;
-          backDirty = true;
-        }
-        regenerateSteps();
-      }
-      function regenerateSteps() {
-        const cw = Math.max(1, canvas.width);
-        const startCols = Math.min(elRenderColumns, cw);
-        const total = Math.max(1, elRenderSteps);
-        const use = Math.max(1, Math.floor(total * 0.9)); 
-        const a = [];
-        const ratio = Math.pow(cw / startCols, 1 / total);
-        for (let i = 0; i < use; i++) {
-          a.push(Math.max(1, Math.round(startCols * Math.pow(ratio, i))));
-        }
-        for (let i = 1; i < a.length; i++) if (a[i] <= a[i - 1]) a[i] = a[i - 1] + 1;
-        steps = a.length ? a : [startCols];
-      }
-      function drawImageToBack() {
-        if (!backDirty || !naturalW || !naturalH) return;
-        const cw = back.width, ch = back.height;
-        let dw = cw, dh = ch, dx = 0, dy = 0;
-        if (fitMode !== 'stretch') {
-          const s = fitMode === 'cover' ? Math.max(cw / naturalW, ch / naturalH) : Math.min(cw / naturalW, ch / naturalH);
-          dw = Math.max(1, Math.round(naturalW * s));
-          dh = Math.max(1, Math.round(naturalH * s));
-          dx = ((cw - dw) >> 1);
-          dy = ((ch - dh) >> 1);
-        }
-        bctx.clearRect(0, 0, cw, ch);
-        bctx.imageSmoothingEnabled = true;
-        bctx.drawImage(img, dx, dy, dw, dh);
-        backDirty = false;
-      }
-      function pixelate(columns) {
-        const cw = canvas.width, ch = canvas.height;
-        const cols = Math.max(1, Math.floor(columns));
-        const rows = Math.max(1, Math.round(cols * (ch / cw)));
-        if (stageIndex === steps.length - 1 && targetIndex === steps.length - 1) {
-            ctx.clearRect(0, 0, cw, ch);
-            return;
-        }
-        if (tiny.width !== cols || tiny.height !== rows) { tiny.width = cols; tiny.height = rows; }
-        tctx.imageSmoothingEnabled = false;
-        tctx.clearRect(0, 0, cols, rows);
-        tctx.drawImage(back, 0, 0, cw, ch, 0, 0, cols, rows);
-        ctx.imageSmoothingEnabled = false;
-        ctx.clearRect(0, 0, cw, ch);
-        ctx.drawImage(tiny, 0, 0, cols, rows, 0, 0, cw, ch);
-      }
-      function draw(stepCols) {
-        if (!canvas.width || !canvas.height) return;
-        drawImageToBack();
-        pixelate(stepCols);
-      }
-      function animate(t) {
-        if (!playing) return;
-        if (!lastTime) lastTime = t;
-        const delta = t - lastTime;
-        if (delta >= elRenderDuration) {
-          if (stageIndex < targetIndex) {
-              stageIndex++; 
-          } else if (stageIndex > targetIndex) {
-              stageIndex--; 
-          } else {
-              playing = false;
-              draw(steps[stageIndex]);
-              return; 
-          }
-          draw(steps[stageIndex]);
-          lastTime = t;
-        }
-        requestAnimationFrame(animate);
-      }
-      function setTarget(isHovering) {
-         targetIndex = isHovering ? steps.length - 1 : 0;
-         if (!playing) {
-             playing = true;
-             lastTime = 0; 
-             requestAnimationFrame(animate);
-         }
-      }
-      function init() {
-         naturalW = img.naturalWidth; naturalH = img.naturalHeight;
-         if (!naturalW || !naturalH) return;
-         fitCanvas();
-         stageIndex = 0;
-         targetIndex = 0;
-         backDirty = true;
-         draw(steps[0]);
-      }
-      function onWindowResize() {
-        clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(() => {
-            fitCanvas();
-            draw(steps[stageIndex]);
-        }, 250);
-      }
-      if (img.complete && img.naturalWidth) init(); 
-      else img.addEventListener('load', init, { once: true });
-      window.addEventListener('resize', onWindowResize);
-      if (trigger === 'hover') {
-        root.addEventListener('mouseenter', () => setTarget(true));
-        root.addEventListener('mouseleave', () => setTarget(false));
-      } else {
-         if(trigger === 'load') setTarget(true); 
-      }
-      pixelateInstances.push({
-        root, canvas, back, tiny, img, onWindowResize, setTarget, trigger
-      });
-    }
+  function initDitherSlider() {
+    const slider = document.getElementById('slider');
+    if (!slider || typeof THREE === 'undefined' || typeof gsap === 'undefined') return;
+    new DitherSlider(slider, { duration: 1.6, pixelSize: 6 });
   }
 
-  function destroyPixelateImageRenderEffect() {
-    pixelateInstances.forEach(instance => {
-      window.removeEventListener('resize', instance.onWindowResize);
-      if (instance.canvas && instance.canvas.parentNode) {
-        instance.canvas.parentNode.removeChild(instance.canvas);
-      }
-    });
-    pixelateInstances = [];
-  }
+  // ============================================================================
+  // HOME – INFINITE WEBGL GRID (.js-grid / .js-plane)
+  // ============================================================================
 
-  // ================== mwg_effect005 EFFECT ==================
-  function initMWGEffect005NoST() {
-    if (typeof gsap === 'undefined') return;
-    destroyMWGEffect005NoST();
-    const scope = document.querySelector('.mwg_effect005');
-    if (!scope) return;
-    const paragraph = scope.querySelector('.paragraph');
-    if (paragraph && !paragraph.querySelector('.word')) {
-      const text = (paragraph.textContent || '').trim();
-      paragraph.innerHTML = text
-        .split(/\s+/)
-        .map((word) => `<span class="word">${word}</span>`)
-        .join(' ');
-    }
-    const pinHeight = scope.querySelector('.pin-height');
-    const container = scope.querySelector('.container');
-    const words = scope.querySelectorAll('.word');
-    if (!(pinHeight && container && words.length)) return;
-    container.style.position = 'sticky';
-    container.style.top = '0';
-    const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
-    const easeInOut4 = (p) =>
-      p < 0.5 ? 8 * p * p * p * p : 1 - Math.pow(-2 * p + 2, 4) / 2;
-    const getTranslateX = (el) => {
-      const t = getComputedStyle(el).transform;
-      if (!t || t === 'none') return 0;
-      if (t.startsWith('matrix(')) return parseFloat(t.split(',')[4]) || 0;
-      if (t.startsWith('matrix3d(')) return parseFloat(t.split(',')[12]) || 0;
-      return 0;
-    };
-    let baseX = Array.from(words, (el) => getTranslateX(el));
-    baseX.forEach((x, i) => gsap.set(words[i], { x }));
-    let setX = Array.from(words, (el) => gsap.quickSetter(el, 'x', 'px'));
-    let setO = Array.from(words, (el) => gsap.quickSetter(el, 'opacity'));
-    let startY = 0;
-    let endY = 0;
-    let range = 1;
-    let ticking = false;
-    function measure() {
-      const rect = pinHeight.getBoundingClientRect();
-      const y = window.scrollY;
-      startY = y + rect.top - window.innerHeight * 0.7; 
-      endY = y + rect.bottom - window.innerHeight; 
-      range = Math.max(1, endY - startY);
-    }
-    function update() {
-      ticking = false;
-      const t = clamp01((window.scrollY - startY) / range);
-      const n = words.length;
-      const stagger = 0.02;
-      const totalStagger = stagger * (n - 1);
-      const animWindow = Math.max(0.0001, 1 - totalStagger);
-      for (let i = 0; i < n; i++) {
-        const localStart = i * stagger;
-        const p = clamp01((t - localStart) / animWindow);
-        const eased = easeInOut4(p);
-        setX[i](baseX[i] * (1 - eased));
-        setO[i](eased);
-      }
-    }
-    function onScroll() {
-      if (ticking) return;
-      ticking = true;
-      requestAnimationFrame(update);
-    }
-    function onResize() {
-      gsap.set(words, { clearProps: 'transform,opacity' });
-      measure();
-      baseX = Array.from(words, (el) => getTranslateX(el));
-      baseX.forEach((x, i) => gsap.set(words[i], { x }));
-      setX = Array.from(words, (el) => gsap.quickSetter(el, 'x', 'px'));
-      setO = Array.from(words, (el) => gsap.quickSetter(el, 'opacity'));
-      update();
-    }
-    measure();
-    update();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onResize);
-    mwgEffect005Cleanup = () => {
-      window.removeEventListener('scroll', onScroll, { passive: true });
-      window.removeEventListener('resize', onResize);
-      gsap.set(words, { clearProps: 'all' });
-    };
-  }
-
-  function destroyMWGEffect005NoST() {
-    if (mwgEffect005Cleanup) {
-      mwgEffect005Cleanup();
-      mwgEffect005Cleanup = null;
-    }
-  }
-
-  function initLenisSmoothScroll() {
-    destroyLenisSmoothScroll();
-    if (typeof Lenis === 'undefined') {
-      return;
-    }
-    lenisInstance = new Lenis({
-      lerp: 0.1,
-      smooth: true,
-    });
-    lenisInstance.on('scroll', ScrollTrigger.update);
-    const loop = (time) => {
-      if (lenisInstance) {
-        lenisInstance.raf(time);
-      }
-      lenisRafId = requestAnimationFrame(loop);
-    };
-    lenisRafId = requestAnimationFrame(loop);
-  }
-
-  function destroyLenisSmoothScroll() {
-    if (lenisRafId) {
-      cancelAnimationFrame(lenisRafId);
-      lenisRafId = null;
-    }
-    if (lenisInstance) {
-      lenisInstance.destroy();
-      lenisInstance = null;
-    }
-  }
-
-  function initGlobalParallax() {
-    if (parallaxContext) {
-      parallaxContext();
-      parallaxContext = null;
-    }
-    if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
-      return;
-    }
-    if (typeof gsap.registerPlugin === 'function') {
-      try {
-        gsap.registerPlugin(ScrollTrigger);
-      } catch (e) {
-      }
-    }
-    const triggersCreated = [];
-    const setupParallaxCore = (conditions) => {
-      const { isMobile, isMobileLandscape, isTablet } = conditions || {};
-      document.querySelectorAll('[data-parallax="trigger"]').forEach((trigger) => {
-        const disable = trigger.getAttribute("data-parallax-disable");
-        const disableMobile = disable === "mobile" && isMobile;
-        const disableMobileLandscape = disable === "mobileLandscape" && isMobileLandscape;
-        const disableTablet = disable === "tablet" && isTablet;
-        if (disableMobile || disableMobileLandscape || disableTablet) {
-          return;
-        }
-        const target = trigger.querySelector('[data-parallax="target"]') || trigger;
-        const direction = trigger.getAttribute("data-parallax-direction") || "vertical";
-        const prop = direction === "horizontal" ? "xPercent" : "yPercent";
-        const scrubAttr = trigger.getAttribute("data-parallax-scrub");
-        const scrub = scrubAttr ? parseFloat(scrubAttr) : true;
-        const startAttr = trigger.getAttribute("data-parallax-start");
-        const startVal = startAttr !== null ? parseFloat(startAttr) : 20;
-        const endAttr = trigger.getAttribute("data-parallax-end");
-        const endVal = endAttr !== null ? parseFloat(endAttr) : -20;
-        const scrollStartRaw = trigger.getAttribute("data-parallax-scroll-start") || "top bottom";
-        const scrollStart = `clamp(${scrollStartRaw})`;
-        const scrollEndRaw = trigger.getAttribute("data-parallax-scroll-end") || "bottom top";
-        const scrollEnd = `clamp(${scrollEndRaw})`;
-        const tween = gsap.fromTo(
-          target,
-          { [prop]: startVal },
-          {
-            [prop]: endVal,
-            ease: "none",
-            scrollTrigger: {
-              trigger,
-              start: scrollStart,
-              end: scrollEnd,
-              scrub,
-            },
-          }
-        );
-        if (tween && tween.scrollTrigger) {
-          triggersCreated.push(tween.scrollTrigger);
-        }
-      });
-    };
-    const cleanup = () => {
-      triggersCreated.forEach(t => t.kill());
-      triggersCreated.length = 0;
-    };
-    const hasMatchMedia = typeof gsap.matchMedia === 'function';
-    const hasContext = typeof gsap.context === 'function';
-    if (hasMatchMedia && hasContext) {
-      const mm = gsap.matchMedia();
-      mm.add(
-        {
-          isMobile: "(max-width:479px)",
-          isMobileLandscape: "(max-width:767px)",
-          isTablet: "(max-width:991px)",
-          isDesktop: "(min-width:992px)"
-        },
-        (context) => {
-          const destroyLocal = () => cleanup();
-          gsap.context(() => {
-            setupParallaxCore(context.conditions);
-          });
-          return () => {
-            destroyLocal();
-          };
-        }
-      );
-      parallaxContext = () => {
-        cleanup();
-        mm.revert && mm.revert();
-      };
-    } else {
-      const simpleConditions = {
-        isMobile: window.matchMedia("(max-width:479px)").matches,
-        isMobileLandscape: window.matchMedia("(max-width:767px)").matches,
-        isTablet: window.matchMedia("(max-width:991px)").matches,
-      };
-      setupParallaxCore(simpleConditions);
-      parallaxContext = cleanup;
-    }
-  }
-
-  function destroyGlobalParallax() {
-    if (parallaxContext) {
-      parallaxContext();
-      parallaxContext = null;
-    }
-  }
-
-  function initProjectTemplateAnimations() {
-    initLenisSmoothScroll();
-    initGlobalParallax();
-    initMWGEffect005NoST();
-    initPixelateImageRenderEffect();
-    const sliderContainer = document.getElementById("slider");
-    if (sliderContainer && typeof THREE !== 'undefined') {
-      const existingCanvases = sliderContainer.querySelectorAll('canvas');
-      if (existingCanvases.length > 0) {
-        existingCanvases.forEach(canvas => {
-          try {
-            sliderContainer.removeChild(canvas);
-          } catch (e) {
-          }
-        });
-      }
-      sketchInstance = new Sketch({
-        debug: false,
-        uniforms: {
-          intensity: { value: 1, type: 'f', min: 0., max: 3 }
-        }
-      });
-    }
-  }
-
-  function destroyProjectTemplateAnimations() {
-    if (sketchInstance) {
-      sketchInstance.destroy();
-      sketchInstance = null;
-    }
-    destroyPixelateImageRenderEffect();
-    destroyMWGEffect005NoST();
-    destroyGlobalParallax();
-    destroyLenisSmoothScroll();
-  }
-
-  // ================== HOME PAGE (Canvas + Time) ==================
   function initHomeCanvas() {
-    destroyHomeCanvas();
-
     if (typeof THREE === 'undefined' || typeof gsap === 'undefined') return;
 
     const gridEl = document.querySelector('.js-grid');
     if (!gridEl) return;
-    
-    // =================================================================
-    // FIX DEFINITIVO: INIEZIONE CSS PER BLOCCARE LO SWIPE DEL BROWSER
-    // =================================================================
-    document.body.style.overscrollBehaviorX = 'none';
-    document.documentElement.style.overscrollBehaviorX = 'none';
+
+    // BLOCCA LO SWIPE AVANTI/INDIETRO DEL BROWSER
     document.body.style.overscrollBehavior = 'none';
     document.documentElement.style.overscrollBehavior = 'none';
 
@@ -960,7 +335,7 @@
     precision mediump float;
     uniform vec2 u_res;
     uniform vec2 u_size;
-    uniform vec2 u_velo; 
+    uniform vec2 u_velo;
     uniform sampler2D u_texture;
     varying vec2 vUv;
 
@@ -971,11 +346,11 @@
     vec2 cover(vec2 screenSize, vec2 imageSize, vec2 uv) {
       float screenRatio = screenSize.x / screenSize.y;
       float imageRatio = imageSize.x / imageSize.y;
-      vec2 newSize = screenRatio < imageRatio 
+      vec2 newSize = screenRatio < imageRatio
         ? vec2(imageSize.x * (screenSize.y / imageSize.y), screenSize.y)
         : vec2(screenSize.x, imageSize.y * (screenSize.x / imageSize.x));
-      vec2 newOffset = (screenRatio < imageRatio 
-        ? vec2((newSize.x - screenSize.x) / 2.0, 0.0) 
+      vec2 newOffset = (screenRatio < imageRatio
+        ? vec2((newSize.x - screenSize.x) / 2.0, 0.0)
         : vec2(0.0, (newSize.y - screenSize.y) / 2.0)) / newSize;
       return uv * screenSize / newSize + newOffset;
     }
@@ -988,7 +363,7 @@
       float g = texture2D(u_texture, uvCover).g;
       float b = texture2D(u_texture, uvCover - rgbOffset).b;
       vec4 color = vec4(r, g, b, 1.0);
-      float noise = random(uvCover * 550.0); 
+      float noise = random(uvCover * 550.0);
       color.rgb += (noise - 0.5) * 0.08;
       float dist = distance(vUv, vec2(0.5, 0.5));
       float vignette = smoothstep(0.8, 0.2, dist * 0.9);
@@ -1011,9 +386,9 @@
         this.material.uniforms = {
           u_texture: { value: 0 },
           u_res: { value: new THREE.Vector2(1, 1) },
-          u_size: { value: new THREE.Vector2(1, 1) }, 
+          u_size: { value: new THREE.Vector2(1, 1) },
           u_velo: { value: new THREE.Vector2(0, 0) },
-          u_viewSize: { value: new THREE.Vector2(ww, wh) } 
+          u_viewSize: { value: new THREE.Vector2(ww, wh) }
         };
         this.texture = loader.load(this.el.dataset.src, (texture) => {
           texture.minFilter = THREE.LinearFilter;
@@ -1028,6 +403,7 @@
         this.add(this.mesh);
         this.resize();
       }
+
       update = (x, y, max, velo) => {
         const { right, bottom } = this.rect;
         const { u_velo } = this.material.uniforms;
@@ -1038,14 +414,10 @@
         this.position.x = this.x;
         this.position.y = this.y;
       }
+
       resize() {
-        // =================================================================
-        // FIX: CALCOLO POSIZIONE ASSOLUTA CON SCROLL (WINDOW.SCROLLX/Y)
-        // =================================================================
+        // POSIZIONE ASSOLUTA NELLA PAGINA (CON SCROLL), NON NEL VIEWPORT
         this.rect = this.el.getBoundingClientRect();
-         
-        // Calcoliamo la posizione 'assoluta' nella pagina, non nel viewport
-        // Questo previene glitch se la pagina è scrollata al reload
         const width = this.rect.width;
         const height = this.rect.height;
         const left = this.rect.left + window.scrollX;
@@ -1071,13 +443,10 @@
         this.cx = 0;
         this.cy = 0;
         this.velo = { x: 0, y: 0 };
-        this.diff = 0;
         this.wheel = { x: 0, y: 0 };
         this.on = { x: 0, y: 0 };
         this.max = { x: 0, y: 0 };
         this.isDragging = false;
-
-        this.tl = gsap.timeline({ paused: true });
 
         this.el = gridEl;
         this.el.style.touchAction = 'none';
@@ -1093,28 +462,13 @@
         this.renderer.setSize(ww, wh);
         this.renderer.setPixelRatio(gsap.utils.clamp(1, 1.5, window.devicePixelRatio));
         this.renderer.setClearColor(0xE7E7E7, 1);
-         
+
         const canvasEl = this.renderer.domElement;
-         
-        // =========================================================
-        // FIX: Assegniamo un ID e forziamo la rimozione di duplicati
-        // =========================================================
-        canvasEl.id = 'home-canvas-webgl';
-         
-        canvasEl.style.position = 'fixed';
-        canvasEl.style.top = '0';
-        canvasEl.style.left = '0';
-        canvasEl.style.width = '100%';
-        canvasEl.style.height = '100%';
-        canvasEl.style.pointerEvents = 'none';
-        canvasEl.style.zIndex = '-1';
-         
-        // Controllo se esiste già un canvas con questo ID nel DOM
-        const existingCanvas = document.getElementById('home-canvas-webgl');
-        if (existingCanvas && existingCanvas.parentNode) {
-            existingCanvas.parentNode.removeChild(existingCanvas);
-        }
-         
+        Object.assign(canvasEl.style, {
+          position: 'fixed', top: '0', left: '0',
+          width: '100%', height: '100%',
+          pointerEvents: 'none', zIndex: '-1'
+        });
         document.body.appendChild(canvasEl);
 
         this.addPlanes();
@@ -1127,12 +481,8 @@
         window.addEventListener('mousemove', this.onMouseMove);
         window.addEventListener('mousedown', this.onMouseDown);
         window.addEventListener('mouseup', this.onMouseUp);
-        
-        // =================================================
-        // FIX: PASSIVE: FALSE PER BLOCCARE SWIPE INDIETRO
-        // =================================================
+        // PASSIVE: FALSE PER BLOCCARE LO SWIPE INDIETRO
         window.addEventListener('wheel', this.onWheel, { passive: false });
-        
         window.addEventListener('touchstart', this.onTouchStart, { passive: false });
         window.addEventListener('touchmove', this.onTouchMove, { passive: false });
         window.addEventListener('touchend', this.onTouchEnd);
@@ -1159,16 +509,11 @@
         this.cy += yDiff * 0.085;
         this.cy = Math.round(this.cy * 100) / 100;
 
-        this.diff = Math.max(
-          Math.abs(yDiff * 0.0001), 
-          Math.abs(xDiff * 0.0001)
-        );
-
         const intensity = 0.025;
         this.velo.x = xDiff * intensity;
         this.velo.y = yDiff * intensity;
 
-        this.planes && this.planes.forEach(plane => 
+        this.planes && this.planes.forEach(plane =>
           plane.update(this.cx, this.cy, this.max, this.velo)
         );
 
@@ -1189,7 +534,6 @@
       }
 
       onMouseUp = () => {
-        if (!this.isDragging) return;
         this.isDragging = false;
       }
 
@@ -1208,19 +552,15 @@
       }
 
       onTouchEnd = () => {
-        if (!this.isDragging) return;
         this.isDragging = false;
       }
 
       onWheel = (e) => {
-        // =================================================================
-        // FIX: PREVENT DEFAULT SWIPE SU MAC (AVANTI/INDIETRO)
-        // Se il movimento è orizzontale, blocca il browser.
-        // =================================================================
+        // BLOCCA LO SWIPE AVANTI/INDIETRO SU MAC SE IL MOVIMENTO È ORIZZONTALE
         if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-             e.preventDefault();
+          e.preventDefault();
         }
-        
+
         const { mouse, firefox } = multipliers;
         this.wheel.x = e.wheelDeltaX || e.deltaX * -1;
         this.wheel.y = e.wheelDeltaY || e.deltaY * -1;
@@ -1237,7 +577,7 @@
       resize = () => {
         ww = window.innerWidth;
         wh = window.innerHeight;
-          
+
         this.camera.left = ww / -2;
         this.camera.right = ww / 2;
         this.camera.top = wh / 2;
@@ -1249,113 +589,20 @@
         const { bottom, right } = this.el.getBoundingClientRect();
         this.max.x = right;
         this.max.y = bottom;
-          
+
         if (this.planes) {
           this.planes.forEach(plane => plane.resize());
         }
       }
     }
 
-    const core = new Core();
-
-    homeCanvasCleanup = () => {
-      // =================================================================
-      // CLEANUP: RIPRISTINIAMO LO STILE DEFAULT QUANDO LASCI LA PAGINA
-      // =================================================================
-      document.body.style.overscrollBehaviorX = '';
-      document.documentElement.style.overscrollBehaviorX = '';
-      document.body.style.overscrollBehavior = '';
-      document.documentElement.style.overscrollBehavior = '';
-
-      if (core) {
-        gsap.ticker.remove(core.tick);
-        window.removeEventListener('mousemove', core.onMouseMove);
-        window.removeEventListener('mousedown', core.onMouseDown);
-        window.removeEventListener('mouseup', core.onMouseUp);
-        window.removeEventListener('wheel', core.onWheel, { passive: false });
-        window.removeEventListener('touchstart', core.onTouchStart);
-        window.removeEventListener('touchmove', core.onTouchMove);
-        window.removeEventListener('touchend', core.onTouchEnd);
-        window.removeEventListener('resize', core.resize);
-        if (core.renderer && core.renderer.domElement && core.renderer.domElement.parentNode) {
-          core.renderer.domElement.parentNode.removeChild(core.renderer.domElement);
-        }
-        if (core.el) {
-          core.el.style.touchAction = '';
-        }
-      }
-    };
+    new Core();
   }
 
-  function destroyHomeCanvas() {
-    if (homeCanvasCleanup) {
-      homeCanvasCleanup();
-      homeCanvasCleanup = null;
-    }
-  }
+  // ============================================================================
+  // ABOUT – DRAGGABLE INFINITE SLIDER ([data-slider="list"])
+  // ============================================================================
 
-  function initHomeTime() {
-    destroyHomeTime();
-    const defaultTimezone = "Europe/Amsterdam";
-    const createFormatter = (timezone) => new Intl.DateTimeFormat([], {
-      timeZone: timezone,
-      timeZoneName: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    });
-    const parseFormattedTime = (formattedDateTime) => {
-      const match = formattedDateTime.match(/(\d+):(\d+):(\d+)\s*([\w+]+)/);
-      if (match) {
-        return { hours: match[1], minutes: match[2], seconds: match[3], timezone: match[4] };
-      }
-      return null;
-    };
-    const updateTime = () => {
-      document.querySelectorAll('[data-current-time]').forEach((element) => {
-        const timezone = element.getAttribute('data-current-time') || defaultTimezone;
-        const formatter = createFormatter(timezone);
-        const now = new Date();
-        const formattedDateTime = formatter.format(now);
-        const timeParts = parseFormattedTime(formattedDateTime);
-        if (timeParts) {
-          const { hours, minutes, seconds, timezone } = timeParts;
-          const hoursElem = element.querySelector('[data-current-time-hours]');
-          const minutesElem = element.querySelector('[data-current-time-minutes]');
-          const secondsElem = element.querySelector('[data-current-time-seconds]');
-          const timezoneElem = element.querySelector('[data-current-time-timezone]');
-          if (hoursElem) hoursElem.textContent = hours;
-          if (minutesElem) minutesElem.textContent = minutes;
-          if (secondsElem) secondsElem.textContent = seconds;
-          if (timezoneElem) timezoneElem.textContent = timezone;
-        }
-      });
-    };
-    updateTime();
-    const intervalId = setInterval(updateTime, 1000);
-    homeTimeCleanup = () => clearInterval(intervalId);
-  }
-
-  function destroyHomeTime() {
-    if (homeTimeCleanup) {
-      homeTimeCleanup();
-      homeTimeCleanup = null;
-    }
-  }
-
-  function initHomeAnimations() {
-    destroyHomeAnimations();
-    initHomeCanvas();
-    initHomeTime();
-  }
-
-  function destroyHomeAnimations() {
-    destroyHomeCanvas();
-    destroyHomeTime();
-  }
-
-  // ================== ABOUT PAGE (Draggable Loop) ==================
   function initDraggableInfiniteGSAPSlider() {
     if (typeof gsap === 'undefined' || typeof Draggable === 'undefined' || typeof InertiaPlugin === 'undefined') {
       return;
@@ -1364,28 +611,28 @@
     if (!wrapper) return;
     const slides = gsap.utils.toArray('[data-slider="slide"]');
     if (!slides.length) return;
-    destroyDraggableInfiniteGSAPSlider();
+
     let activeElement = null;
     let currentEl = null;
-    let currentIndex = 0;
     const mq = window.matchMedia('(min-width: 992px)');
     let useNextForActive = mq.matches;
-    const onMQChange = (e) => {
+
+    mq.addEventListener('change', (e) => {
       useNextForActive = e.matches;
-      if (currentEl) {
-        applyActive(currentEl);
-      }
-    };
-    mq.addEventListener('change', onMQChange);
+      if (currentEl) applyActive(currentEl);
+    });
+
     function resolveActive(el) {
       return useNextForActive ? (el.nextElementSibling || slides[0]) : el;
     }
+
     function applyActive(el) {
       if (activeElement) activeElement.classList.remove('active');
       const target = resolveActive(el);
       target.classList.add('active');
       activeElement = target;
     }
+
     function horizontalLoop(items, config) {
       items = gsap.utils.toArray(items);
       config = config || {};
@@ -1453,8 +700,7 @@
         populateTimeline();
         tl.progress(progress, true);
       };
-      const onResize = () => refresh(true);
-      window.addEventListener("resize", onResize);
+      window.addEventListener("resize", refresh);
       function toIndex(index, vars) {
         vars = vars || {};
         if (Math.abs(index - curIndex) > items.length / 2) {
@@ -1495,7 +741,6 @@
         }
         return index;
       }
-      let draggable;
       let wasPlaying = false;
       let startProgress = 0;
       let ratio = 0;
@@ -1503,7 +748,7 @@
       let lastSnap = 0;
       const wrap = gsap.utils.wrap(0, 1);
       proxy = document.createElement("div");
-      draggable = Draggable.create(proxy, {
+      const draggable = Draggable.create(proxy, {
         trigger: items[0].parentNode,
         type: "x",
         onPressInit() {
@@ -1555,67 +800,43 @@
       tl.closestIndex(true);
       tl._lastIndex = curIndex;
       config.onChange && config.onChange(items[curIndex], curIndex);
-      return () => {
-        window.removeEventListener("resize", onResize);
-        draggable && draggable.kill();
-        tl && tl.kill();
-      };
+      return tl;
     }
-    const loopCleanup = horizontalLoop(slides, {
+
+    horizontalLoop(slides, {
       paused: true,
-      draggable: true,
       center: false,
-      onChange: (element, index) => {
+      onChange: (element) => {
         currentEl = element;
-        currentIndex = index;
         applyActive(element);
       }
     });
+
     if (!currentEl && slides[0]) {
       currentEl = slides[0];
-      currentIndex = 0;
       applyActive(currentEl);
     }
-    aboutSliderCleanup = () => {
-      if (loopCleanup) loopCleanup();
-      mq.removeEventListener('change', onMQChange);
-      if (activeElement) activeElement.classList.remove('active');
-      activeElement = null;
-      currentEl = null;
-    };
   }
 
-  function destroyDraggableInfiniteGSAPSlider() {
-    if (aboutSliderCleanup) {
-      aboutSliderCleanup();
-      aboutSliderCleanup = null;
-    }
-  }
+  // ============================================================================
+  // INIT PER PAGINA (data-barba-namespace)
+  // ============================================================================
 
-  function initAboutAnimations() {
-    destroyAboutAnimations();
-    initLenisSmoothScroll();
-    initGlobalParallax();
-    initDraggableInfiniteGSAPSlider();
-  }
-
-  function destroyAboutAnimations() {
-    destroyDraggableInfiniteGSAPSlider();
-    destroyGlobalParallax();
-    destroyLenisSmoothScroll();
-  }
-
-  // Initialize on DOM ready
   document.addEventListener("DOMContentLoaded", () => {
     const namespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
-    if (namespace === 'project-template') {
-      initProjectTemplateAnimations();
+
+    if (namespace === 'home') {
+      initHomeCanvas();
     } else if (namespace === 'about') {
-      initAboutAnimations();
-    } else if (namespace === 'home') {
-      initHomeAnimations();
+      initLenisSmoothScroll();
+      initGlobalParallax();
+      initDraggableInfiniteGSAPSlider();
+    } else if (namespace === 'project-template') {
+      initLenisSmoothScroll();
+      initGlobalParallax();
+      initDitherSlider();
     }
-    ensureLenisRunning();
+
     if (typeof ScrollTrigger !== 'undefined') {
       ScrollTrigger.refresh();
     }

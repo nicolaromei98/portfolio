@@ -907,6 +907,8 @@
     if (!matchMedia('(hover: hover) and (pointer: fine)').matches) return;
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     window.__ditherHover = true;
+    // il CSS nell'head nasconde l'<img> finché c'è questa classe (niente flash a colori al caricamento)
+    document.documentElement.classList.add('dither-ready');
 
     var st = document.createElement('style');
     st.textContent = '[data-dither]{position:relative;overflow:hidden} [data-dither] img{display:block;width:100%;height:100%;object-fit:cover} .dither-cv{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}';
@@ -914,16 +916,16 @@
 
     var DEF = { radius: 0, life: 0.9, ghost: 0.1, pixel: 1, bg: '#0E0E0E', dot: '#F3F3F3', accent: '#FF3B00' };
     var TRAIL_SCALE = 6; // la scia è disegnata a 1/6 della risoluzione e poi interpolata
-    var INTRO = 1.1;     // secondi: l'immagine si dissolve nello sfondo quando entra in pagina
+    var INTRO = 0.8;     // secondi: all'ingresso in pagina i puntini bianchi compaiono dal nero
 
     var glc = document.createElement('canvas');
     var gl = glc.getContext('webgl', { antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
-    if (!gl) return; // niente WebGL: resta l'immagine normale
+    if (!gl) { document.documentElement.classList.add('dither-off'); return; } // niente WebGL: resta l'immagine normale
 
     var FS = [
       'precision highp float;',
       'uniform sampler2D uTex,uTrail,uFresh;uniform vec2 uRes,uImg;',
-      'uniform float uTime,uBase,uGhost,uPx,uAccOn;uniform vec3 uBg,uDot,uAcc;',
+      'uniform float uTime,uGhost,uPx,uAccOn;uniform vec3 uBg,uDot,uAcc;',
       'float b2(vec2 a){a=floor(a);return fract(a.x*.5+a.y*a.y*.75);}',
       'float b4(vec2 a){return b2(.5*a)*.25+b2(a);}float b8(vec2 a){return b4(.5*a)*.25+b2(a);}',
       'float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}',
@@ -934,7 +936,7 @@
       // bordo della scia organico che "ribolle"
       '  float n=vn(uv*vec2(uRes.x/uRes.y,1.)*5.+uTime*.7)-.5;',
       '  float t=texture2D(uTrail,uv+n*.02).a;',
-      '  t=max(clamp(t*(1.+n*.6),0.,1.),uBase);',
+      '  t=clamp(t*(1.+n*.6),0.,1.);',
       // dither a 1 bit dell'immagine (griglia in pixel del display)
       '  vec2 c=floor(f/uPx);',
       '  float l=dot(texture2D(uTex,cover((c+.5)*uPx/uRes)).rgb,vec3(.299,.587,.114));',
@@ -960,7 +962,7 @@
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
     var pl = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(pl); gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 0, 0);
     var L = {};
-    'uTex uTrail uFresh uRes uImg uTime uBase uGhost uPx uAccOn uBg uDot uAcc'.split(' ').forEach(function (n) { L[n] = gl.getUniformLocation(pr, n); });
+    'uTex uTrail uFresh uRes uImg uTime uGhost uPx uAccOn uBg uDot uAcc'.split(' ').forEach(function (n) { L[n] = gl.getUniformLocation(pr, n); });
     gl.uniform1i(L.uTex, 0); gl.uniform1i(L.uTrail, 1); gl.uniform1i(L.uFresh, 2);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
 
@@ -1004,7 +1006,7 @@
         el: el, img: img, cv: cv, ctx: cv.getContext('2d'), trail: trail, tctx: trail.getContext('2d'),
         fresh: fresh, fctx: fresh.getContext('2d'),
         o: opts(el), tex: null, ttex: newTexture(), ftex: newTexture(), iw: 1, ih: 1,
-        base: 1, started: false, visible: false, hover: false, mouse: null, prev: null, energy: 0, dirty: true
+        intro: 0, started: false, visible: false, hover: false, mouse: null, prev: null, energy: 0, dirty: true
       };
       items.push(it);
       el.addEventListener('pointerenter', function (e) { it.hover = true; it.mouse = it.prev = pos(it, e); kick(); });
@@ -1027,9 +1029,10 @@
       im.onload = function () {
         var t = newTexture();
         try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, im); }
-        catch (err) { console.warn('[dither] CORS blocked', im.src); return; }
+        catch (err) { console.warn('[dither] CORS blocked', im.src); it.el.classList.add('is-plain'); return; }
         it.tex = t; it.iw = im.naturalWidth; it.ih = im.naturalHeight; it.dirty = true; kick();
       };
+      im.onerror = function () { it.el.classList.add('is-plain'); }; // immagine non caricabile: torna quella normale
       // niente query string: la CDN di Webflow risponde 403 (e manda già CORS *)
       im.src = pickSrc(it.img, it.el.clientWidth * dpr);
     }
@@ -1072,11 +1075,11 @@
       var any = false;
       items.forEach(function (it) {
         if (!it.tex || !it.visible) return;
-        if (!it.started) { it.started = true; it.el.appendChild(it.cv); it.base = 1; }
+        if (!it.started) { it.started = true; it.el.appendChild(it.cv); it.intro = 0; }
         var o = it.o, tc = it.tctx, busy = false;
 
-        // intro: l'immagine si dissolve nello sfondo
-        if (it.base > 0) { it.base = Math.max(0, it.base - dt / INTRO); busy = true; }
+        // intro: i puntini bianchi compaiono dal nero
+        if (it.intro < 1) { it.intro = Math.min(1, it.intro + dt / INTRO); busy = true; }
 
         // la scia si richiude
         if (it.energy > 0) {
@@ -1121,8 +1124,7 @@
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, it.fresh);
       gl.uniform2f(L.uRes, W, H); gl.uniform2f(L.uImg, it.iw, it.ih);
       gl.uniform1f(L.uTime, now / 1000);
-      gl.uniform1f(L.uBase, it.base * it.base * (3 - 2 * it.base));
-      gl.uniform1f(L.uGhost, o.ghost);
+      gl.uniform1f(L.uGhost, o.ghost * it.intro * it.intro * (3 - 2 * it.intro));
       gl.uniform1f(L.uPx, Math.max(1, Math.round(o.pixel)));
       gl.uniform1f(L.uAccOn, o.accOn ? 1 : 0);
       gl.uniform3fv(L.uBg, o.bg); gl.uniform3fv(L.uDot, o.dot); gl.uniform3fv(L.uAcc, o.accent);

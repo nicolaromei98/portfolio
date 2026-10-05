@@ -113,9 +113,10 @@
     uniform float ditherSize;
     varying vec2 vUv;
 
-    const float WIDTH = 0.28;   // spessore della nuvola
+    const float CORE = 0.16;    // parte piena della nuvola
+    const float EDGE = 0.07;    // bordo sfumato (corto: niente alone di puntini che resta indietro)
     const float BOIL = 0.12;    // turbolenza
-    const float MARGIN = 0.36;  // WIDTH + turbolenza: la nuvola parte ed esce del tutto fuori
+    const float MARGIN = 0.31;  // CORE + EDGE + turbolenza: la nuvola parte ed esce del tutto fuori
 
     vec2 coverUV(vec2 uv, vec2 imgRes) {
       float rs = (resolution.x / resolution.y) / (imgRes.x / imgRes.y);
@@ -143,7 +144,7 @@
       float front = mix(-MARGIN, 1.0 + MARGIN, progress);
       float boil = mix(f.g, f.b, progress) - 0.5;
       float dist = abs(f.r - front + boil * BOIL);
-      float density = 1.0 - smoothstep(WIDTH * 0.35, WIDTH, dist);
+      float density = 1.0 - smoothstep(CORE, CORE + EDGE, dist);
 
       // Dietro la nuvola c'è già la nuova immagine
       float useB = step(f.r, front);
@@ -152,8 +153,9 @@
       // Griglia del dither in pixel del display
       vec2 cell = floor(gl_FragCoord.xy / ditherSize);
 
-      // Bordo della nuvola sfumato con un Bayer trasposto (non si allinea al dither dell'immagine)
-      if (bayer8(cell.yx + vec2(3.0, 5.0)) + 1.0 / 128.0 > density) {
+      // Bordo della nuvola sfumato con un Bayer trasposto (non si allinea al dither dell'immagine).
+      // Il +0.06 taglia la coda: sotto quella densità non resta nessun punto isolato
+      if (bayer8(cell.yx + vec2(3.0, 5.0)) + 0.06 > density) {
         gl_FragColor = vec4(clean, 1.0);
         return;
       }
@@ -996,7 +998,7 @@
       };
       im.onerror = function () { it.cv.remove(); };
       var s = pickSrc(it.img, it.el.clientWidth * dpr);
-      im.src = s + (s.indexOf('?') < 0 ? '?' : '&') + 'cors=1'; // own cache key, avoids a non-CORS cached copy
+      im.src = s; // niente query string: la CDN di Webflow risponde 403 (e manda già CORS *)
     }
 
     var io = new IntersectionObserver(function (es) {

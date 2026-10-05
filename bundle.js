@@ -141,15 +141,16 @@
       vec2 cell = floor(pos / pixelSize);
 
       // Campo della nuvola precalcolato per cella:
-      // r = quando passa la nuvola (0 → 1), g/b = turbolenza
+      // r + a = quando passa la nuvola (0 → 1, 16 bit), g/b = turbolenza
       vec4 f = texture2D(fieldMap, (cell + 0.5) / fieldSize);
+      float field = f.r + f.a / 255.0;
       float front = mix(-MARGIN, 1.0 + MARGIN, progress);
       float boil = mix(f.g, f.b, progress) - 0.5;
-      float dist = abs(f.r - front + boil * BOIL);
+      float dist = abs(field - front + boil * BOIL);
       float density = 1.0 - smoothstep(WIDTH * 0.35, WIDTH, dist);
 
       // Dietro la nuvola c'è già la nuova immagine
-      float useB = step(f.r, front);
+      float useB = step(field, front);
       vec3 clean = image(vUv, useB);
 
       // Fuori dalla nuvola: solo immagine, nessun calcolo del dither
@@ -289,20 +290,28 @@
       const cols = Math.ceil(w / this.pixelSize);
       const rows = Math.ceil(h / this.pixelSize);
       const { noise, fbm } = createNoise(Math.random() * 100);
-      const data = new Uint8Array(cols * rows * 4);
+      const count = cols * rows;
+      const raw = new Float32Array(count);
+      const data = new Uint8Array(count * 4);
 
       for (let y = 0; y < rows; y++) {
         for (let x = 0; x < cols; x++) {
-          const px = (x + 0.5) * this.pixelSize / h * 2.5;
-          const py = (y + 0.5) * this.pixelSize / h * 2.5;
-          const field = Math.min(Math.max((fbm(px, py) - 0.5) * 2.4 + 0.5, 0), 1);
-          const i = (y * cols + x) * 4;
-          data[i] = field * 255;
-          data[i + 1] = noise(x / cols * 6, y / rows * 6) * 255;
-          data[i + 2] = noise(x / cols * 6 + 40, y / rows * 6 + 40) * 255;
-          data[i + 3] = 255;
+          const i = y * cols + x;
+          raw[i] = fbm((x + 0.5) * this.pixelSize / h * 2.5, (y + 0.5) * this.pixelSize / h * 2.5);
+          data[i * 4 + 1] = noise(x / cols * 6, y / rows * 6) * 255;
+          data[i * 4 + 2] = noise(x / cols * 6 + 40, y / rows * 6 + 40) * 255;
         }
       }
+
+      // Equalizzazione: ogni cella ha un momento diverso (niente macchie che spariscono in blocco).
+      // Il valore (0 → 1) è salvato a 16 bit: r = parte alta, a = parte bassa
+      const order = Array.from(raw.keys()).sort((a, b) => raw[a] - raw[b]);
+      order.forEach((cellIndex, rank) => {
+        const v = (rank / (count - 1)) * 255;
+        const hi = Math.floor(v);
+        data[cellIndex * 4] = hi;
+        data[cellIndex * 4 + 3] = Math.round((v - hi) * 255);
+      });
 
       const texture = new THREE.DataTexture(data, cols, rows, THREE.RGBAFormat);
       texture.minFilter = THREE.NearestFilter;

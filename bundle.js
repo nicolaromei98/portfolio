@@ -158,8 +158,10 @@
         ? texture2D(texture1, coverUV(vUv, res1)).rgb
         : texture2D(texture2, coverUV(vUv, res2)).rgb;
 
-      // Passaggio immagine ↔ dither cella per cella, con pattern ordinato
-      float m = step(bayer8(cell) + 1.0 / 128.0, amount);
+      // Passaggio immagine ↔ dither cella per cella:
+      // entrata con pattern ordinato (Bayer), uscita con ordine casuale
+      float order = progress < 0.5 ? bayer8(cell) : hash(cell + 17.31);
+      float m = 1.0 - step(amount, order);
       gl_FragColor = vec4(mix(clean, dither, m), 1.0);
     }
   `;

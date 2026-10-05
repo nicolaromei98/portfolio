@@ -119,27 +119,25 @@
 
     float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
-    // Matrici di Bayer (ordered dither)
+    // Matrice di Bayer 4x4 (ordered dither)
     float bayer2(vec2 a) { a = floor(a); return fract(a.x * 0.5 + a.y * a.y * 0.75); }
     float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
-    float bayer8(vec2 a) { return bayer4(0.5 * a) * 0.25 + bayer2(a); }
 
-    float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-
-    // Luminosità di una cella: ogni cella passa da A a B in un momento casuale
+    // Luminosità di una cella: sfuma in modo continuo da A a B,
+    // così i punti si accendono/spengono seguendo l'immagine
     float cellLum(vec2 cell, float flip) {
       vec2 uv = (cell + 0.5) * pixelSize / resolution;
       float a = luma(texture2D(texture1, coverUV(uv, res1)).rgb);
       float b = luma(texture2D(texture2, coverUV(uv, res2)).rgb);
-      return smoothstep(0.12, 0.88, mix(a, b, step(hash(cell), flip)));
+      return smoothstep(0.12, 0.88, mix(a, b, flip));
     }
 
     void main() {
       vec2 pos = vUv * resolution;
       vec2 cell = floor(pos / pixelSize);
 
-      // 0 → 0.3: entra il dither | 0.3 → 0.7: i punti passano da A a B | 0.7 → 1: esce il dither
-      float amount = smoothstep(0.0, 0.3, progress) * (1.0 - smoothstep(0.7, 1.0, progress));
+      // 0 → 0.35: entra il dither | 0.3 → 0.7: i punti passano da A a B | 0.65 → 1: esce il dither
+      float amount = smoothstep(0.0, 0.35, progress) * (1.0 - smoothstep(0.65, 1.0, progress));
       float flip = smoothstep(0.3, 0.7, progress);
 
       // Punti LED con glow (somma delle celle vicine 3x3)
@@ -158,11 +156,8 @@
         ? texture2D(texture1, coverUV(vUv, res1)).rgb
         : texture2D(texture2, coverUV(vUv, res2)).rgb;
 
-      // Passaggio immagine ↔ dither cella per cella:
-      // entrata con pattern ordinato (Bayer), uscita con ordine casuale
-      float order = progress < 0.5 ? bayer8(cell) : hash(cell + 17.31);
-      float m = 1.0 - step(amount, order);
-      gl_FragColor = vec4(mix(clean, dither, m), 1.0);
+      // Dissolvenza morbida immagine ↔ dither
+      gl_FragColor = vec4(mix(clean, dither, amount), 1.0);
     }
   `;
 

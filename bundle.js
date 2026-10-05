@@ -109,6 +109,7 @@
     uniform vec2 resolution;
     uniform float progress;
     uniform float pixelSize;
+    uniform float seed;
     varying vec2 vUv;
 
     vec2 coverUV(vec2 uv, vec2 imgRes) {
@@ -119,19 +120,37 @@
 
     float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
-    // Matrici di Bayer (ordered dither)
+    // Matrice di Bayer 4x4 (ordered dither dei punti)
     float bayer2(vec2 a) { a = floor(a); return fract(a.x * 0.5 + a.y * a.y * 0.75); }
     float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
-    float bayer8(vec2 a) { return bayer4(0.5 * a) * 0.25 + bayer2(a); }
 
     float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+
+    // Value noise: macchie morbide in posizioni casuali
+    float noise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      float a = hash(i);
+      float b = hash(i + vec2(1.0, 0.0));
+      float c = hash(i + vec2(0.0, 1.0));
+      float d = hash(i + vec2(1.0, 1.0));
+      return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+    }
+
+    // Ordine di comparsa di una cella: macchie casuali + un po' di grana sul bordo
+    float randomOrder(vec2 cell, float s) {
+      float blobs = smoothstep(0.2, 0.8, noise(cell / 7.0 + vec2(s, s * 1.3)));
+      float grain = hash(cell + s * 1.37);
+      return min(mix(blobs, grain, 0.3), 0.999);
+    }
 
     // Luminosità di una cella: ogni cella passa da A a B in un momento casuale
     float cellLum(vec2 cell, float flip) {
       vec2 uv = (cell + 0.5) * pixelSize / resolution;
       float a = luma(texture2D(texture1, coverUV(uv, res1)).rgb);
       float b = luma(texture2D(texture2, coverUV(uv, res2)).rgb);
-      return smoothstep(0.12, 0.88, mix(a, b, step(hash(cell), flip)));
+      return smoothstep(0.12, 0.88, mix(a, b, step(hash(cell + seed), flip)));
     }
 
     void main() {
@@ -159,13 +178,11 @@
         ? texture2D(texture1, coverUV(vUv, res1)).rgb
         : texture2D(texture2, coverUV(vUv, res2)).rgb;
 
-      // Passaggio immagine ↔ dither cella per cella con pattern Bayer:
-      // in uscita stesso ordine dell'entrata, al contrario
-      // (le prime celle diventate dither sono le prime a tornare immagine)
-      float order = bayer8(cell);
+      // Il dither compare e sparisce a macchie casuali:
+      // entrata e uscita usano posizioni diverse (seed diversi)
       float m = progress < 0.5
-        ? step(order + 1.0 / 128.0, amountIn)
-        : step(amountOut, order);
+        ? 1.0 - step(amountIn, randomOrder(cell, seed))
+        : step(amountOut, randomOrder(cell, seed + 19.7));
       gl_FragColor = vec4(mix(clean, dither, m), 1.0);
     }
   `;
@@ -231,7 +248,8 @@
         res2: { value: new THREE.Vector2(1, 1) },
         resolution: { value: new THREE.Vector2(1, 1) },
         progress: { value: 0 },
-        pixelSize: { value: this.pixelSize }
+        pixelSize: { value: this.pixelSize },
+        seed: { value: 0 }
       };
       this.setTexture(1, 0);
       this.setTexture(2, 1);
@@ -256,6 +274,7 @@
 
       const nextIndex = (index + this.textures.length) % this.textures.length;
       this.setTexture(2, nextIndex);
+      this.uniforms.seed.value = Math.random() * 100; // pattern diverso a ogni transizione
 
       gsap.fromTo(this.uniforms.progress, { value: 0 }, {
         value: 1,

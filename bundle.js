@@ -894,11 +894,11 @@
 
   // ============================================================================
   // DITHER TRAIL HOVER ([data-dither] che contiene un <img> CMS)
-  // A riposo l'immagine è nascosta nello sfondo: resta solo un "fantasma" in dither.
+  // A riposo l'immagine è nascosta in un fondo nero: restano solo puntini bianchi (le sue zone chiare).
   // Passando il mouse, la scia la rivela a strati: sfondo → dither 1 bit → colore,
   // con una frangia di pixel accent sul bordo. Poi la scia si richiude.
   // Opzioni sul wrapper: data-dither-radius (px), -life (s), -ghost (0-1),
-  // -pixel (px del display), -ink, -paper, -accent ("none" per toglierlo)
+  // -pixel (px del display), -bg (fondo, nero), -dot (puntini, bianco), -accent ("none" per toglierlo)
   // ============================================================================
 
   function initDitherHover() {
@@ -912,7 +912,7 @@
     st.textContent = '[data-dither]{position:relative;overflow:hidden} [data-dither] img{display:block;width:100%;height:100%;object-fit:cover} .dither-cv{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}';
     document.head.appendChild(st);
 
-    var DEF = { radius: 0, life: 0.9, ghost: 0.06, pixel: 1, ink: '#0E0E0E', paper: '#F3F3F3', accent: '#FF3B00' };
+    var DEF = { radius: 0, life: 0.9, ghost: 0.1, pixel: 1, bg: '#0E0E0E', dot: '#F3F3F3', accent: '#FF3B00' };
     var TRAIL_SCALE = 6; // la scia è disegnata a 1/6 della risoluzione e poi interpolata
     var INTRO = 1.1;     // secondi: l'immagine si dissolve nello sfondo quando entra in pagina
 
@@ -923,7 +923,7 @@
     var FS = [
       'precision highp float;',
       'uniform sampler2D uTex,uTrail,uFresh;uniform vec2 uRes,uImg;',
-      'uniform float uTime,uBase,uGhost,uPx,uAccOn;uniform vec3 uInk,uPaper,uAcc;',
+      'uniform float uTime,uBase,uGhost,uPx,uAccOn;uniform vec3 uBg,uDot,uAcc;',
       'float b2(vec2 a){a=floor(a);return fract(a.x*.5+a.y*a.y*.75);}',
       'float b4(vec2 a){return b2(.5*a)*.25+b2(a);}float b8(vec2 a){return b4(.5*a)*.25+b2(a);}',
       'float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}',
@@ -939,14 +939,15 @@
       '  vec2 c=floor(f/uPx);',
       '  float l=dot(texture2D(uTex,cover((c+.5)*uPx/uRes)).rgb,vec3(.299,.587,.114));',
       '  l=clamp((l-.5)*1.35+.5,0.,1.);',
-      '  vec3 dith=l>b8(c)?uPaper:uInk;',
+      '  vec3 dith=l>b8(c)?uDot:uBg;',
       // strati: sfondo → dither → colore (ogni strato con un Bayer diverso, così non si allineano)
       '  float g1=smoothstep(.05,.4,t),g2=smoothstep(.45,.9,t);',
-      '  vec3 col=mix(uPaper,dith,step(b8(c.yx+vec2(5.,2.))+1./128.,max(g1,uGhost)));',
+      // confronti espliciti: con step() alcune GPU (ANGLE su Mac) accendono pixel che dovrebbero restare spenti
+      '  vec3 col=max(g1,uGhost)>b8(c.yx+vec2(5.,2.))+1./128.?dith:uBg;',
       '  float fr=texture2D(uFresh,uv+n*.02).a;',
       '  float edge=smoothstep(.05,.12,fr)*(1.-smoothstep(.16,.3,fr));',
-      '  col=mix(col,uAcc,uAccOn*step(b8(c+vec2(3.,7.))+1./128.,edge*.35));',
-      '  col=mix(col,texture2D(uTex,cover(uv)).rgb,step(b8(c.yx+vec2(1.,6.))+1./128.,g2));',
+      '  if(uAccOn>.5&&edge*.35>b8(c+vec2(3.,7.))+1./128.)col=uAcc;',
+      '  if(g2>b8(c.yx+vec2(1.,6.))+1./128.)col=texture2D(uTex,cover(uv)).rgb;',
       '  gl_FragColor=vec4(col,1.);',
       '}'
     ].join('\n');
@@ -959,7 +960,7 @@
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
     var pl = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(pl); gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 0, 0);
     var L = {};
-    'uTex uTrail uFresh uRes uImg uTime uBase uGhost uPx uAccOn uInk uPaper uAcc'.split(' ').forEach(function (n) { L[n] = gl.getUniformLocation(pr, n); });
+    'uTex uTrail uFresh uRes uImg uTime uBase uGhost uPx uAccOn uBg uDot uAcc'.split(' ').forEach(function (n) { L[n] = gl.getUniformLocation(pr, n); });
     gl.uniform1i(L.uTex, 0); gl.uniform1i(L.uTrail, 1); gl.uniform1i(L.uFresh, 2);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
 
@@ -971,7 +972,7 @@
         o[k] = v == null ? DEF[k] : (typeof DEF[k] === 'number' ? parseFloat(v) : v);
       }
       o.accOn = o.accent !== 'none';
-      o.ink = rgb(o.ink); o.paper = rgb(o.paper); o.accent = o.accOn ? rgb(o.accent) : [0, 0, 0];
+      o.bg = rgb(o.bg); o.dot = rgb(o.dot); o.accent = o.accOn ? rgb(o.accent) : [0, 0, 0];
       return o;
     }
     // pick the srcset candidate that fits the rendered size (Webflow CMS images ship a srcset)
@@ -1124,7 +1125,7 @@
       gl.uniform1f(L.uGhost, o.ghost);
       gl.uniform1f(L.uPx, Math.max(1, Math.round(o.pixel)));
       gl.uniform1f(L.uAccOn, o.accOn ? 1 : 0);
-      gl.uniform3fv(L.uInk, o.ink); gl.uniform3fv(L.uPaper, o.paper); gl.uniform3fv(L.uAcc, o.accent);
+      gl.uniform3fv(L.uBg, o.bg); gl.uniform3fv(L.uDot, o.dot); gl.uniform3fv(L.uAcc, o.accent);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       it.ctx.clearRect(0, 0, W, H);
       it.ctx.drawImage(glc, 0, 0);

@@ -893,46 +893,64 @@
   }
 
   // ============================================================================
-  // DITHER HOVER ([data-dither="full" | "lens"] wrapping a CMS <img>)
-  // Optional overrides on the wrapper: data-dither-pixel, -block, -duration,
-  // -steps, -tear, -sweep, -radius, -contrast, -ink, -paper, -accent, -invert
+  // DITHER TRAIL HOVER ([data-dither] che contiene un <img> CMS)
+  // A riposo l'immagine è nascosta nello sfondo: resta solo un "fantasma" in dither.
+  // Passando il mouse, la scia la rivela a strati: sfondo → dither 1 bit → colore,
+  // con una frangia di pixel accent sul bordo. Poi la scia si richiude.
+  // Opzioni sul wrapper: data-dither-radius (px), -life (s), -ghost (0-1),
+  // -pixel (px del display), -ink, -paper, -accent ("none" per toglierlo)
   // ============================================================================
 
   function initDitherHover() {
     if (!document.querySelector('[data-dither]') || window.__ditherHover) return;
+    // Solo con mouse/trackpad e senza "riduci movimento": altrimenti resta l'immagine normale
+    if (!matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     window.__ditherHover = true;
+
     var st = document.createElement('style');
-    st.textContent = '[data-dither]{position:relative;overflow:hidden} [data-dither] img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%} .dither-cv{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:0;transition:opacity .2s steps(2)} .dither-cv.is-on{opacity:1}';
+    st.textContent = '[data-dither]{position:relative;overflow:hidden} [data-dither] img{display:block;width:100%;height:100%;object-fit:cover} .dither-cv{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}';
     document.head.appendChild(st);
-    var DEF = { pixel: 3, block: 24, duration: 0.7, steps: 10, tear: 28, sweep: 0.35, radius: 220, contrast: 1.4, ink: '#0E0E0E', paper: '#E9E7E1', accent: '#FF3B00', invert: false };
-    var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var canHover = matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+    var DEF = { radius: 0, life: 0.9, ghost: 0.06, pixel: 1, ink: '#0E0E0E', paper: '#F3F3F3', accent: '#FF3B00' };
+    var TRAIL_SCALE = 6; // la scia è disegnata a 1/6 della risoluzione e poi interpolata
+    var INTRO = 1.1;     // secondi: l'immagine si dissolve nello sfondo quando entra in pagina
 
     var glc = document.createElement('canvas');
     var gl = glc.getContext('webgl', { antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
-    if (!gl) return; // no WebGL: the plain image stays
+    if (!gl) return; // niente WebGL: resta l'immagine normale
 
     var FS = [
-      'precision highp float;varying vec2 vUv;uniform sampler2D uTex;uniform vec2 uRes,uImg,uMouse;',
-      'uniform float uP,uPx,uBlock,uMode,uRadius,uTime,uTear,uContrast,uInv,uSweep;uniform vec3 uInk,uPaper,uAcc;',
-      'float b2(vec2 a){a=floor(a);return fract(dot(a,vec2(.5,a.y*.75)));}',
+      'precision highp float;',
+      'uniform sampler2D uTex,uTrail,uFresh;uniform vec2 uRes,uImg;',
+      'uniform float uTime,uBase,uGhost,uPx,uAccOn;uniform vec3 uInk,uPaper,uAcc;',
+      'float b2(vec2 a){a=floor(a);return fract(a.x*.5+a.y*a.y*.75);}',
       'float b4(vec2 a){return b2(.5*a)*.25+b2(a);}float b8(vec2 a){return b4(.5*a)*.25+b2(a);}',
-      'float h21(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}',
+      'float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}',
+      'float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1.,0.)),f.x),mix(h(i+vec2(0.,1.)),h(i+vec2(1.,1.)),f.x),f.y);}',
       'vec2 cover(vec2 uv){float rs=uRes.x/uRes.y,ri=uImg.x/uImg.y;vec2 s=rs<ri?vec2(rs/ri,1.):vec2(1.,ri/rs);return (uv-.5)*s+.5;}',
-      'vec3 src(vec2 f){return texture2D(uTex,clamp(cover(f/uRes),0.,1.)).rgb;}',
-      'vec3 dith(vec2 f,vec3 ink){vec2 c=floor(f/uPx);vec3 s=src((c+.5)*uPx);float l=clamp((dot(s,vec3(.299,.587,.114))-.5)*uContrast+.5,0.,1.);return l>b8(c)?uPaper:ink;}',
-      'void main(){vec2 f=gl_FragCoord.xy;float m;',
-      'if(uMode<.5)m=uP;else{float d=distance(f,uMouse)/uRadius;m=uP*(1.-smoothstep(.2,1.,d));}',
-      'float act=clamp(m*(1.-m)*4.,0.,1.);float tq=floor(uTime*14.);float row=floor(f.y/max(uBlock*.5,2.));',
-      'float sh=h21(vec2(row,tq))>.8?(h21(vec2(row+7.,tq))-.5)*2.*uTear*act:0.;vec2 g=vec2(f.x+sh,f.y);',
-      'vec2 bid=floor(g/uBlock);float hb=h21(bid);float o=mix(b8(bid),hb,.5);',
-      'if(uMode<.5)o=mix(o,1.-(bid.y*uBlock/uRes.y),uSweep);',
-      'float t=m*1.12-.06;float rev=step(o,t);float edge=(step(o,t+.1)-rev)*step(.002,m)*step(m,.998);',
-      'vec3 or=src(g),di=dith(g,uInk);vec3 col=mix(uInv>.5?or:di,uInv>.5?di:or,rev);',
-      'if(edge>.5){if(hb>.55)col=dith(g+vec2(uPx*4.,0.),uAcc);else{float s=max(uBlock*.5,2.);col=floor(src((floor(g/s)+.5)*s)*3.99)/3.;}}',
-      'gl_FragColor=vec4(col,1.);}'
+      'void main(){',
+      '  vec2 f=gl_FragCoord.xy,uv=f/uRes;',
+      // bordo della scia organico che "ribolle"
+      '  float n=vn(uv*vec2(uRes.x/uRes.y,1.)*5.+uTime*.7)-.5;',
+      '  float t=texture2D(uTrail,uv+n*.02).a;',
+      '  t=max(clamp(t*(1.+n*.6),0.,1.),uBase);',
+      // dither a 1 bit dell'immagine (griglia in pixel del display)
+      '  vec2 c=floor(f/uPx);',
+      '  float l=dot(texture2D(uTex,cover((c+.5)*uPx/uRes)).rgb,vec3(.299,.587,.114));',
+      '  l=clamp((l-.5)*1.35+.5,0.,1.);',
+      '  vec3 dith=l>b8(c)?uPaper:uInk;',
+      // strati: sfondo → dither → colore (ogni strato con un Bayer diverso, così non si allineano)
+      '  float g1=smoothstep(.05,.4,t),g2=smoothstep(.45,.9,t);',
+      '  vec3 col=mix(uPaper,dith,step(b8(c.yx+vec2(5.,2.))+1./128.,max(g1,uGhost)));',
+      '  float fr=texture2D(uFresh,uv+n*.02).a;',
+      '  float edge=smoothstep(.05,.12,fr)*(1.-smoothstep(.16,.3,fr));',
+      '  col=mix(col,uAcc,uAccOn*step(b8(c+vec2(3.,7.))+1./128.,edge*.35));',
+      '  col=mix(col,texture2D(uTex,cover(uv)).rgb,step(b8(c.yx+vec2(1.,6.))+1./128.,g2));',
+      '  gl_FragColor=vec4(col,1.);',
+      '}'
     ].join('\n');
-    var VS = 'attribute vec2 p;varying vec2 vUv;void main(){vUv=p*.5+.5;gl_Position=vec4(p,0.,1.);}';
+    var VS = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
     function sh(t, s) { var o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) console.warn('[dither]', gl.getShaderInfoLog(o)); return o; }
     var pr = gl.createProgram();
     gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS));
@@ -941,7 +959,8 @@
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
     var pl = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(pl); gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 0, 0);
     var L = {};
-    'uTex uRes uImg uMouse uP uPx uBlock uMode uRadius uTime uTear uContrast uInv uSweep uInk uPaper uAcc'.split(' ').forEach(function (n) { L[n] = gl.getUniformLocation(pr, n); });
+    'uTex uTrail uFresh uRes uImg uTime uBase uGhost uPx uAccOn uInk uPaper uAcc'.split(' ').forEach(function (n) { L[n] = gl.getUniformLocation(pr, n); });
+    gl.uniform1i(L.uTex, 0); gl.uniform1i(L.uTrail, 1); gl.uniform1i(L.uFresh, 2);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
 
     function rgb(h) { h = String(h).replace('#', ''); if (h.length === 3) h = h.replace(/./g, '$&$&'); var n = parseInt(h, 16) || 0; return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; }
@@ -949,10 +968,10 @@
       var o = {}, k;
       for (k in DEF) {
         var v = el.getAttribute('data-dither-' + k);
-        o[k] = v == null ? DEF[k] : (typeof DEF[k] === 'number' ? parseFloat(v) : typeof DEF[k] === 'boolean' ? v !== 'false' : v);
+        o[k] = v == null ? DEF[k] : (typeof DEF[k] === 'number' ? parseFloat(v) : v);
       }
-      if (reduce) { o.steps = 1; o.tear = 0; o.duration = 0.001; }
-      o.ink = rgb(o.ink); o.paper = rgb(o.paper); o.accent = rgb(o.accent);
+      o.accOn = o.accent !== 'none';
+      o.ink = rgb(o.ink); o.paper = rgb(o.paper); o.accent = o.accOn ? rgb(o.accent) : [0, 0, 0];
       return o;
     }
     // pick the srcset candidate that fits the rendered size (Webflow CMS images ship a srcset)
@@ -965,52 +984,84 @@
       });
       return best;
     }
+    function newTexture() {
+      var t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      return t;
+    }
 
-    var items = [], running = false, last = 0;
+    var items = [], running = false, last = -1;
 
     function setup(el) {
       if (el.__dither) return;
       var img = el.querySelector('img'); if (!img) return;
       var cv = document.createElement('canvas'); cv.className = 'dither-cv'; cv.setAttribute('aria-hidden', 'true');
-      el.appendChild(cv);
-      var it = el.__dither = { el: el, img: img, cv: cv, ctx: cv.getContext('2d'), o: opts(el), mode: el.getAttribute('data-dither') === 'lens' && canHover ? 1 : 0, p: 0, hover: false, mouse: [0.5, 0.5], sm: [0.5, 0.5], dirty: true, tex: null, iw: 1, ih: 1 };
+      var trail = document.createElement('canvas');
+      var fresh = document.createElement('canvas'); // testa della scia: si spegne subito (per l'accent)
+      var it = el.__dither = {
+        el: el, img: img, cv: cv, ctx: cv.getContext('2d'), trail: trail, tctx: trail.getContext('2d'),
+        fresh: fresh, fctx: fresh.getContext('2d'),
+        o: opts(el), tex: null, ttex: newTexture(), ftex: newTexture(), iw: 1, ih: 1,
+        base: 1, started: false, visible: false, hover: false, mouse: null, prev: null, energy: 0, dirty: true
+      };
       items.push(it);
-      if (canHover) {
-        el.addEventListener('pointerenter', function (e) { pt(it, e); if (it.p <= 0) it.sm = it.mouse.slice(); it.hover = true; kick(); });
-        el.addEventListener('pointerleave', function () { it.hover = false; kick(); });
-        el.addEventListener('pointermove', function (e) { pt(it, e); if (it.mode) kick(); });
-      }
+      el.addEventListener('pointerenter', function (e) { it.hover = true; it.mouse = it.prev = pos(it, e); kick(); });
+      el.addEventListener('pointermove', function (e) { it.mouse = pos(it, e); kick(); });
+      el.addEventListener('pointerleave', function () { it.hover = false; it.prev = null; kick(); });
       io.observe(el); ro.observe(el);
+      sizeTrail(it);
     }
-    function pt(it, e) { var r = it.el.getBoundingClientRect(); it.mouse = [(e.clientX - r.left) / r.width, 1 - (e.clientY - r.top) / r.height]; }
+    function pos(it, e) { var r = it.el.getBoundingClientRect(); return [(e.clientX - r.left) / TRAIL_SCALE, (e.clientY - r.top) / TRAIL_SCALE]; }
+    function sizeTrail(it) {
+      it.trail.width = it.fresh.width = Math.ceil(it.el.clientWidth / TRAIL_SCALE) + 1;
+      it.trail.height = it.fresh.height = Math.ceil(it.el.clientHeight / TRAIL_SCALE) + 1;
+      it.energy = 0; it.dirty = true;
+    }
 
     function load(it) {
       if (it.loading) return; it.loading = true;
       var dpr = Math.min(devicePixelRatio || 1, 2);
       var im = new Image(); im.crossOrigin = 'anonymous'; im.decoding = 'async';
       im.onload = function () {
-        var t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
-        [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T].forEach(function (k) { gl.texParameteri(gl.TEXTURE_2D, k, gl.CLAMP_TO_EDGE); });
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        var t = newTexture();
         try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, im); }
-        catch (err) { console.warn('[dither] CORS blocked', im.src); it.cv.remove(); return; }
+        catch (err) { console.warn('[dither] CORS blocked', im.src); return; }
         it.tex = t; it.iw = im.naturalWidth; it.ih = im.naturalHeight; it.dirty = true; kick();
       };
-      im.onerror = function () { it.cv.remove(); };
-      var s = pickSrc(it.img, it.el.clientWidth * dpr);
-      im.src = s; // niente query string: la CDN di Webflow risponde 403 (e manda già CORS *)
+      // niente query string: la CDN di Webflow risponde 403 (e manda già CORS *)
+      im.src = pickSrc(it.img, it.el.clientWidth * dpr);
     }
 
     var io = new IntersectionObserver(function (es) {
       es.forEach(function (e) {
         var it = e.target.__dither; if (!it) return;
         it.visible = e.isIntersecting;
-        if (e.isIntersecting) { load(it); it.dirty = true; }
-        if (!canHover) it.hover = e.intersectionRatio > 0.5; // touch: reveal when scrolled in
-        kick();
+        if (e.isIntersecting) { load(it); it.dirty = true; kick(); }
       });
-    }, { rootMargin: '200px 0px', threshold: [0, 0.5] });
-    var ro = new ResizeObserver(function (es) { es.forEach(function (e) { var it = e.target.__dither; if (it) { it.dirty = true; } }); kick(); });
+    }, { rootMargin: '200px 0px' });
+    var ro = new ResizeObserver(function (es) { es.forEach(function (e) { var it = e.target.__dither; if (it) sizeTrail(it); }); kick(); });
+
+    // Un tratto della scia: timbri sfumati lungo il movimento, più grandi se il mouse è veloce
+    function stroke(it, a, b, dt) {
+      var o = it.o;
+      var base = (o.radius || Math.min(90, Math.max(14, Math.min(it.el.clientWidth, it.el.clientHeight) * 0.18))) / TRAIL_SCALE;
+      var dx = b[0] - a[0], dy = b[1] - a[1], d = Math.sqrt(dx * dx + dy * dy);
+      var speed = d * TRAIL_SCALE / Math.max(dt, 1 / 120); // px CSS al secondo
+      var r = base * (1 + Math.min(0.6, speed / 1500));
+      var steps = Math.max(1, Math.ceil(d / (r * 0.3)));
+      it.tctx.globalCompositeOperation = it.fctx.globalCompositeOperation = 'source-over';
+      for (var i = 1; i <= steps; i++) {
+        var x = a[0] + dx * i / steps, y = a[1] + dy * i / steps;
+        var g = it.tctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, 'rgba(255,255,255,0.9)');
+        g.addColorStop(0.5, 'rgba(255,255,255,0.55)');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        it.tctx.fillStyle = it.fctx.fillStyle = g;
+        it.tctx.fillRect(x - r, y - r, r * 2, r * 2);
+        it.fctx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+    }
 
     function kick() { if (!running) { running = true; last = -1; requestAnimationFrame(frame); } }
 
@@ -1020,16 +1071,38 @@
       var any = false;
       items.forEach(function (it) {
         if (!it.tex || !it.visible) return;
-        var o = it.o, prev = it.p;
-        it.p = Math.max(0, Math.min(1, it.p + (it.hover ? 1 : -1) * dt / o.duration));
-        var k = Math.min(1, dt * 14), dx = it.mouse[0] - it.sm[0], dy = it.mouse[1] - it.sm[1];
-        it.sm[0] += dx * k; it.sm[1] += dy * k;
-        var moving = it.p !== prev || (it.mode && it.p > 0 && (Math.abs(dx) + Math.abs(dy) > 0.0005));
-        var mid = it.p > 0 && it.p < 1;
-        if (!moving && !mid && !it.dirty && !(it.mode && it.p > 0)) return;
-        any = any || moving || mid || (it.mode && it.p > 0);
+        if (!it.started) { it.started = true; it.el.appendChild(it.cv); it.base = 1; }
+        var o = it.o, tc = it.tctx, busy = false;
+
+        // intro: l'immagine si dissolve nello sfondo
+        if (it.base > 0) { it.base = Math.max(0, it.base - dt / INTRO); busy = true; }
+
+        // la scia si richiude
+        if (it.energy > 0) {
+          tc.globalCompositeOperation = 'destination-out';
+          tc.fillStyle = 'rgba(0,0,0,' + Math.min(1, dt * 2.6 / o.life) + ')';
+          tc.fillRect(0, 0, it.trail.width, it.trail.height);
+          it.fctx.globalCompositeOperation = 'destination-out';
+          it.fctx.fillStyle = 'rgba(0,0,0,' + Math.min(1, dt * 14) + ')';
+          it.fctx.fillRect(0, 0, it.fresh.width, it.fresh.height);
+          it.energy = Math.max(0, it.energy - dt / (o.life * 1.6));
+          if (it.energy === 0) { // via i residui a 8 bit
+            tc.clearRect(0, 0, it.trail.width, it.trail.height);
+            it.fctx.clearRect(0, 0, it.fresh.width, it.fresh.height);
+          }
+          busy = true;
+        }
+
+        // nuovi tratti mentre il mouse è sopra
+        if (it.hover && it.mouse) {
+          stroke(it, it.prev || it.mouse, it.mouse, dt);
+          it.prev = it.mouse; it.energy = 1; busy = true;
+        }
+
+        if (!busy && !it.dirty) return;
         draw(it, now);
         it.dirty = false;
+        any = any || busy;
       });
       if (any) requestAnimationFrame(frame); else running = false;
     }
@@ -1039,28 +1112,22 @@
       var W = Math.max(1, Math.round(it.el.clientWidth * dpr)), H = Math.max(1, Math.round(it.el.clientHeight * dpr));
       if (it.cv.width !== W || it.cv.height !== H) { it.cv.width = W; it.cv.height = H; }
       if (glc.width !== W || glc.height !== H) { glc.width = W; glc.height = H; }
-      var x = it.p, e = x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
-      var q = o.steps > 0 ? Math.floor(e * o.steps + 1e-4) / o.steps : e;
       gl.viewport(0, 0, W, H);
-      gl.bindTexture(gl.TEXTURE_2D, it.tex);
-      gl.uniform1i(L.uTex, 0);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, it.tex);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, it.ttex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, it.trail);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, it.ftex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, it.fresh);
       gl.uniform2f(L.uRes, W, H); gl.uniform2f(L.uImg, it.iw, it.ih);
-      gl.uniform2f(L.uMouse, it.sm[0] * W, it.sm[1] * H);
-      gl.uniform1f(L.uP, q);
-      gl.uniform1f(L.uPx, Math.max(1, Math.round(o.pixel * dpr)));
-      gl.uniform1f(L.uBlock, Math.max(2, o.block * dpr));
-      gl.uniform1f(L.uMode, it.mode);
-      gl.uniform1f(L.uRadius, o.radius * dpr);
       gl.uniform1f(L.uTime, now / 1000);
-      gl.uniform1f(L.uTear, o.tear * dpr);
-      gl.uniform1f(L.uContrast, o.contrast);
-      gl.uniform1f(L.uInv, o.invert ? 1 : 0);
-      gl.uniform1f(L.uSweep, o.sweep);
+      gl.uniform1f(L.uBase, it.base * it.base * (3 - 2 * it.base));
+      gl.uniform1f(L.uGhost, o.ghost);
+      gl.uniform1f(L.uPx, Math.max(1, Math.round(o.pixel)));
+      gl.uniform1f(L.uAccOn, o.accOn ? 1 : 0);
       gl.uniform3fv(L.uInk, o.ink); gl.uniform3fv(L.uPaper, o.paper); gl.uniform3fv(L.uAcc, o.accent);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       it.ctx.clearRect(0, 0, W, H);
       it.ctx.drawImage(glc, 0, 0);
-      it.cv.classList.add('is-on');
     }
 
     function scan(root) { (root.querySelectorAll ? root : document).querySelectorAll('[data-dither]').forEach(setup); }

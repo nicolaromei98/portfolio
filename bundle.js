@@ -105,12 +105,12 @@
     uniform sampler2D texture1;
     uniform sampler2D texture2;
     uniform sampler2D fieldMap;
-    uniform vec2 fieldSize;
     uniform vec2 res1;
     uniform vec2 res2;
     uniform vec2 resolution;
+    uniform float pixelRatio;
     uniform float progress;
-    uniform float pixelSize;
+    uniform float ditherSize;
     varying vec2 vUv;
 
     const float WIDTH = 0.28;   // spessore della nuvola
@@ -137,40 +137,31 @@
     }
 
     void main() {
-      vec2 pos = vUv * resolution;
-      vec2 cell = floor(pos / pixelSize);
-
-      // Campo della nuvola precalcolato per cella:
-      // r + a = quando passa la nuvola (0 → 1, 16 bit), g/b = turbolenza
-      vec4 f = texture2D(fieldMap, (cell + 0.5) / fieldSize);
-      float field = f.r + f.a / 255.0;
+      // Campo della nuvola (interpolato, bordi morbidi):
+      // r = quando passa la nuvola (0 → 1), g/b = turbolenza
+      vec4 f = texture2D(fieldMap, vUv);
       float front = mix(-MARGIN, 1.0 + MARGIN, progress);
       float boil = mix(f.g, f.b, progress) - 0.5;
-      float dist = abs(field - front + boil * BOIL);
+      float dist = abs(f.r - front + boil * BOIL);
       float density = 1.0 - smoothstep(WIDTH * 0.35, WIDTH, dist);
 
       // Dietro la nuvola c'è già la nuova immagine
-      float useB = step(field, front);
+      float useB = step(f.r, front);
       vec3 clean = image(vUv, useB);
 
-      // Fuori dalla nuvola: solo immagine, nessun calcolo del dither
-      if (bayer8(cell) + 1.0 / 128.0 > density) {
+      // Griglia del dither in pixel del display
+      vec2 cell = floor(gl_FragCoord.xy / ditherSize);
+
+      // Bordo della nuvola sfumato con un Bayer trasposto (non si allinea al dither dell'immagine)
+      if (bayer8(cell.yx + vec2(3.0, 5.0)) + 1.0 / 128.0 > density) {
         gl_FragColor = vec4(clean, 1.0);
         return;
       }
 
-      // Dentro la nuvola: punti LED con glow (celle vicine 3x3)
-      float light = 0.0;
-      for (int x = -1; x <= 1; x++) {
-        for (int y = -1; y <= 1; y++) {
-          vec2 c = cell + vec2(float(x), float(y));
-          float lum = smoothstep(0.12, 0.88, luma(image((c + 0.5) * pixelSize / resolution, useB)));
-          float on = step(bayer4(c) + 0.03, lum);
-          float d = length(pos / pixelSize - (c + 0.5));
-          light += on * (smoothstep(0.34, 0.16, d) + 0.5 * exp(-d * d * 2.2));
-        }
-      }
-      gl_FragColor = vec4(vec3(1.0 - exp(-light * 1.6)), 1.0);
+      // Dentro la nuvola: dither a 1 bit, bianco e nero
+      vec2 cellUv = (cell + 0.5) * ditherSize / (resolution * pixelRatio);
+      float lum = smoothstep(0.12, 0.88, luma(image(cellUv, useB)));
+      gl_FragColor = vec4(vec3(step(bayer8(cell) + 1.0 / 128.0, lum)), 1.0);
     }
   `;
 
@@ -208,7 +199,8 @@
       if (this.images.length < 2) return;
 
       this.duration = opts.duration || 1.2;
-      this.pixelSize = opts.pixelSize || 6;
+      this.ditherSize = opts.ditherSize || 1; // px del display per punto
+      this.fieldCell = 6;                     // risoluzione della forma della nuvola (px CSS)
       this.current = 0;
       this.isRunning = false;
 
@@ -259,12 +251,12 @@
         texture1: { value: null },
         texture2: { value: null },
         fieldMap: { value: null },
-        fieldSize: { value: new THREE.Vector2(1, 1) },
         res1: { value: new THREE.Vector2(1, 1) },
         res2: { value: new THREE.Vector2(1, 1) },
         resolution: { value: new THREE.Vector2(1, 1) },
+        pixelRatio: { value: 1 },
         progress: { value: 0 },
-        pixelSize: { value: this.pixelSize }
+        ditherSize: { value: this.ditherSize }
       };
       this.setTexture(1, 0);
       this.setTexture(2, 1);
@@ -283,12 +275,12 @@
       this.uniforms[`res${slot}`].value.set(texture.image.width, texture.image.height);
     }
 
-    // Campo della nuvola a risoluzione di cella: nuova forma a ogni transizione
+    // Forma della nuvola su una griglia grossa: nuova forma a ogni transizione
     buildField() {
       const w = this.container.offsetWidth;
       const h = this.container.offsetHeight;
-      const cols = Math.ceil(w / this.pixelSize);
-      const rows = Math.ceil(h / this.pixelSize);
+      const cols = Math.ceil(w / this.fieldCell);
+      const rows = Math.ceil(h / this.fieldCell);
       const { noise, fbm } = createNoise(Math.random() * 100);
       const count = cols * rows;
       const raw = new Float32Array(count);
@@ -297,31 +289,28 @@
       for (let y = 0; y < rows; y++) {
         for (let x = 0; x < cols; x++) {
           const i = y * cols + x;
-          raw[i] = fbm((x + 0.5) * this.pixelSize / h * 2.5, (y + 0.5) * this.pixelSize / h * 2.5);
+          raw[i] = fbm((x + 0.5) * this.fieldCell / h * 2.5, (y + 0.5) * this.fieldCell / h * 2.5);
           data[i * 4 + 1] = noise(x / cols * 6, y / rows * 6) * 255;
           data[i * 4 + 2] = noise(x / cols * 6 + 40, y / rows * 6 + 40) * 255;
+          data[i * 4 + 3] = 255;
         }
       }
 
-      // Equalizzazione: ogni cella ha un momento diverso (niente macchie che spariscono in blocco).
-      // Il valore (0 → 1) è salvato a 16 bit: r = parte alta, a = parte bassa
+      // Equalizzazione: ogni zona ha un momento diverso (niente macchie che spariscono in blocco)
       const order = Array.from(raw.keys()).sort((a, b) => raw[a] - raw[b]);
       order.forEach((cellIndex, rank) => {
-        const v = (rank / (count - 1)) * 255;
-        const hi = Math.floor(v);
-        data[cellIndex * 4] = hi;
-        data[cellIndex * 4 + 3] = Math.round((v - hi) * 255);
+        data[cellIndex * 4] = Math.round((rank / (count - 1)) * 255);
       });
 
+      // Filtro lineare: la nuvola è morbida anche se la griglia è grossa
       const texture = new THREE.DataTexture(data, cols, rows, THREE.RGBAFormat);
-      texture.minFilter = THREE.NearestFilter;
-      texture.magFilter = THREE.NearestFilter;
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
       texture.generateMipmaps = false;
       texture.needsUpdate = true;
 
       this.uniforms.fieldMap.value?.dispose();
       this.uniforms.fieldMap.value = texture;
-      this.uniforms.fieldSize.value.set(cols, rows);
     }
 
     goTo(index) {
@@ -352,6 +341,7 @@
       const h = this.container.offsetHeight;
       this.renderer.setSize(w, h);
       this.uniforms.resolution.value.set(w, h);
+      this.uniforms.pixelRatio.value = this.renderer.getPixelRatio();
       this.buildField();
       this.render();
     }
@@ -364,7 +354,7 @@
   function initDitherSlider() {
     const slider = document.getElementById('slider');
     if (!slider || typeof THREE === 'undefined' || typeof gsap === 'undefined') return;
-    new DitherSlider(slider, { duration: 1.2, pixelSize: 6 });
+    new DitherSlider(slider, { duration: 1.2, ditherSize: 1 });
   }
 
   // ============================================================================
@@ -901,6 +891,184 @@
   }
 
   // ============================================================================
+  // DITHER HOVER ([data-dither="full" | "lens"] wrapping a CMS <img>)
+  // Optional overrides on the wrapper: data-dither-pixel, -block, -duration,
+  // -steps, -tear, -sweep, -radius, -contrast, -ink, -paper, -accent, -invert
+  // ============================================================================
+
+  function initDitherHover() {
+    if (!document.querySelector('[data-dither]') || window.__ditherHover) return;
+    window.__ditherHover = true;
+    var st = document.createElement('style');
+    st.textContent = '[data-dither]{position:relative;overflow:hidden} [data-dither] img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%} .dither-cv{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:0;transition:opacity .2s steps(2)} .dither-cv.is-on{opacity:1}';
+    document.head.appendChild(st);
+    var DEF = { pixel: 3, block: 24, duration: 0.7, steps: 10, tear: 28, sweep: 0.35, radius: 220, contrast: 1.4, ink: '#0E0E0E', paper: '#E9E7E1', accent: '#FF3B00', invert: false };
+    var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var canHover = matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+    var glc = document.createElement('canvas');
+    var gl = glc.getContext('webgl', { antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
+    if (!gl) return; // no WebGL: the plain image stays
+
+    var FS = [
+      'precision highp float;varying vec2 vUv;uniform sampler2D uTex;uniform vec2 uRes,uImg,uMouse;',
+      'uniform float uP,uPx,uBlock,uMode,uRadius,uTime,uTear,uContrast,uInv,uSweep;uniform vec3 uInk,uPaper,uAcc;',
+      'float b2(vec2 a){a=floor(a);return fract(dot(a,vec2(.5,a.y*.75)));}',
+      'float b4(vec2 a){return b2(.5*a)*.25+b2(a);}float b8(vec2 a){return b4(.5*a)*.25+b2(a);}',
+      'float h21(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}',
+      'vec2 cover(vec2 uv){float rs=uRes.x/uRes.y,ri=uImg.x/uImg.y;vec2 s=rs<ri?vec2(rs/ri,1.):vec2(1.,ri/rs);return (uv-.5)*s+.5;}',
+      'vec3 src(vec2 f){return texture2D(uTex,clamp(cover(f/uRes),0.,1.)).rgb;}',
+      'vec3 dith(vec2 f,vec3 ink){vec2 c=floor(f/uPx);vec3 s=src((c+.5)*uPx);float l=clamp((dot(s,vec3(.299,.587,.114))-.5)*uContrast+.5,0.,1.);return l>b8(c)?uPaper:ink;}',
+      'void main(){vec2 f=gl_FragCoord.xy;float m;',
+      'if(uMode<.5)m=uP;else{float d=distance(f,uMouse)/uRadius;m=uP*(1.-smoothstep(.2,1.,d));}',
+      'float act=clamp(m*(1.-m)*4.,0.,1.);float tq=floor(uTime*14.);float row=floor(f.y/max(uBlock*.5,2.));',
+      'float sh=h21(vec2(row,tq))>.8?(h21(vec2(row+7.,tq))-.5)*2.*uTear*act:0.;vec2 g=vec2(f.x+sh,f.y);',
+      'vec2 bid=floor(g/uBlock);float hb=h21(bid);float o=mix(b8(bid),hb,.5);',
+      'if(uMode<.5)o=mix(o,1.-(bid.y*uBlock/uRes.y),uSweep);',
+      'float t=m*1.12-.06;float rev=step(o,t);float edge=(step(o,t+.1)-rev)*step(.002,m)*step(m,.998);',
+      'vec3 or=src(g),di=dith(g,uInk);vec3 col=mix(uInv>.5?or:di,uInv>.5?di:or,rev);',
+      'if(edge>.5){if(hb>.55)col=dith(g+vec2(uPx*4.,0.),uAcc);else{float s=max(uBlock*.5,2.);col=floor(src((floor(g/s)+.5)*s)*3.99)/3.;}}',
+      'gl_FragColor=vec4(col,1.);}'
+    ].join('\n');
+    var VS = 'attribute vec2 p;varying vec2 vUv;void main(){vUv=p*.5+.5;gl_Position=vec4(p,0.,1.);}';
+    function sh(t, s) { var o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) console.warn('[dither]', gl.getShaderInfoLog(o)); return o; }
+    var pr = gl.createProgram();
+    gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS));
+    gl.linkProgram(pr); gl.useProgram(pr);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    var pl = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(pl); gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 0, 0);
+    var L = {};
+    'uTex uRes uImg uMouse uP uPx uBlock uMode uRadius uTime uTear uContrast uInv uSweep uInk uPaper uAcc'.split(' ').forEach(function (n) { L[n] = gl.getUniformLocation(pr, n); });
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+
+    function rgb(h) { h = String(h).replace('#', ''); if (h.length === 3) h = h.replace(/./g, '$&$&'); var n = parseInt(h, 16) || 0; return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; }
+    function opts(el) {
+      var o = {}, k;
+      for (k in DEF) {
+        var v = el.getAttribute('data-dither-' + k);
+        o[k] = v == null ? DEF[k] : (typeof DEF[k] === 'number' ? parseFloat(v) : typeof DEF[k] === 'boolean' ? v !== 'false' : v);
+      }
+      if (reduce) { o.steps = 1; o.tear = 0; o.duration = 0.001; }
+      o.ink = rgb(o.ink); o.paper = rgb(o.paper); o.accent = rgb(o.accent);
+      return o;
+    }
+    // pick the srcset candidate that fits the rendered size (Webflow CMS images ship a srcset)
+    function pickSrc(img, w) {
+      var ss = img.getAttribute('srcset'), best = img.currentSrc || img.src, bw = 0;
+      if (!ss) return best;
+      ss.split(',').forEach(function (s) {
+        var p = s.trim().split(/\s+/), cw = parseInt(p[1], 10) || 0;
+        if (!bw || (bw < w && cw > bw) || (cw >= w && cw < bw)) { best = p[0]; bw = cw; }
+      });
+      return best;
+    }
+
+    var items = [], running = false, last = 0;
+
+    function setup(el) {
+      if (el.__dither) return;
+      var img = el.querySelector('img'); if (!img) return;
+      var cv = document.createElement('canvas'); cv.className = 'dither-cv'; cv.setAttribute('aria-hidden', 'true');
+      el.appendChild(cv);
+      var it = el.__dither = { el: el, img: img, cv: cv, ctx: cv.getContext('2d'), o: opts(el), mode: el.getAttribute('data-dither') === 'lens' && canHover ? 1 : 0, p: 0, hover: false, mouse: [0.5, 0.5], sm: [0.5, 0.5], dirty: true, tex: null, iw: 1, ih: 1 };
+      items.push(it);
+      if (canHover) {
+        el.addEventListener('pointerenter', function (e) { pt(it, e); if (it.p <= 0) it.sm = it.mouse.slice(); it.hover = true; kick(); });
+        el.addEventListener('pointerleave', function () { it.hover = false; kick(); });
+        el.addEventListener('pointermove', function (e) { pt(it, e); if (it.mode) kick(); });
+      }
+      io.observe(el); ro.observe(el);
+    }
+    function pt(it, e) { var r = it.el.getBoundingClientRect(); it.mouse = [(e.clientX - r.left) / r.width, 1 - (e.clientY - r.top) / r.height]; }
+
+    function load(it) {
+      if (it.loading) return; it.loading = true;
+      var dpr = Math.min(devicePixelRatio || 1, 2);
+      var im = new Image(); im.crossOrigin = 'anonymous'; im.decoding = 'async';
+      im.onload = function () {
+        var t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+        [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T].forEach(function (k) { gl.texParameteri(gl.TEXTURE_2D, k, gl.CLAMP_TO_EDGE); });
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, im); }
+        catch (err) { console.warn('[dither] CORS blocked', im.src); it.cv.remove(); return; }
+        it.tex = t; it.iw = im.naturalWidth; it.ih = im.naturalHeight; it.dirty = true; kick();
+      };
+      im.onerror = function () { it.cv.remove(); };
+      var s = pickSrc(it.img, it.el.clientWidth * dpr);
+      im.src = s + (s.indexOf('?') < 0 ? '?' : '&') + 'cors=1'; // own cache key, avoids a non-CORS cached copy
+    }
+
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        var it = e.target.__dither; if (!it) return;
+        it.visible = e.isIntersecting;
+        if (e.isIntersecting) { load(it); it.dirty = true; }
+        if (!canHover) it.hover = e.intersectionRatio > 0.5; // touch: reveal when scrolled in
+        kick();
+      });
+    }, { rootMargin: '200px 0px', threshold: [0, 0.5] });
+    var ro = new ResizeObserver(function (es) { es.forEach(function (e) { var it = e.target.__dither; if (it) { it.dirty = true; } }); kick(); });
+
+    function kick() { if (!running) { running = true; last = -1; requestAnimationFrame(frame); } }
+
+    function frame(now) {
+      // rAF timestamps can be older than performance.now() at kick: never let dt go negative
+      var dt = last < 0 ? 1 / 60 : Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
+      var any = false;
+      items.forEach(function (it) {
+        if (!it.tex || !it.visible) return;
+        var o = it.o, prev = it.p;
+        it.p = Math.max(0, Math.min(1, it.p + (it.hover ? 1 : -1) * dt / o.duration));
+        var k = Math.min(1, dt * 14), dx = it.mouse[0] - it.sm[0], dy = it.mouse[1] - it.sm[1];
+        it.sm[0] += dx * k; it.sm[1] += dy * k;
+        var moving = it.p !== prev || (it.mode && it.p > 0 && (Math.abs(dx) + Math.abs(dy) > 0.0005));
+        var mid = it.p > 0 && it.p < 1;
+        if (!moving && !mid && !it.dirty && !(it.mode && it.p > 0)) return;
+        any = any || moving || mid || (it.mode && it.p > 0);
+        draw(it, now);
+        it.dirty = false;
+      });
+      if (any) requestAnimationFrame(frame); else running = false;
+    }
+
+    function draw(it, now) {
+      var o = it.o, dpr = Math.min(devicePixelRatio || 1, 2);
+      var W = Math.max(1, Math.round(it.el.clientWidth * dpr)), H = Math.max(1, Math.round(it.el.clientHeight * dpr));
+      if (it.cv.width !== W || it.cv.height !== H) { it.cv.width = W; it.cv.height = H; }
+      if (glc.width !== W || glc.height !== H) { glc.width = W; glc.height = H; }
+      var x = it.p, e = x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+      var q = o.steps > 0 ? Math.floor(e * o.steps + 1e-4) / o.steps : e;
+      gl.viewport(0, 0, W, H);
+      gl.bindTexture(gl.TEXTURE_2D, it.tex);
+      gl.uniform1i(L.uTex, 0);
+      gl.uniform2f(L.uRes, W, H); gl.uniform2f(L.uImg, it.iw, it.ih);
+      gl.uniform2f(L.uMouse, it.sm[0] * W, it.sm[1] * H);
+      gl.uniform1f(L.uP, q);
+      gl.uniform1f(L.uPx, Math.max(1, Math.round(o.pixel * dpr)));
+      gl.uniform1f(L.uBlock, Math.max(2, o.block * dpr));
+      gl.uniform1f(L.uMode, it.mode);
+      gl.uniform1f(L.uRadius, o.radius * dpr);
+      gl.uniform1f(L.uTime, now / 1000);
+      gl.uniform1f(L.uTear, o.tear * dpr);
+      gl.uniform1f(L.uContrast, o.contrast);
+      gl.uniform1f(L.uInv, o.invert ? 1 : 0);
+      gl.uniform1f(L.uSweep, o.sweep);
+      gl.uniform3fv(L.uInk, o.ink); gl.uniform3fv(L.uPaper, o.paper); gl.uniform3fv(L.uAcc, o.accent);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      it.ctx.clearRect(0, 0, W, H);
+      it.ctx.drawImage(glc, 0, 0);
+      it.cv.classList.add('is-on');
+    }
+
+    function scan(root) { (root.querySelectorAll ? root : document).querySelectorAll('[data-dither]').forEach(setup); }
+    scan(document);
+    // CMS pagination / "load more" (e.g. Finsweet) adds items later
+    new MutationObserver(function (ms) { ms.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1) { if (n.matches('[data-dither]')) setup(n); scan(n); } }); }); })
+      .observe(document.body, { childList: true, subtree: true });
+  }
+
+  // ============================================================================
   // INIT PER PAGINA (data-barba-namespace)
   // ============================================================================
 
@@ -918,6 +1086,9 @@
       initGlobalParallax();
       initDitherSlider();
     }
+
+    // su tutte le pagine: no-op se non c'è nessun [data-dither]
+    initDitherHover();
 
     if (typeof ScrollTrigger !== 'undefined') {
       ScrollTrigger.refresh();

@@ -120,13 +120,13 @@
 
     float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
-    // Matrice di Bayer 4x4 (ordered dither dei punti)
+    // Matrici di Bayer (ordered dither)
     float bayer2(vec2 a) { a = floor(a); return fract(a.x * 0.5 + a.y * a.y * 0.75); }
     float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
+    float bayer8(vec2 a) { return bayer4(0.5 * a) * 0.25 + bayer2(a); }
 
     float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 
-    // Value noise: macchie morbide in posizioni casuali
     float noise(vec2 p) {
       vec2 i = floor(p);
       vec2 f = fract(p);
@@ -138,51 +138,70 @@
       return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
     }
 
-    // Ordine di comparsa di una cella: macchie casuali + un po' di grana sul bordo
-    float randomOrder(vec2 cell, float s) {
-      float blobs = smoothstep(0.2, 0.8, noise(cell / 7.0 + vec2(s, s * 1.3)));
-      float grain = hash(cell + s * 1.37);
-      return min(mix(blobs, grain, 0.3), 0.999);
+    // Rumore frattale: la forma "a nuvola"
+    float fbm(vec2 p) {
+      float v = 0.0;
+      float a = 0.5;
+      for (int i = 0; i < 4; i++) {
+        v += a * noise(p);
+        p = p * 2.03 + 17.1;
+        a *= 0.5;
+      }
+      return v / 0.9375;
     }
 
-    // Luminosità di una cella: ogni cella passa da A a B in un momento casuale
-    float cellLum(vec2 cell, float flip) {
+    // Momento (0 → 1) in cui la nuvola passa sopra una cella
+    float cloudField(vec2 cell) {
+      vec2 p = (cell + 0.5) * pixelSize / resolution.y * 2.5 + seed;
+      return clamp((fbm(p) - 0.5) * 2.4 + 0.5, 0.0, 1.0);
+    }
+
+    // Luminosità di una cella (useB = 1.0 → immagine nuova)
+    float cellLum(vec2 cell, float useB) {
       vec2 uv = (cell + 0.5) * pixelSize / resolution;
       float a = luma(texture2D(texture1, coverUV(uv, res1)).rgb);
       float b = luma(texture2D(texture2, coverUV(uv, res2)).rgb);
-      return smoothstep(0.12, 0.88, mix(a, b, step(hash(cell + seed), flip)));
+      return smoothstep(0.12, 0.88, mix(a, b, useB));
     }
 
     void main() {
       vec2 pos = vUv * resolution;
       vec2 cell = floor(pos / pixelSize);
 
-      // 0 → 0.3: entra il dither | 0.3 → 0.7: i punti passano da A a B | 0.7 → 1: esce il dither
-      float amountIn = smoothstep(0.0, 0.3, progress);
-      float amountOut = smoothstep(0.7, 1.0, progress);
-      float flip = smoothstep(0.3, 0.7, progress);
+      // La nuvola è una fascia che scorre lungo il campo frattale:
+      // nasce dove il campo è più basso, si allarga, attraversa l'immagine e si dissolve
+      float width = 0.28;
+      float front = mix(-width, 1.0 + width, progress);
+      float field = cloudField(cell);
+
+      // Turbolenza: la nuvola ribolle mentre avanza
+      float boil = noise(vUv * 6.0 + vec2(progress * 3.0, -progress * 2.0) + seed) - 0.5;
+      float dist = abs(field - front + boil * 0.12);
+      float density = 1.0 - smoothstep(width * 0.35, width, dist);
+
+      // Dietro la nuvola c'è già la nuova immagine
+      float useB = step(field, front);
 
       // Punti LED con glow (somma delle celle vicine 3x3)
       float light = 0.0;
       for (int x = -1; x <= 1; x++) {
         for (int y = -1; y <= 1; y++) {
           vec2 c = cell + vec2(float(x), float(y));
-          float on = step(bayer4(c) + 0.03, cellLum(c, flip));
+          float on = step(bayer4(c) + 0.03, cellLum(c, useB));
           float d = length(pos / pixelSize - (c + 0.5));
           light += on * (smoothstep(0.34, 0.16, d) + 0.5 * exp(-d * d * 2.2));
         }
       }
       vec3 dither = vec3(1.0 - exp(-light * 1.6));
 
-      vec3 clean = progress < 0.5
-        ? texture2D(texture1, coverUV(vUv, res1)).rgb
-        : texture2D(texture2, coverUV(vUv, res2)).rgb;
+      vec3 clean = mix(
+        texture2D(texture1, coverUV(vUv, res1)).rgb,
+        texture2D(texture2, coverUV(vUv, res2)).rgb,
+        useB
+      );
 
-      // Il dither compare e sparisce a macchie casuali:
-      // entrata e uscita usano posizioni diverse (seed diversi)
-      float m = progress < 0.5
-        ? 1.0 - step(amountIn, randomOrder(cell, seed))
-        : step(amountOut, randomOrder(cell, seed + 19.7));
+      // Bordo della nuvola sfumato in dither (gradiente ordinato)
+      float m = step(bayer8(cell) + 1.0 / 128.0, density);
       gl_FragColor = vec4(mix(clean, dither, m), 1.0);
     }
   `;
@@ -193,7 +212,7 @@
       this.images = JSON.parse(container.getAttribute('data-images') || '[]');
       if (this.images.length < 2) return;
 
-      this.duration = opts.duration || 1.6;
+      this.duration = opts.duration || 2;
       this.pixelSize = opts.pixelSize || 6;
       this.current = 0;
       this.isRunning = false;
@@ -279,7 +298,7 @@
       gsap.fromTo(this.uniforms.progress, { value: 0 }, {
         value: 1,
         duration: this.duration,
-        ease: 'power1.inOut',
+        ease: 'none',
         onUpdate: () => this.render(),
         onComplete: () => {
           this.current = nextIndex;
@@ -307,7 +326,7 @@
   function initDitherSlider() {
     const slider = document.getElementById('slider');
     if (!slider || typeof THREE === 'undefined' || typeof gsap === 'undefined') return;
-    new DitherSlider(slider, { duration: 1.6, pixelSize: 6 });
+    new DitherSlider(slider, { duration: 2, pixelSize: 6 });
   }
 
   // ============================================================================

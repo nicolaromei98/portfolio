@@ -104,13 +104,18 @@
     precision highp float;
     uniform sampler2D texture1;
     uniform sampler2D texture2;
+    uniform sampler2D fieldMap;
+    uniform vec2 fieldSize;
     uniform vec2 res1;
     uniform vec2 res2;
     uniform vec2 resolution;
     uniform float progress;
     uniform float pixelSize;
-    uniform float seed;
     varying vec2 vUv;
+
+    const float WIDTH = 0.28;   // spessore della nuvola
+    const float BOIL = 0.12;    // turbolenza
+    const float MARGIN = 0.36;  // WIDTH + turbolenza: la nuvola parte ed esce del tutto fuori
 
     vec2 coverUV(vec2 uv, vec2 imgRes) {
       float rs = (resolution.x / resolution.y) / (imgRes.x / imgRes.y);
@@ -125,86 +130,75 @@
     float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
     float bayer8(vec2 a) { return bayer4(0.5 * a) * 0.25 + bayer2(a); }
 
-    float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-
-    float noise(vec2 p) {
-      vec2 i = floor(p);
-      vec2 f = fract(p);
-      f = f * f * (3.0 - 2.0 * f);
-      float a = hash(i);
-      float b = hash(i + vec2(1.0, 0.0));
-      float c = hash(i + vec2(0.0, 1.0));
-      float d = hash(i + vec2(1.0, 1.0));
-      return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-    }
-
-    // Rumore frattale: la forma "a nuvola"
-    float fbm(vec2 p) {
-      float v = 0.0;
-      float a = 0.5;
-      for (int i = 0; i < 4; i++) {
-        v += a * noise(p);
-        p = p * 2.03 + 17.1;
-        a *= 0.5;
-      }
-      return v / 0.9375;
-    }
-
-    // Momento (0 → 1) in cui la nuvola passa sopra una cella
-    float cloudField(vec2 cell) {
-      vec2 p = (cell + 0.5) * pixelSize / resolution.y * 2.5 + seed;
-      return clamp((fbm(p) - 0.5) * 2.4 + 0.5, 0.0, 1.0);
-    }
-
-    // Luminosità di una cella (useB = 1.0 → immagine nuova)
-    float cellLum(vec2 cell, float useB) {
-      vec2 uv = (cell + 0.5) * pixelSize / resolution;
-      float a = luma(texture2D(texture1, coverUV(uv, res1)).rgb);
-      float b = luma(texture2D(texture2, coverUV(uv, res2)).rgb);
-      return smoothstep(0.12, 0.88, mix(a, b, useB));
+    vec3 image(vec2 uv, float useB) {
+      return useB > 0.5
+        ? texture2D(texture2, coverUV(uv, res2)).rgb
+        : texture2D(texture1, coverUV(uv, res1)).rgb;
     }
 
     void main() {
       vec2 pos = vUv * resolution;
       vec2 cell = floor(pos / pixelSize);
 
-      // La nuvola è una fascia che scorre lungo il campo frattale:
-      // nasce dove il campo è più basso, si allarga, attraversa l'immagine e si dissolve
-      float width = 0.28;
-      float front = mix(-width, 1.0 + width, progress);
-      float field = cloudField(cell);
-
-      // Turbolenza: la nuvola ribolle mentre avanza
-      float boil = noise(vUv * 6.0 + vec2(progress * 3.0, -progress * 2.0) + seed) - 0.5;
-      float dist = abs(field - front + boil * 0.12);
-      float density = 1.0 - smoothstep(width * 0.35, width, dist);
+      // Campo della nuvola precalcolato per cella:
+      // r = quando passa la nuvola (0 → 1), g/b = turbolenza
+      vec4 f = texture2D(fieldMap, (cell + 0.5) / fieldSize);
+      float front = mix(-MARGIN, 1.0 + MARGIN, progress);
+      float boil = mix(f.g, f.b, progress) - 0.5;
+      float dist = abs(f.r - front + boil * BOIL);
+      float density = 1.0 - smoothstep(WIDTH * 0.35, WIDTH, dist);
 
       // Dietro la nuvola c'è già la nuova immagine
-      float useB = step(field, front);
+      float useB = step(f.r, front);
+      vec3 clean = image(vUv, useB);
 
-      // Punti LED con glow (somma delle celle vicine 3x3)
+      // Fuori dalla nuvola: solo immagine, nessun calcolo del dither
+      if (bayer8(cell) + 1.0 / 128.0 > density) {
+        gl_FragColor = vec4(clean, 1.0);
+        return;
+      }
+
+      // Dentro la nuvola: punti LED con glow (celle vicine 3x3)
       float light = 0.0;
       for (int x = -1; x <= 1; x++) {
         for (int y = -1; y <= 1; y++) {
           vec2 c = cell + vec2(float(x), float(y));
-          float on = step(bayer4(c) + 0.03, cellLum(c, useB));
+          float lum = smoothstep(0.12, 0.88, luma(image((c + 0.5) * pixelSize / resolution, useB)));
+          float on = step(bayer4(c) + 0.03, lum);
           float d = length(pos / pixelSize - (c + 0.5));
           light += on * (smoothstep(0.34, 0.16, d) + 0.5 * exp(-d * d * 2.2));
         }
       }
-      vec3 dither = vec3(1.0 - exp(-light * 1.6));
-
-      vec3 clean = mix(
-        texture2D(texture1, coverUV(vUv, res1)).rgb,
-        texture2D(texture2, coverUV(vUv, res2)).rgb,
-        useB
-      );
-
-      // Bordo della nuvola sfumato in dither (gradiente ordinato)
-      float m = step(bayer8(cell) + 1.0 / 128.0, density);
-      gl_FragColor = vec4(mix(clean, dither, m), 1.0);
+      gl_FragColor = vec4(vec3(1.0 - exp(-light * 1.6)), 1.0);
     }
   `;
+
+  // Rumore per il campo della nuvola (calcolato una volta per transizione, non per pixel)
+  function createNoise(seed) {
+    const hash = (x, y) => {
+      const s = Math.sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453;
+      return s - Math.floor(s);
+    };
+    const smooth = (t) => t * t * (3 - 2 * t);
+    const noise = (x, y) => {
+      const xi = Math.floor(x), yi = Math.floor(y);
+      const xf = smooth(x - xi), yf = smooth(y - yi);
+      const a = hash(xi, yi), b = hash(xi + 1, yi);
+      const c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+      return (a + (b - a) * xf) + ((c + (d - c) * xf) - (a + (b - a) * xf)) * yf;
+    };
+    const fbm = (x, y) => {
+      let v = 0, amp = 0.5;
+      for (let i = 0; i < 4; i++) {
+        v += amp * noise(x, y);
+        x = x * 2.03 + 17.1;
+        y = y * 2.03 + 17.1;
+        amp *= 0.5;
+      }
+      return v / 0.9375;
+    };
+    return { noise, fbm };
+  }
 
   class DitherSlider {
     constructor(container, opts = {}) {
@@ -212,7 +206,7 @@
       this.images = JSON.parse(container.getAttribute('data-images') || '[]');
       if (this.images.length < 2) return;
 
-      this.duration = opts.duration || 2;
+      this.duration = opts.duration || 1.2;
       this.pixelSize = opts.pixelSize || 6;
       this.current = 0;
       this.isRunning = false;
@@ -263,12 +257,13 @@
       this.uniforms = {
         texture1: { value: null },
         texture2: { value: null },
+        fieldMap: { value: null },
+        fieldSize: { value: new THREE.Vector2(1, 1) },
         res1: { value: new THREE.Vector2(1, 1) },
         res2: { value: new THREE.Vector2(1, 1) },
         resolution: { value: new THREE.Vector2(1, 1) },
         progress: { value: 0 },
-        pixelSize: { value: this.pixelSize },
-        seed: { value: 0 }
+        pixelSize: { value: this.pixelSize }
       };
       this.setTexture(1, 0);
       this.setTexture(2, 1);
@@ -287,13 +282,46 @@
       this.uniforms[`res${slot}`].value.set(texture.image.width, texture.image.height);
     }
 
+    // Campo della nuvola a risoluzione di cella: nuova forma a ogni transizione
+    buildField() {
+      const w = this.container.offsetWidth;
+      const h = this.container.offsetHeight;
+      const cols = Math.ceil(w / this.pixelSize);
+      const rows = Math.ceil(h / this.pixelSize);
+      const { noise, fbm } = createNoise(Math.random() * 100);
+      const data = new Uint8Array(cols * rows * 4);
+
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const px = (x + 0.5) * this.pixelSize / h * 2.5;
+          const py = (y + 0.5) * this.pixelSize / h * 2.5;
+          const field = Math.min(Math.max((fbm(px, py) - 0.5) * 2.4 + 0.5, 0), 1);
+          const i = (y * cols + x) * 4;
+          data[i] = field * 255;
+          data[i + 1] = noise(x / cols * 6, y / rows * 6) * 255;
+          data[i + 2] = noise(x / cols * 6 + 40, y / rows * 6 + 40) * 255;
+          data[i + 3] = 255;
+        }
+      }
+
+      const texture = new THREE.DataTexture(data, cols, rows, THREE.RGBAFormat);
+      texture.minFilter = THREE.NearestFilter;
+      texture.magFilter = THREE.NearestFilter;
+      texture.generateMipmaps = false;
+      texture.needsUpdate = true;
+
+      this.uniforms.fieldMap.value?.dispose();
+      this.uniforms.fieldMap.value = texture;
+      this.uniforms.fieldSize.value.set(cols, rows);
+    }
+
     goTo(index) {
       if (this.isRunning || !this.uniforms) return;
       this.isRunning = true;
 
       const nextIndex = (index + this.textures.length) % this.textures.length;
       this.setTexture(2, nextIndex);
-      this.uniforms.seed.value = Math.random() * 100; // pattern diverso a ogni transizione
+      this.buildField();
 
       gsap.fromTo(this.uniforms.progress, { value: 0 }, {
         value: 1,
@@ -315,6 +343,7 @@
       const h = this.container.offsetHeight;
       this.renderer.setSize(w, h);
       this.uniforms.resolution.value.set(w, h);
+      this.buildField();
       this.render();
     }
 
@@ -326,7 +355,7 @@
   function initDitherSlider() {
     const slider = document.getElementById('slider');
     if (!slider || typeof THREE === 'undefined' || typeof gsap === 'undefined') return;
-    new DitherSlider(slider, { duration: 2, pixelSize: 6 });
+    new DitherSlider(slider, { duration: 1.2, pixelSize: 6 });
   }
 
   // ============================================================================

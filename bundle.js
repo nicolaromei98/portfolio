@@ -1141,6 +1141,32 @@
   }
 
   // ============================================================================
+  // GLOBAL CLICK SOUND ([data-sound])
+  // Richiede Howler.js caricato prima di questo script:
+  // https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.4/howler.min.js
+  // ============================================================================
+
+  function initClickSound() {
+    if (window.__clickSoundInitialized || typeof Howl === 'undefined') return;
+    window.__clickSoundInitialized = true;
+
+    const clickSound = new Howl({
+      src: ['https://cdn.jsdelivr.net/gh/nicolaromei98/portfolio@945abc7/click.mp3'],
+      volume: 0.6,
+      preload: true
+    });
+
+    // Event delegation: funziona anche con elementi aggiunti dinamicamente / Barba / CMS.
+    // Ogni click avvia una nuova istanza del suono, quindi anche click rapidi consecutivi funzionano.
+    document.addEventListener('click', (event) => {
+      const trigger = event.target.closest('[data-sound]');
+      if (!trigger) return;
+
+      clickSound.play();
+    });
+  }
+
+  // ============================================================================
   // INIT PER PAGINA (data-barba-namespace)
   // ============================================================================
 
@@ -1161,6 +1187,9 @@
 
     // su tutte le pagine: no-op se non c'è nessun [data-dither]
     initDitherHover();
+
+    // su tutte le pagine: click sound sugli elementi con [data-sound]
+    initClickSound();
 
     if (typeof ScrollTrigger !== 'undefined') {
       ScrollTrigger.refresh();

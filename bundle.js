@@ -225,6 +225,7 @@
       container.appendChild(canvas);
 
       this.loadTextures().then(() => {
+        if (!this.textures.length) return;
         this.addObjects();
         this.resize();
         window.addEventListener('resize', () => this.resize());
@@ -241,10 +242,14 @@
             texture.minFilter = THREE.LinearFilter;
             texture.generateMipmaps = false;
             resolve(texture);
+          }, undefined, () => {
+            // A broken image must not block the slider: skip it and keep the others
+            console.warn('[dither slider] image failed to load', url);
+            resolve(null);
           });
         }))
       ).then((textures) => {
-        this.textures = textures;
+        this.textures = textures.filter(Boolean);
       });
     }
 
@@ -261,7 +266,7 @@
         ditherSize: { value: this.ditherSize }
       };
       this.setTexture(1, 0);
-      this.setTexture(2, 1);
+      this.setTexture(2, 1 % this.textures.length);
 
       const material = new THREE.ShaderMaterial({
         uniforms: this.uniforms,
@@ -446,15 +451,39 @@
     }
     `;
 
-    const geometry = new THREE.PlaneBufferGeometry(1, 1, 32, 32);
+    const geometry = new THREE.PlaneGeometry(1, 1, 32, 32);
     const material = new THREE.ShaderMaterial({ fragmentShader, vertexShader });
+
+    // The Webflow .grid class has a fixed height designed for 5 full rows: CSS grid stretches
+    // the rows to fill it, so extra items would squash every row and leave holes in the last one
+    const DESIGN_ROWS = 5;
+    let gridCols = 5;
+
+    // Complete the last row by repeating the first items, so every column loops without holes
+    function fillGrid() {
+      const items = [...gridEl.children];
+      gridCols = getComputedStyle(gridEl).gridTemplateColumns.split(' ').length;
+      const missing = (gridCols - (items.length % gridCols)) % gridCols;
+      for (let i = 0; i < missing; i++) {
+        const clone = items[i % items.length].cloneNode(true);
+        clone.setAttribute('aria-hidden', 'true');
+        gridEl.appendChild(clone);
+      }
+    }
+
+    // Keep the row height the CSS gives to 5 rows: the grid grows with the item count instead
+    function sizeGrid() {
+      gridEl.style.height = '';
+      const rows = Math.ceil(gridEl.children.length / gridCols);
+      gridEl.style.height = `${gridEl.offsetHeight * rows / DESIGN_ROWS}px`;
+    }
 
     class Plane extends THREE.Object3D {
       init(el, i) {
         this.el = el;
         this.x = 0;
         this.y = 0;
-        this.my = 1 - ((i % 5) * 0.1);
+        this.my = 1 - ((i % gridCols) * 0.1);
         this.geometry = geometry;
         this.material = material.clone();
         this.material.uniforms = {
@@ -479,10 +508,14 @@
       }
 
       update = (x, y, max, velo) => {
-        const { right, bottom } = this.rect;
+        const { right, bottom, width, height } = this.rect;
         const { u_velo } = this.material.uniforms;
-        this.y = gsap.utils.wrap(-(max.y - bottom), bottom, y * this.my) - this.yOffset;
-        this.x = gsap.utils.wrap(-(max.x - right), right, x) - this.xOffset;
+        // Wrap in the middle of the off-screen part of the loop, not right on the screen edge:
+        // otherwise the velocity bend keeps a plane visible when it jumps, leaving a gap
+        const slackX = Math.max(0, (max.x - width - ww) / 2);
+        const slackY = Math.max(0, (max.y - height - wh) / 2);
+        this.y = gsap.utils.wrap(-(max.y - bottom) + slackY, bottom + slackY, y * this.my) - this.yOffset;
+        this.x = gsap.utils.wrap(-(max.x - right) + slackX, right + slackX, x) - this.xOffset;
         u_velo.value.x = velo.x;
         u_velo.value.y = velo.y;
         this.position.x = this.x;
@@ -545,6 +578,8 @@
         });
         document.body.appendChild(canvasEl);
 
+        fillGrid();
+        sizeGrid();
         this.addPlanes();
         this.addEvents();
         this.resize();
@@ -660,6 +695,7 @@
 
         this.renderer.setSize(ww, wh);
 
+        sizeGrid();
         const { bottom, right } = this.el.getBoundingClientRect();
         this.max.x = right;
         this.max.y = bottom;

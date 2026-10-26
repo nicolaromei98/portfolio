@@ -941,7 +941,7 @@ void main() {
   // hairline where the paper's cut edge catches the light
   float edgeLine = aline(dC + 0.006, 0.012, pix) * step(pC.y, CARD_Y1 - 0.02);
   paper *= 1.0 - 0.12 * edgeLine;
-  vec3 edgeCol = vec3(0.80, 0.785, 0.75) * mix(0.75, 1.0, shade);
+  vec3 edgeCol = vec3(0.80, 0.80, 0.79) * mix(0.75, 1.0, shade);
   float k = uCardFilm;
   vec3 overCard = Ln * k + mix(1.0, Tn, k) * paper;
   vec3 overEdge = Ln + Tn * edgeCol;
@@ -996,44 +996,68 @@ void main() {
 `;
 
 // Badge card art: Nicola's paper ID card (front + back) drawn on 2D canvases, so the badge
-// scene can use them as textures. Layout and print look are measured on ref/reference-card.png
-// (495 x 784): every position below is in those reference pixels and scaled to the canvas.
+// scene can use them as textures. Layout and print look follow ref/student-card.png (a printed
+// "student card" in the same holder); positions below are in a 790 x 1258 reference frame
+// (that card at 4x, CR80 proportions) and scaled to the canvas.
 
-const CARD_REF_W = 495;
-const CARD_REF_H = 784;
+const CARD_REF_W = 790;
+const CARD_REF_H = 1258;
 
 // One stylesheet for every face the card uses; loaded once per page.
-const CARD_FONTS_HREF = "https://fonts.googleapis.com/css2?family=Arimo:wght@400;700&family=Roboto+Condensed:wght@300;400;500&family=Shadows+Into+Light&family=Share+Tech+Mono&display=swap";
-const CARD_FACES = ['400 32px "Arimo"', '700 32px "Arimo"', '300 32px "Roboto Condensed"', '400 32px "Roboto Condensed"', '500 32px "Roboto Condensed"', '400 32px "Shadows Into Light"', '400 32px "Share Tech Mono"'];
+const CARD_FONTS_HREF = "https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Inter+Tight:wght@700;800&display=swap";
+const CARD_FACES = ['300 32px "DM Mono"', '400 32px "DM Mono"', '500 32px "DM Mono"', '700 32px "Inter Tight"', '800 32px "Inter Tight"'];
 // Stacks end in system faces with similar proportions, so the card still draws if Google Fonts is slow
 const CARD_STACK = {
-  grotesk: '"Arimo", "Helvetica Neue", Helvetica, Arial, sans-serif',
-  narrow: '"Roboto Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif',
-  hand: '"Shadows Into Light", "Marker Felt", "Bradley Hand", "Segoe Print", cursive',
-  dots: '"Share Tech Mono", "Courier New", monospace',
+  grotesk: '"Inter Tight", "Helvetica Neue", Helvetica, Arial, sans-serif',
+  mono: '"DM Mono", "SF Mono", Menlo, Consolas, "Courier New", monospace',
 };
 const CARD_FIELDS = {
-  title: "THE\nDESIGNER",
-  tag: "DROP:26",
-  subline: "AESTHETIC MIND",
-  stamp: "artboard™",
-  name: "Nicola Romei",
-  occupation: "Web Designer",
-  thirdLabel: "TEMP",
-  thirdValue: "Brutalist",
-  finePrint: "THE HOLDER OF THIS CARD IS AN OFFICIAL DESIGNER FOR THE ARTBOARD™",
+  title: "DESIGNER\nCARD",
+  tag: "2026",
+  subline: "ART DIRECTION / CREATIVE DEV",
+  name: "NICOLA ROMEI",
+  nameLabel: "NAME",
   code: "NR-26",
-  backLine: "IF FOUND, RETURN TO NICOLAROMEI.COM",
+  codeLabel: "DESIGNER NUMBER",
+  barcode: "NR-26", // Code 39: 7 symbols, 35 bars, the density of the reference
+  // Back. "CODE · TITLE": the code prints in the tag slot, the title in the big face
+  backTitle: "NR-26 · CLEARED FOR HIRE",
+  backRows: [
+    ["(clearance)", "CONCEPT → CODE"],
+    ["(field.record)", "SALESFORCE · GEOTAB · EVOLVE"],
+    ["(jury)", "AWWWARDS MAIN JURY, 2025–"],
+    ["(awards)", "SOTD ×3 · FWA · CSSDA ×3 · GSAP ×2"],
+    ["(status)", "FULL-TIME · AVAILABLE NOW"],
+  ],
+  backFoundLabel: "IF FOUND, REACH HERE:",
+  backContact: "INFO@NICOLAROMEI.COM",
 };
 // Tight head-and-shoulders crop of ref/nico.png (x, y = focus in 0..1, zoom over a cover fit)
-const CARD_FOCUS = { x: 0.553, y: 0.418, zoom: 3.2 };
-const CARD_INK = [31, 30, 28];
-const CARD_MARKER = [34, 34, 38];
+const CARD_FOCUS = { x: 0.55, y: 0.4, zoom: 3.3 };
+const CARD_INK = [20, 20, 20];
+
+// Shared layout (reference px): title block, rules, field rows and barcode sit at the same
+// places on both faces
+const CARD_L = {
+  titleLeft: 25,
+  titleBase: [153, 267],
+  titleCap: 92,
+  right: 747,
+  tagBase: 273,
+  tagCap: 30,
+  rule: 288,
+  fieldLeft: 45,
+  fieldRule: 587,
+  valueCap: 32,
+  valuePitch: 23.9,
+  labelCap: 10.5,
+  barcode: { x0: 165, x1: 632, y0: 1113, y1: 1195 },
+};
 
 /**
  * Front of the card. Resolves to a portrait CR80 canvas (width x width*86/54).
  * opts: { photo: URL | loaded image/canvas/bitmap, photoFocus: { x, y, zoom }, fields: {...},
- *         width: px (default 1024), stampSplit: letters knocked out of the stamp block (default 3) }
+ *         width: px (default 1024) }
  * Never rejects: missing fonts fall back to system faces, a missing photo to a placeholder.
  */
 async function createCardCanvas(opts = {}) {
@@ -1043,116 +1067,131 @@ async function createCardCanvas(opts = {}) {
   const focus = { ...CARD_FOCUS, ...(opts.photoFocus || {}) };
   const [, photo] = await Promise.all([cardLoadFonts(3000), cardLoadPhoto(opts.photo)]);
 
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
+  const canvas = cardLayer(W, H);
   const ctx = canvas.getContext("2d");
-  const k = W / CARD_REF_W; // reference px -> canvas px (x and sizes)
-  const ky = H / CARD_REF_H; // reference px -> canvas px (y), the two differ by < 0.6 %
+  const k = W / CARD_REF_W;
   const X = (v) => v * k;
-  const Y = (v) => v * ky;
+  const Y = (v) => (v * H) / CARD_REF_H;
+  const L = CARD_L;
 
   cardPaper(ctx, W, H, 11);
-  cardPhoto(ctx, photo, { x: X(133), y: Y(211), w: X(356) - X(133), h: Y(487) - Y(211) }, focus, k);
+  cardPhoto(ctx, photo, { x: X(202), y: Y(405), w: X(341), h: Y(398) }, focus, k);
 
-  // Print layers, each drawn in black, roughened, then multiplied onto the paper. The dashed rules
-  // print as a light grey (thin strokes carry less ink, as on the reference); the type is near black.
-  const ink = cardLayer(W, H); // title, subline, plain part of the stamp wordmark
-  const small = cardLayer(W, H); // tag, labels, fine print
-  const rules = cardLayer(W, H); // all four dashed rules
-  const dots = cardLayer(W, H); // dot-matrix code
+  const ink = cardLayer(W, H); // all type
+  const marks = cardLayer(W, H); // dotted rules + barcode
   const p = ink.getContext("2d");
-  const sp = small.getContext("2d");
-  const rnd = cardRng(5);
+  const m = marks.getContext("2d");
 
-  // Title: heavy grotesk, very tight tracking (letters touch, as in the reference)
-  const lines = (Array.isArray(f.title) ? f.title : String(f.title).split("\n")).slice(0, 2);
-  const baselines = lines.length > 1 ? [81.6, 146.4] : [146.4];
-  p.fillStyle = "#000";
-  lines.forEach((line, i) => cardTitleLine(p, line.toUpperCase(), X(42), Y(baselines[i]), X(57), X(466) - X(42)));
+  // Title block: heavy tight grotesk, the year in mono on the second line
+  const tagLeft = cardMono(p, String(f.tag).toUpperCase(), { right: X(L.right), baseline: Y(L.tagBase), cap: X(L.tagCap), pitch: X(23), family: CARD_STACK.mono, weight: 400, sx: 0.9 }).left;
+  cardTitle(p, f.title, k, Y, tagLeft);
+  cardDots(m, X(30), X(L.right), Y(L.rule), k);
 
-  // Tag, right-aligned on the reference's DROP:23
-  cardMono(sp, f.tag, { right: X(416.5), baseline: Y(71), cap: X(14.2), pitch: X(9.45), family: CARD_STACK.narrow, weight: 300, sx: 0.98, bold: X(0.4) });
+  // Subline: bold grotesk caps, tight
+  cardText(p, String(f.subline).toUpperCase(), { left: X(42), baseline: Y(347), cap: X(27), weight: 700, family: CARD_STACK.grotesk, track: -0.035, maxW: X(L.right - 42), minSx: 0.8 });
 
-  // Dashes: 11.67 px period, ~5.2 px long, 37 of them from x 42 to 468 (measured on all four rules)
-  const rp = rules.getContext("2d");
-  const DASH_P = X(11.667), DASH_L = X(5.1);
-  // Rule under the title: a wider, darker line than the row rules (it gets a second pass below)
-  cardDashes(rp, X(42), X(469), Y(159.4), X(2.6), DASH_P, DASH_L, rnd, "#000");
+  // Field rows: typewriter value on a dotted line, tiny bold label under it
+  cardField(p, m, f.name, f.nameLabel, 897, k, Y);
+  cardField(p, m, f.code, f.codeLabel, 1013, k, Y);
 
-  // Subline in spaced mono-cell caps, stamp wordmark on the right
-  cardMono(p, f.subline.toUpperCase(), { left: X(42), baseline: Y(187.8), cap: X(15.6), pitch: X(12.18), family: CARD_STACK.grotesk, weight: 400, sx: 0.87, bold: X(0.6) });
-  const stamp = cardStamp(p, f.stamp, X(466), Y(187.6), k, rnd, opts.stampSplit ?? 3);
+  cardBarcode(m, f.barcode, X(L.barcode.x0), X(L.barcode.x1), Y(L.barcode.y0), Y(L.barcode.y1));
 
-  // Field rows: label + dashed rule (the handwriting goes on its own layer)
-  const rows = [
-    ["NAME", f.name, 551.6, 43],
-    ["OCCUPATION", f.occupation, 617.6, 41],
-    [String(f.thirdLabel).toUpperCase(), f.thirdValue, 684.6, 28],
-  ];
-  const labelRights = rows.map(([label, , rule]) =>
-    cardMono(sp, label, { left: X(43.5), baseline: Y(rule - 13.4), cap: X(13.6), pitch: X(9.35), family: CARD_STACK.narrow, weight: 300, sx: 0.98, maxFill: 0.96, bold: X(0.5) }));
-  rows.forEach(([, , rule]) => cardDashes(rp, X(43), X(469), Y(rule + 0.5), X(2.6), DASH_P, DASH_L, rnd, "#000"));
-
-  // Fine print (two lines) and the dot-matrix code
-  cardFinePrint(sp, f.finePrint, X(44), [Y(725.6), Y(738.2)], k);
-  cardDotCode(dots.getContext("2d"), String(f.code).toUpperCase(), X(453.5), Y(755.6), k, rnd);
-
-  cardRoughen(ink, { k, blur: 0.55 * k, grain: 2.4 * k, amp: 0.16, soft: 0.12, voids: 0.0012, seed: 21, rgb: CARD_INK });
-  cardComposite(ctx, ink, 1);
-  // Stamp block on its own pass: its mottled ink would be re-thresholded flat in the ink layer
-  if (stamp) cardComposite(ctx, stamp.canvas, 1, stamp.x, stamp.y);
-  cardRoughen(small, { k, blur: 0.5 * k, grain: 2 * k, amp: 0.14, soft: 0.13, voids: 0, seed: 22, rgb: CARD_INK });
-  cardComposite(ctx, small, 0.95);
-  // the code's dots are too small for strong edge roughening
-  cardRoughen(dots, { k, blur: 0.5 * k, grain: 1.5 * k, amp: 0.08, soft: 0.16, voids: 0, seed: 23, rgb: CARD_INK });
-  cardComposite(ctx, dots, 1);
-  // The title rule is darker and wider than the row rules: a second pass clipped to its band
-  cardRoughen(rules, { k, blur: 0.5 * k, grain: 2 * k, amp: 0.16, soft: 0.14, voids: 0, seed: 25, rgb: CARD_INK });
-  cardComposite(ctx, rules, 0.38);
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, Y(152), W, Y(14));
-  ctx.clip();
-  cardComposite(ctx, rules, 0.48);
-  ctx.restore();
-
-  // Marker layer: handwritten values with per-letter wobble
-  const hand = cardLayer(W, H);
-  const h = hand.getContext("2d");
-  const hrnd = cardRng(17);
-  rows.forEach(([, value, rule, gap], i) => {
-    const left = labelRights[i] + X(gap);
-    cardHand(h, String(value), left, Y(rule - 4.6), X(45), X(462), labelRights[i] + X(20), hrnd);
-  });
-  cardRoughen(hand, { k, blur: 0.45 * k, grain: 1.6 * k, amp: 0.2, soft: 0.16, voids: 0, density: 0.22, seed: 33, rgb: CARD_MARKER });
-  cardComposite(ctx, hand, 0.88);
-
+  cardPrint(ctx, ink, marks, k);
   return canvas;
 }
 
 /**
- * Back of the card: the same cream stock with one small printed line.
+ * Back of the card: same stock and type system, the "cleared for hire" record.
  * Synchronous, so it uses whatever fonts are loaded: call it after createCardCanvas resolves.
  */
 function createCardBackCanvas(opts = {}) {
   const W = Math.round(opts.width || 1024);
   const H = Math.round((W * 86) / 54);
   const f = { ...CARD_FIELDS, ...(opts.fields || {}) };
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
+  const canvas = cardLayer(W, H);
   const ctx = canvas.getContext("2d");
   const k = W / CARD_REF_W;
+  const X = (v) => v * k;
+  const Y = (v) => (v * H) / CARD_REF_H;
+  const L = CARD_L;
   cardPaper(ctx, W, H, 29);
+
   const ink = cardLayer(W, H);
+  const marks = cardLayer(W, H);
   const p = ink.getContext("2d");
-  const text = String(f.backLine).toUpperCase();
-  const pitch = 7.4 * k;
-  cardMono(p, text, { left: (W - pitch * [...text].length) / 2, baseline: H - 34 * k, cap: 8.2 * k, pitch, family: CARD_STACK.narrow, weight: 500, sx: 1, maxFill: 0.95 });
-  cardRoughen(ink, { k, blur: 0.5 * k, grain: 2 * k, amp: 0.12, soft: 0.14, voids: 0, seed: 41, rgb: CARD_INK });
-  cardComposite(ctx, ink, 0.5);
+  const m = marks.getContext("2d");
+
+  // "NR-26 · CLEARED FOR HIRE": code in the tag slot, the rest as the big title
+  const split = /^(.+?)\s+·\s+(.+)$/.exec(String(f.backTitle));
+  const tag = split ? split[1] : "";
+  const title = split ? split[2] : String(f.backTitle);
+  const tagLeft = tag ? cardMono(p, tag.toUpperCase(), { right: X(L.right), baseline: Y(L.tagBase), cap: X(L.tagCap), pitch: X(23), family: CARD_STACK.mono, weight: 400, sx: 0.9 }).left : X(L.right);
+  cardTitle(p, cardBalance(title.toUpperCase()), k, Y, tagLeft);
+  cardDots(m, X(30), X(L.right), Y(L.rule), k);
+
+  // Record rows: (label) in mono on the left, the value in bold caps on the right
+  const rows = Array.isArray(f.backRows) ? f.backRows.slice(0, 6) : [];
+  const pitch = rows.length > 5 ? 84 : 98;
+  rows.forEach(([label, value], i) => {
+    const base = 372 + i * pitch;
+    cardMono(p, String(label), { left: X(42), baseline: Y(base), cap: X(17), pitch: X(14.6), family: CARD_STACK.mono, weight: 400, sx: 0.9, maxFill: 0.96, maxRight: X(262) });
+    cardText(p, String(value).toUpperCase(), { left: X(280), baseline: Y(base), cap: X(21), weight: 700, family: CARD_STACK.grotesk, track: -0.02, maxW: X(L.right - 280), minSx: 0.84 });
+    cardDots(m, X(42), X(L.right), Y(base + 28), k);
+  });
+
+  // Return line: label above, address in the typewriter face on a dotted line
+  cardText(p, String(f.backFoundLabel).toUpperCase(), { left: X(L.fieldLeft), baseline: Y(968), cap: X(13.5), weight: 800, family: CARD_STACK.grotesk, track: -0.02, maxW: X(L.right - L.fieldLeft) });
+  cardMono(p, String(f.backContact).toUpperCase(), { left: X(L.fieldLeft), baseline: Y(1013), cap: X(L.valueCap), pitch: X(L.valuePitch), family: CARD_STACK.mono, weight: 300, sx: 0.9, maxFill: 0.96, maxRight: X(L.right) });
+  cardDots(m, X(L.fieldLeft), X(L.right), Y(1026), k);
+
+  cardBarcode(m, f.barcode, X(L.barcode.x0), X(L.barcode.x1), Y(L.barcode.y0), Y(L.barcode.y1));
+
+  cardPrint(ctx, ink, marks, k);
   return canvas;
+}
+
+// Two title lines from one string: an explicit "\n" wins, otherwise the split that keeps the
+// longer line shortest ("CLEARED FOR HIRE" -> "CLEARED" / "FOR HIRE")
+function cardBalance(text) {
+  if (text.includes("\n")) return text;
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length < 2) return text;
+  let best = null;
+  for (let i = 1; i < words.length; i++) {
+    const a = words.slice(0, i).join(" "), b = words.slice(i).join(" ");
+    const score = Math.max(a.length, b.length);
+    if (!best || score < best.score) best = { score, text: `${a}\n${b}` };
+  }
+  return best.text;
+}
+
+// Big two-line title. The second line stops short of the tag printed at its right end.
+function cardTitle(p, title, k, Y, tagLeft) {
+  const L = CARD_L;
+  const lines = (Array.isArray(title) ? title : String(title).split("\n")).slice(0, 2).map((l) => l.toUpperCase());
+  const bases = lines.length > 1 ? L.titleBase : [L.titleBase[1]];
+  lines.forEach((line, i) => {
+    const last = i === lines.length - 1;
+    const maxRight = last ? tagLeft - 18 * k : L.right * k;
+    cardText(p, line, { left: L.titleLeft * k, baseline: Y(bases[i]), cap: L.titleCap * k, weight: 700, family: CARD_STACK.grotesk, track: -0.05, maxW: maxRight - L.titleLeft * k, minSx: 0.9, inkLeft: true });
+  });
+}
+
+// One field row: value, dotted rule, label under the rule
+function cardField(p, m, value, label, base, k, Y) {
+  const L = CARD_L;
+  cardMono(p, String(value).toUpperCase(), { left: L.fieldLeft * k, baseline: Y(base), cap: L.valueCap * k, pitch: L.valuePitch * k, family: CARD_STACK.mono, weight: 300, sx: 0.9, maxFill: 0.96, maxRight: L.right * k });
+  cardDots(m, L.fieldLeft * k, L.fieldRule * k, Y(base + 13), k);
+  cardText(p, String(label).toUpperCase(), { left: L.fieldLeft * k, baseline: Y(base + 36), cap: L.labelCap * k, weight: 800, family: CARD_STACK.grotesk, track: -0.03, maxW: (L.fieldRule - L.fieldLeft) * k });
+}
+
+// Ink layers onto the stock: type lightly roughened (a clean print, edges only just soft),
+// rules and barcode crisp
+function cardPrint(ctx, ink, marks, k) {
+  cardRoughen(ink, { k, blur: 0.45 * k, grain: 1.6 * k, amp: 0.1, soft: 0.14, voids: 0, density: 0.06, seed: 21, rgb: CARD_INK });
+  cardComposite(ctx, ink, 0.96);
+  cardRoughen(marks, { k, blur: 0.35 * k, grain: 1.4 * k, amp: 0.06, soft: 0.18, voids: 0, density: 0.05, seed: 25, rgb: CARD_INK });
+  cardComposite(ctx, marks, 0.9);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1170,7 +1209,7 @@ function cardLoadFonts(timeout) {
   }
   // fonts.load only sees @font-face rules that exist, so wait for the stylesheet first
   const faces = Promise.resolve(link.__cardSheet).then(() =>
-    Promise.all(CARD_FACES.map((face) => document.fonts.load(face, "Aa1™").catch(() => null))));
+    Promise.all(CARD_FACES.map((face) => document.fonts.load(face, "Aa1·×–").catch(() => null))));
   return Promise.race([faces, new Promise((res) => setTimeout(res, timeout))]).catch(() => null);
 }
 
@@ -1232,51 +1271,49 @@ function cardLayer(W, H) {
 // ---------------------------------------------------------------------------------------------
 // Paper
 
+// Cool white card stock: faint mottling and grain, a few fibres, a slightly darker trimmed edge
 function cardPaper(ctx, W, H, seed) {
   const k = W / CARD_REF_W;
   const img = ctx.createImageData(W, H);
   const d = img.data;
   const mott = cardNoise(seed), cloud = cardNoise(seed + 1), rnd = cardRng(seed + 2);
-  const base = [254, 250, 238];
+  const base = [243, 243, 240];
   for (let y = 0; y < H; y++) {
     const vy = (y / H) * 2 - 1;
     for (let x = 0; x < W; x++) {
       const vx = (x / W) * 2 - 1;
-      // broad mottling + finer cloudiness of the pulp + per-pixel grain
-      const m = (mott(x / (70 * k), y / (70 * k)) - 0.5) * 3.4 + (cloud(x / (9 * k), y / (9 * k)) - 0.5) * 2.2;
-      const g = (rnd() - 0.5) * 6;
-      // very slight vignette, a touch more on the last few px where the cut edge catches dirt
+      const m = (mott(x / (110 * k), y / (110 * k)) - 0.5) * 3 + (cloud(x / (14 * k), y / (14 * k)) - 0.5) * 1.8;
+      const g = (rnd() - 0.5) * 5;
       const edge = Math.min(x, W - 1 - x, y, H - 1 - y) / k;
-      const vig = (vx * vx * 0.55 + vy * vy * 0.45) * 2.4 + Math.max(0, 1 - edge / 5) * 5;
+      const vig = (vx * vx * 0.55 + vy * vy * 0.45) * 2 + Math.max(0, 1 - edge / 7) * 5;
       const v = m + g - vig;
       const i = (y * W + x) * 4;
       d[i] = base[0] + v;
       d[i + 1] = base[1] + v;
-      d[i + 2] = base[2] + v * 1.2;
+      d[i + 2] = base[2] + v * 0.9;
       d[i + 3] = 255;
     }
   }
   ctx.putImageData(img, 0, 0);
 
   // Fibres: short faint strands, a few darker, most lighter than the stock
-  const count = Math.round((W * H) / (1400 * k * k) * 1.1);
+  const count = Math.round((W * H) / (2600 * k * k));
   ctx.lineCap = "round";
   for (let i = 0; i < count; i++) {
     const x = rnd() * W, y = rnd() * H;
-    const len = (3 + rnd() * 11) * k, a = rnd() * Math.PI * 2, bend = (rnd() - 0.5) * len * 0.8;
-    const dark = rnd() < 0.35;
-    ctx.strokeStyle = dark ? `rgba(120,98,70,${0.05 + rnd() * 0.07})` : `rgba(255,255,250,${0.18 + rnd() * 0.2})`;
-    ctx.lineWidth = (0.25 + rnd() * 0.35) * k;
+    const len = (4 + rnd() * 14) * k, a = rnd() * Math.PI * 2, bend = (rnd() - 0.5) * len * 0.8;
+    const dark = rnd() < 0.3;
+    ctx.strokeStyle = dark ? `rgba(90,90,92,${0.04 + rnd() * 0.05})` : `rgba(255,255,255,${0.2 + rnd() * 0.2})`;
+    ctx.lineWidth = (0.3 + rnd() * 0.4) * k;
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.quadraticCurveTo(x + Math.cos(a) * len * 0.5 - Math.sin(a) * bend, y + Math.sin(a) * len * 0.5 + Math.cos(a) * bend, x + Math.cos(a) * len, y + Math.sin(a) * len);
     ctx.stroke();
   }
-  // A few specks of dust pressed into the stock
-  for (let i = 0; i < 26; i++) {
-    ctx.fillStyle = `rgba(70,60,50,${0.12 + rnd() * 0.25})`;
+  for (let i = 0; i < 20; i++) {
+    ctx.fillStyle = `rgba(60,60,60,${0.1 + rnd() * 0.2})`;
     ctx.beginPath();
-    ctx.arc(rnd() * W, rnd() * H, (0.2 + rnd() * 0.45) * k, 0, Math.PI * 2);
+    ctx.arc(rnd() * W, rnd() * H, (0.3 + rnd() * 0.6) * k, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -1284,21 +1321,24 @@ function cardPaper(ctx, W, H, seed) {
 // ---------------------------------------------------------------------------------------------
 // Photo print
 
+// A small glossy print stuck on the card: white border, soft drop shadow to the bottom right
 function cardPhoto(ctx, img, r, focus, k) {
   const x = Math.round(r.x), y = Math.round(r.y), w = Math.round(r.w), h = Math.round(r.h);
-  // White print border: thin on the top/left, a bit wider on the right/bottom (as on the reference)
-  const bl = 0.6 * k, bt = 0.6 * k, br = 3.4 * k, bb = 1.7 * k;
+  const bl = 9 * k, bt = 9 * k, br = 9 * k, bb = 11 * k;
   const iw = Math.round(w - bl - br), ih = Math.round(h - bt - bb);
 
-  // Edge of the print: a hairline shadow, darker on the right/bottom
   ctx.save();
-  ctx.fillStyle = "rgba(60,50,40,0.05)";
-  ctx.fillRect(x - 1.2 * k, y - 1.2 * k, w + 2.4 * k, h + 2.4 * k);
-  ctx.fillStyle = "rgba(60,50,40,0.15)";
-  ctx.fillRect(x + 0.8 * k, y + 0.8 * k, w + 2.4 * k, h + 2.4 * k);
-  ctx.fillStyle = "rgb(253,252,248)";
+  ctx.shadowColor = "rgba(0,0,0,0.26)";
+  ctx.shadowBlur = 11 * k;
+  ctx.shadowOffsetX = 3 * k;
+  ctx.shadowOffsetY = 5 * k;
+  ctx.fillStyle = "rgb(250,250,249)";
   ctx.fillRect(x, y, w, h);
   ctx.restore();
+  // contact shadow right under the print's edge
+  ctx.strokeStyle = "rgba(0,0,0,0.08)";
+  ctx.lineWidth = 1 * k;
+  ctx.strokeRect(x + 0.5 * k, y + 0.5 * k, w - k, h - k);
 
   let c = cardLayer(iw, ih);
   const p = c.getContext("2d", { willReadFrequently: true });
@@ -1311,17 +1351,16 @@ function cardPhoto(ctx, img, r, focus, k) {
       const sw = iw / s, sh = ih / s;
       const sx = Math.min(Math.max(focus.x * sw0 - sw / 2, 0), sw0 - sw);
       const sy = Math.min(Math.max(focus.y * sh0 - sh / 2, 0), sh0 - sh);
-      // Through a smaller canvas first: tames the source's film grain into the soft look of
-      // the reference's small photo print (canvas filter blur is not available in Safari)
-      const soft = cardLayer(Math.max(1, Math.round(iw * 0.62)), Math.max(1, Math.round(ih * 0.62)));
+      // Through a smaller canvas first: tames the source's film grain into a small print's
+      // softness (canvas filter blur is not available in Safari)
+      const soft = cardLayer(Math.max(1, Math.round(iw * 0.7)), Math.max(1, Math.round(ih * 0.7)));
       const sp = soft.getContext("2d");
       sp.imageSmoothingQuality = "high";
       sp.drawImage(img, sx, sy, sw, sh, 0, 0, soft.width, soft.height);
       p.imageSmoothingQuality = "high";
       p.drawImage(soft, 0, 0, iw, ih);
-      // Print grading (getImageData throws if the photo tainted the canvas). Auto levels on the
-      // crop: the reference print has deep blacks and bright highlights, and a faded source would
-      // otherwise print as a flat grey block. Then a warm, slightly lifted print-paper tone.
+      // Print grading (getImageData throws if the photo tainted the canvas): auto levels on the
+      // crop for deep blacks and clean highlights, a contrasty neutral print
       const id = p.getImageData(0, 0, iw, ih);
       const d = id.data;
       const hist = new Uint32Array(256);
@@ -1331,17 +1370,16 @@ function cardPhoto(ctx, img, r, focus, k) {
         for (let v = 0, acc = 0; v < 256; v++) if ((acc += hist[v]) >= n) return v;
         return 255;
       };
-      const lo = pct(0.015), hi = Math.max(lo + 24, pct(0.99)), med = pct(0.5);
+      const lo = pct(0.02), hi = Math.max(lo + 24, pct(0.992)), med = pct(0.5);
       const mid = Math.min(0.85, Math.max(0.15, (med - lo) / (hi - lo)));
-      const gam = Math.min(1.6, Math.max(0.55, Math.log(0.42) / Math.log(mid))); // median -> 42 %
+      const gam = Math.min(1.6, Math.max(0.55, Math.log(0.38) / Math.log(mid))); // median -> 38 %
       const lut = new Float32Array(256);
-      for (let v = 0; v < 256; v++) lut[v] = 196 * Math.pow(Math.min(1, Math.max(0, (v - lo) / (hi - lo))), gam);
+      for (let v = 0; v < 256; v++) lut[v] = 222 * Math.pow(Math.min(1, Math.max(0, (v - lo) / (hi - lo))), gam);
       for (let i = 0; i < d.length; i += 4) {
         const l = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
-        // keep 55 % of the colour (a print, not a screen), then levels + warm tint
-        d[i] = 22 + lut[(d[i] * 0.55 + l * 0.45) | 0] * 1.0;
-        d[i + 1] = 20 + lut[(d[i + 1] * 0.55 + l * 0.45) | 0] * 0.975;
-        d[i + 2] = 17 + lut[(d[i + 2] * 0.55 + l * 0.45) | 0] * 0.93;
+        d[i] = 12 + lut[(d[i] * 0.6 + l * 0.4) | 0];
+        d[i + 1] = 12 + lut[(d[i + 1] * 0.6 + l * 0.4) | 0];
+        d[i + 2] = 13 + lut[(d[i + 2] * 0.6 + l * 0.4) | 0];
       }
       p.putImageData(id, 0, 0);
       ok = true;
@@ -1355,9 +1393,9 @@ function cardPhoto(ctx, img, r, focus, k) {
     cardPlaceholder(c.getContext("2d"), iw, ih);
   }
   ctx.drawImage(c, Math.round(x + bl), Math.round(y + bt));
-  // Faint sheen falloff across the print surface
+  // Gloss: a faint sheen falloff across the print
   const g = ctx.createLinearGradient(x, y, x + w, y + h);
-  g.addColorStop(0, "rgba(255,255,255,0.05)");
+  g.addColorStop(0, "rgba(255,255,255,0.06)");
   g.addColorStop(1, "rgba(0,0,0,0.03)");
   ctx.fillStyle = g;
   ctx.fillRect(x + bl, y + bt, iw, ih);
@@ -1366,9 +1404,9 @@ function cardPhoto(ctx, img, r, focus, k) {
 // Neutral stand-in when the photo is missing or unusable: soft head-and-shoulders silhouette
 function cardPlaceholder(p, w, h) {
   p.clearRect(0, 0, w, h);
-  p.fillStyle = "rgb(214,210,201)";
+  p.fillStyle = "rgb(206,206,204)";
   p.fillRect(0, 0, w, h);
-  p.fillStyle = "rgb(190,185,175)";
+  p.fillStyle = "rgb(178,178,176)";
   p.beginPath();
   p.ellipse(w * 0.5, h * 0.4, w * 0.2, h * 0.2, 0, 0, Math.PI * 2);
   p.fill();
@@ -1386,359 +1424,164 @@ function cardFontSizeForCap(ctx, weight, family, cap) {
   return (100 * cap) / a;
 }
 
-// One title line: ink starts at `left`, tight tracking, shrinks only if it would overflow
-function cardTitleLine(p, text, left, baseline, cap, maxW) {
-  let size = cardFontSizeForCap(p, 700, CARD_STACK.grotesk, cap);
-  const chars = [...text];
-  const sx = 0.95; // the reference face is a touch narrower than Arimo
-  const measure = () => {
-    p.font = `700 ${size}px ${CARD_STACK.grotesk}`;
-    const tr = -0.088 * size;
-    let adv = 0;
-    chars.forEach((ch, i) => { if (i < chars.length - 1) adv += p.measureText(ch).width * sx + tr; });
-    const first = p.measureText(chars[0]), last = p.measureText(chars[chars.length - 1]);
-    return { tr, lb: first.actualBoundingBoxLeft * sx, w: adv + (last.actualBoundingBoxRight + first.actualBoundingBoxLeft) * sx };
+// Proportional line at a cap height, glyph by glyph: o.track (em) sets the tracking, o.sx a
+// horizontal scale. Too wide for o.maxW: narrower first (down to o.minSx), then smaller.
+// o.inkLeft puts the first glyph's ink (not its side bearing) on o.left.
+// "→" is drawn as a vector arrow: not every face has the glyph, and a fallback would print in
+// another weight. Returns the ink right edge.
+function cardText(p, text, o) {
+  const chars = [...String(text)];
+  const track = o.track || 0;
+  let size = cardFontSizeForCap(p, o.weight, o.family, o.cap);
+  let sx = o.sx ?? 1;
+  const arrowW = (s) => s * 0.78;
+  const width = () => {
+    p.font = `${o.weight} ${size}px ${o.family}`;
+    let w = 0;
+    chars.forEach((ch, i) => {
+      w += (ch === "→" ? arrowW(size) : p.measureText(ch).width) * sx;
+      if (i < chars.length - 1) w += track * size * sx;
+    });
+    return w;
   };
-  let m = measure();
-  if (m.w > maxW) { size *= maxW / m.w; m = measure(); }
-  let cx = left + m.lb;
-  for (const ch of chars) {
-    p.setTransform(sx, 0, 0, 1, cx, baseline);
-    p.fillText(ch, 0, 0);
-    cx += p.measureText(ch).width * sx + m.tr;
+  let w = width();
+  if (o.maxW && w > o.maxW) {
+    sx = Math.max(o.minSx ?? sx, (sx * o.maxW) / w);
+    w = width();
+    if (w > o.maxW) {
+      size *= o.maxW / w;
+      w = width();
+    }
   }
-  p.setTransform(1, 0, 0, 1, 0, 0);
+  p.font = `${o.weight} ${size}px ${o.family}`;
+  let x = o.left;
+  if (o.inkLeft && chars.length) x += p.measureText(chars[0]).actualBoundingBoxLeft * sx;
+  p.save();
+  p.fillStyle = "#000";
+  p.strokeStyle = "#000";
+  for (const ch of chars) {
+    if (ch === "→") {
+      cardArrow(p, x, o.baseline, arrowW(size) * sx, o.cap, size);
+      x += (arrowW(size) + track * size) * sx;
+      continue;
+    }
+    p.setTransform(sx, 0, 0, 1, x, o.baseline);
+    p.fillText(ch, 0, 0);
+    p.setTransform(1, 0, 0, 1, 0, 0);
+    x += (p.measureText(ch).width + track * size) * sx;
+  }
+  p.restore();
+  return x - track * size * sx;
 }
 
-// Fixed-pitch caps: each glyph centred in its cell (narrow letters like I get air around them,
-// wide ones touch), which is the typewriter-ish rhythm of the reference's small print.
-// Returns the ink right edge.
+// Arrow sitting on the x-height middle, stroke weight of a bold face
+function cardArrow(p, x, baseline, w, cap, size) {
+  const y = baseline - cap * 0.5;
+  const t = size * 0.085;
+  const head = cap * 0.36;
+  const x0 = x + size * 0.06, x1 = x + w - size * 0.06;
+  p.save();
+  p.lineWidth = t;
+  p.lineCap = "butt";
+  p.lineJoin = "miter";
+  p.beginPath();
+  p.moveTo(x0, y);
+  p.lineTo(x1 - t * 0.5, y);
+  p.stroke();
+  p.beginPath();
+  p.moveTo(x1 - head, y - head);
+  p.lineTo(x1, y);
+  p.lineTo(x1 - head, y + head);
+  p.stroke();
+  p.restore();
+}
+
+// Fixed-pitch text (typewriter rhythm): each glyph centred in its cell. Anchored at o.left or
+// o.right; with o.maxRight a long left-anchored line tightens its pitch to fit. Glyphs wider
+// than o.maxFill of a cell are squeezed (like M and W in a real mono face).
+// Returns the ink bounds { left, right }.
 function cardMono(p, text, o) {
   const size = cardFontSizeForCap(p, o.weight, o.family, o.cap);
   p.font = `${o.weight} ${size}px ${o.family}`;
   const chars = [...text];
   const n = chars.length;
-  const cellsW = o.pitch * n;
+  let pitch = o.pitch;
+  if (o.right == null && o.maxRight != null && o.left + pitch * n > o.maxRight) pitch = (o.maxRight - o.left) / n;
+  const inkW = (ch) => {
+    const m = p.measureText(ch);
+    return (m.actualBoundingBoxLeft + m.actualBoundingBoxRight) * o.sx;
+  };
   let x0;
-  if (o.right != null) {
-    const last = p.measureText(chars[n - 1]);
-    const lastInkW = (last.actualBoundingBoxLeft + last.actualBoundingBoxRight) * o.sx;
-    x0 = o.right - cellsW + (o.pitch - lastInkW) / 2;
-  } else {
-    const first = p.measureText(chars[0]);
-    const firstInkW = (first.actualBoundingBoxLeft + first.actualBoundingBoxRight) * o.sx;
-    x0 = o.left - (o.pitch - firstInkW) / 2;
-  }
+  if (o.right != null) x0 = o.right - pitch * n + (pitch - Math.min(inkW(chars[n - 1]), pitch)) / 2;
+  else x0 = o.left - (pitch - Math.min(inkW(chars[0]), pitch)) / 2;
   p.save();
   p.fillStyle = "#000";
-  if (o.bold) { p.strokeStyle = "#000"; p.lineWidth = o.bold; p.lineJoin = "round"; }
-  let right = x0;
+  let left = Infinity, right = -Infinity;
   chars.forEach((ch, i) => {
     if (ch === " ") return;
     const m = p.measureText(ch);
     let sx = o.sx;
-    let inkW = (m.actualBoundingBoxLeft + m.actualBoundingBoxRight) * sx;
-    // like a real mono face, squeeze glyphs that are too wide for the cell (M, W)
-    if (o.maxFill && inkW > o.pitch * o.maxFill) { sx *= (o.pitch * o.maxFill) / inkW; inkW = o.pitch * o.maxFill; }
-    const cx = x0 + o.pitch * (i + 0.5);
-    p.setTransform(sx, 0, 0, 1, cx - inkW / 2, o.baseline);
+    let w = (m.actualBoundingBoxLeft + m.actualBoundingBoxRight) * sx;
+    const maxW = pitch * (o.maxFill || 1.2);
+    if (w > maxW) { sx *= maxW / w; w = maxW; }
+    const cx = x0 + pitch * (i + 0.5);
+    p.setTransform(sx, 0, 0, 1, cx - w / 2, o.baseline);
     p.fillText(ch, m.actualBoundingBoxLeft, 0);
-    if (o.bold) p.strokeText(ch, m.actualBoundingBoxLeft, 0);
-    right = cx + inkW / 2;
+    left = Math.min(left, cx - w / 2);
+    right = Math.max(right, cx + w / 2);
   });
   p.restore();
-  return right;
+  return { left, right };
 }
 
-function cardFinePrint(p, text, left, baselines, k) {
-  // Greedy wrap into two lines, the first a bit shorter (as on the reference)
-  const words = String(text).toUpperCase().split(/\s+/);
-  const total = words.join(" ").length;
-  const lines = [""];
-  for (const w of words) {
-    const cur = lines[lines.length - 1];
-    const next = cur ? `${cur} ${w}` : w;
-    if (lines.length < baselines.length && next.length > total * 0.47 && cur) lines.push(w);
-    else lines[lines.length - 1] = next;
-  }
-  lines.forEach((line, i) => cardMono(p, line, { left, baseline: baselines[i], cap: 7.1 * k, pitch: 6.5 * k, family: CARD_STACK.grotesk, weight: 700, sx: 1.04 }));
-}
-
-function cardDashes(p, x0, x1, y, thick, period, dash, rnd, color) {
-  p.save();
-  p.fillStyle = color;
-  for (let x = x0; x + dash * 0.6 < x1; x += period) {
-    const w = Math.min(dash + (rnd() - 0.5) * thick * 0.35, x1 - x);
-    p.fillRect(x, y - thick / 2 + (rnd() - 0.5) * thick * 0.18, w, thick);
-  }
-  p.restore();
-}
-
-// Rough ink-stamp wordmark: first part knocked out of a ragged ink block, rest printed plain.
-// Own design in the spirit of the reference's stamp (not its logo).
-function cardStamp(p, text, right, baseline, k, rnd, split) {
-  const chars = [...String(text)];
-  const tm = chars[chars.length - 1] === "™";
-  const word = tm ? chars.slice(0, -1) : chars;
-  const knock = word.slice(0, split).join("");
-  const plain = word.slice(split).join("");
-  // Plain part: regular grotesk, x-height ~14 ref px like the reference wordmark's lowercase
-  const plainSize = 28 * k;
-  const knockSize = 32.5 * k;
+// Dotted rule: small round dots, a touch uneven
+function cardDots(p, x0, x1, y, k) {
+  const period = 8.2 * k, r = 1.75 * k;
+  const n = Math.max(1, Math.floor((x1 - x0) / period));
+  const step = (x1 - x0) / n;
   p.save();
   p.fillStyle = "#000";
-  p.strokeStyle = "#000";
-  p.lineJoin = "round";
-  const tmSize = plainSize * 0.52;
-  let tmW = 0;
-  if (tm) {
-    p.font = `700 ${tmSize}px ${CARD_STACK.grotesk}`;
-    tmW = p.measureText("™").width * 0.9;
-    p.fillText("™", right - tmW, baseline - plainSize * 0.46);
+  for (let i = 0; i <= n; i++) {
+    p.beginPath();
+    p.arc(x0 + i * step, y, r, 0, Math.PI * 2);
+    p.fill();
   }
-  p.font = `400 ${plainSize}px ${CARD_STACK.grotesk}`;
-  p.lineWidth = 1.25 * k;
-  const tr = -0.01 * plainSize;
-  let pw = 0;
-  for (const ch of plain) pw += p.measureText(ch).width + tr;
-  let cx = right - tmW - pw - 0.3 * k;
-  for (const ch of plain) { p.fillText(ch, cx, baseline); p.strokeText(ch, cx, baseline); cx += p.measureText(ch).width + tr; }
   p.restore();
-  if (!knock) return null;
-
-  // Ink block behind the knocked-out part, built on its own small canvas so it can be
-  // roughened much harder than the rest of the print (worn rubber stamp). As on the reference
-  // it hugs the x-height (a few px of ink above and below), bulging only around ascenders.
-  p.font = `700 ${knockSize}px ${CARD_STACK.grotesk}`;
-  const ktr = -0.01 * knockSize;
-  let kw = 0;
-  for (const ch of knock) kw += p.measureText(ch).width + ktr;
-  const bx1 = right - tmW - pw - 2.5 * k;
-  const bx0 = bx1 - kw - 10.5 * k;
-  const by0 = baseline - 19.2 * k, by1 = baseline + 4.6 * k;
-  const pad = 12 * k;
-  const sc = cardLayer(Math.ceil(bx1 - bx0 + pad * 2), Math.ceil(by1 - by0 + pad * 2));
-  const s = sc.getContext("2d");
-  s.translate(pad - bx0, pad - by0);
-  s.fillStyle = "#000";
-  s.font = `700 ${knockSize}px ${CARD_STACK.grotesk}`;
-  cardRagged(s, bx0, by0, bx1, by1, k, rnd);
-  // Letter placements (slightly off-register), shared by the ascender bumps and the knockout
-  const kb = baseline + 0.8 * k;
-  let kx = bx0 + 5 * k;
-  const glyphs = [...knock].map((ch) => {
-    const g = { ch, x: kx, w: s.measureText(ch).width, y: kb + (rnd() - 0.5) * 1.4 * k, a: (rnd() - 0.5) * 0.08 };
-    kx += g.w + ktr;
-    return g;
-  });
-  for (const g of glyphs) {
-    if (!/[bdfhklt]/.test(g.ch)) continue;
-    const top = g.y - s.measureText(g.ch).actualBoundingBoxAscent;
-    s.beginPath();
-    s.ellipse(g.x + g.w * 0.5, top + 2 * k, g.w * 0.42 + 2.2 * k, 4.2 * k, (rnd() - 0.5) * 0.3, 0, Math.PI * 2);
-    s.fill();
-  }
-  // Mottled film: the reference block is a patchy dark grey, not a flat black
-  cardRoughen(sc, { k, blur: 1.1 * k, grain: 2.4 * k, amp: 0.32, soft: 0.1, voids: 0.003, density: 0.17, mottle: 4 * k, seed: 61, rgb: CARD_INK });
-  // Knock the letters out after roughening: on the reference they stay clean and bold
-  // (a worn block, not worn letters), and roughening would erode thin arms like the r's
-  s.globalCompositeOperation = "destination-out";
-  s.strokeStyle = "#000";
-  s.lineWidth = 0.7 * k;
-  s.lineJoin = "round";
-  for (const g of glyphs) {
-    s.save();
-    s.translate(g.x, g.y);
-    s.rotate(g.a);
-    s.fillText(g.ch, 0, 0);
-    s.strokeText(g.ch, 0, 0);
-    s.restore();
-  }
-  return { canvas: sc, x: bx0 - pad, y: by0 - pad };
 }
 
-// Ragged ink blot: an over-inked block with a wobbly outline, lobes where the ink pooled,
-// splats around it and a smear dragged off the bottom-right corner
-function cardRagged(p, x0, y0, x1, y1, k, rnd) {
-  const pts = [];
-  const edge = (ax, ay, bx, by, n, nx, ny, amp) => {
-    let drift = 0;
-    for (let i = 0; i < n; i++) {
-      const t = i / n;
-      drift = drift * 0.6 + (rnd() - 0.45) * amp * k;
-      const j = drift + (rnd() < 0.1 ? rnd() * 3 * k : 0);
-      pts.push([ax + (bx - ax) * t + nx * j, ay + (by - ay) * t + ny * j]);
-    }
-  };
-  const nx = Math.max(12, Math.round((x1 - x0) / (1.8 * k)));
-  const ny = Math.max(8, Math.round((y1 - y0) / (1.8 * k)));
-  edge(x0, y0 + 2 * k, x1, y0, nx, 0, -1, 3.2);
-  edge(x1, y0, x1 - 1.5 * k, y1, ny, 1, 0, 2.2);
-  edge(x1 - 1.5 * k, y1, x0, y1 - 1 * k, nx, 0, 1, 3.4);
-  edge(x0, y1 - 1 * k, x0, y0 + 2 * k, ny, -1, 0, 2.4);
-  p.beginPath();
-  pts.forEach(([x, y], i) => (i ? p.lineTo(x, y) : p.moveTo(x, y)));
-  p.closePath();
-  p.fill();
-  // Pooled lobes along the edges
-  for (let i = 0; i < 6; i++) {
-    const t = rnd();
-    const top = rnd() < 0.5;
-    p.beginPath();
-    p.ellipse(x0 + t * (x1 - x0), top ? y0 + 1 * k : y1 - 1 * k, (2.5 + rnd() * 4) * k, (1.5 + rnd() * 2.2) * k, (rnd() - 0.5) * 0.6, 0, Math.PI * 2);
-    p.fill();
-  }
-  // Splats
-  for (let i = 0; i < 12; i++) {
-    const side = rnd();
-    const x = side < 0.6 ? x0 + rnd() * (x1 - x0) : (side < 0.8 ? x0 - rnd() * 4 * k : x1 + rnd() * 4 * k);
-    const y = side < 0.6 ? (rnd() < 0.5 ? y0 - (1 + rnd() * 4) * k : y1 + (1 + rnd() * 4) * k) : y0 + rnd() * (y1 - y0);
-    p.beginPath();
-    p.arc(x, y, (0.5 + rnd() * 1.2) * k, 0, Math.PI * 2);
-    p.fill();
-  }
-  // Smear off the bottom-right corner
-  p.beginPath();
-  p.moveTo(x1 - 10 * k, y1 - 2 * k);
-  p.quadraticCurveTo(x1 + 2 * k, y1 + 1 * k, x1 + 9 * k, y1 + 7.5 * k);
-  p.quadraticCurveTo(x1 + 1 * k, y1 + 6 * k, x1 - 4 * k, y1 + 4.5 * k);
-  p.quadraticCurveTo(x1 - 9 * k, y1 + 4 * k, x1 - 13 * k, y1 + 1 * k);
-  p.closePath();
-  p.fill();
-  // Spike on the top edge where the stamp was lifted
-  p.beginPath();
-  p.moveTo(x0 + 0.42 * (x1 - x0), y0 + 2 * k);
-  p.lineTo(x0 + 0.5 * (x1 - x0), y0 - 5.5 * k);
-  p.lineTo(x0 + 0.6 * (x1 - x0), y0 + 2 * k);
-  p.closePath();
-  p.fill();
-}
+// Code 39: 9 elements per character (bar, space, ... bar), 1 = wide; "*" starts and stops
+const CARD_CODE39 = {
+  0: "000110100", 1: "100100001", 2: "001100001", 3: "101100000", 4: "000110001",
+  5: "100110000", 6: "001110000", 7: "000100101", 8: "100100100", 9: "001100100",
+  A: "100001001", B: "001001001", C: "101001000", D: "000011001", E: "100011000",
+  F: "001011000", G: "000001101", H: "100001100", I: "001001100", J: "000011100",
+  K: "100000011", L: "001000011", M: "101000010", N: "000010011", O: "100010010",
+  P: "001010010", Q: "000000111", R: "100000110", S: "001000110", T: "000010110",
+  U: "110000001", V: "011000001", W: "111000000", X: "010010001", Y: "110010000",
+  Z: "011010000", "-": "010000101", ".": "110000100", " ": "011000100", "*": "010010100",
+};
 
-// Dot-matrix font on a 5 x 11 pin lattice (x 0..4, y 0..10, y down), as polylines. Dots are laid
-// one per lattice step along each segment, so straight strokes read as rows of separate pins and
-// corners are cut by one diagonal step, like the reference's "45-12H".
-const CARD_DOT_GLYPHS = (() => {
-  const O = [[1, 0], [3, 0], [4, 1], [4, 9], [3, 10], [1, 10], [0, 9], [0, 1], [1, 0]];
-  return {
-    0: [O], O: [O], Q: [O, [[2, 8], [4, 10]]],
-    1: [[[1, 1], [2, 0], [2, 10]], [[0, 10], [4, 10]]],
-    2: [[[0, 1], [1, 0], [3, 0], [4, 1], [4, 4], [0, 8], [0, 10], [4, 10]]],
-    3: [[[0, 1], [1, 0], [3, 0], [4, 1], [4, 4], [3, 5], [1, 5]], [[3, 5], [4, 6], [4, 9], [3, 10], [1, 10], [0, 9]]],
-    4: [[[3, 10], [3, 0], [0, 6], [0, 7], [4, 7]]],
-    5: [[[4, 0], [0, 0], [0, 4], [3, 4], [4, 5], [4, 9], [3, 10], [1, 10], [0, 9]]],
-    6: [[[4, 1], [3, 0], [1, 0], [0, 1], [0, 9], [1, 10], [3, 10], [4, 9], [4, 6], [3, 5], [1, 5], [0, 6]]],
-    7: [[[0, 0], [4, 0], [4, 2], [2, 6], [2, 10]]],
-    8: [[[1, 5], [0, 4], [0, 1], [1, 0], [3, 0], [4, 1], [4, 4], [3, 5], [1, 5], [0, 6], [0, 9], [1, 10], [3, 10], [4, 9], [4, 6], [3, 5]]],
-    9: [[[0, 9], [1, 10], [3, 10], [4, 9], [4, 1], [3, 0], [1, 0], [0, 1], [0, 4], [1, 5], [3, 5], [4, 4]]],
-    A: [[[0, 10], [0, 2], [2, 0], [4, 2], [4, 10]], [[0, 6], [4, 6]]],
-    B: [[[0, 5], [3, 5], [4, 6], [4, 9], [3, 10], [0, 10], [0, 0], [3, 0], [4, 1], [4, 4], [3, 5]]],
-    C: [[[4, 1], [3, 0], [1, 0], [0, 1], [0, 9], [1, 10], [3, 10], [4, 9]]],
-    D: [[[0, 0], [0, 10], [3, 10], [4, 9], [4, 1], [3, 0], [0, 0]]],
-    E: [[[4, 0], [0, 0], [0, 10], [4, 10]], [[0, 5], [3, 5]]],
-    F: [[[4, 0], [0, 0], [0, 10]], [[0, 5], [3, 5]]],
-    G: [[[4, 1], [3, 0], [1, 0], [0, 1], [0, 9], [1, 10], [3, 10], [4, 9], [4, 5], [2, 5]]],
-    H: [[[0, 0], [0, 10]], [[4, 0], [4, 10]], [[0, 5], [4, 5]]],
-    I: [[[1, 0], [3, 0]], [[2, 0], [2, 10]], [[1, 10], [3, 10]]],
-    J: [[[4, 0], [4, 9], [3, 10], [1, 10], [0, 9], [0, 8]]],
-    K: [[[0, 0], [0, 10]], [[4, 0], [0, 5]], [[1, 4], [4, 10]]],
-    L: [[[0, 0], [0, 10], [4, 10]]],
-    M: [[[0, 10], [0, 0], [2, 4], [4, 0], [4, 10]]],
-    N: [[[0, 10], [0, 0], [4, 10], [4, 0]]],
-    P: [[[0, 10], [0, 0], [3, 0], [4, 1], [4, 4], [3, 5], [0, 5]]],
-    R: [[[0, 10], [0, 0], [3, 0], [4, 1], [4, 4], [3, 5], [0, 5]], [[2, 5], [4, 10]]],
-    S: [[[4, 1], [3, 0], [1, 0], [0, 1], [0, 4], [1, 5], [3, 5], [4, 6], [4, 9], [3, 10], [1, 10], [0, 9]]],
-    T: [[[0, 0], [4, 0]], [[2, 0], [2, 10]]],
-    U: [[[0, 0], [0, 9], [1, 10], [3, 10], [4, 9], [4, 0]]],
-    V: [[[0, 0], [0, 5], [2, 10], [4, 5], [4, 0]]],
-    W: [[[0, 0], [0, 10], [2, 6], [4, 10], [4, 0]]],
-    X: [[[0, 0], [0, 1], [4, 9], [4, 10]], [[4, 0], [4, 1], [0, 9], [0, 10]]],
-    Y: [[[0, 0], [0, 2], [2, 5], [4, 2], [4, 0]], [[2, 5], [2, 10]]],
-    Z: [[[0, 0], [4, 0], [4, 1], [0, 9], [0, 10], [4, 10]]],
-    // narrow glyphs live in a 2-column box
-    "-": [[[0, 5], [2, 5]]],
-    ".": [[[1, 10], [1, 10]]],
-    ":": [[[1, 3], [1, 3]], [[1, 8], [1, 8]]],
-    "/": [[[4, 0], [0, 10]]],
-    "#": [[[1, 1], [1, 9]], [[3, 1], [3, 9]], [[0, 3], [4, 3]], [[0, 7], [4, 7]]],
-  };
-})();
-
-// Dot-matrix code, right-aligned: pin centres span a 16 x 41.6 ref px box with a 23 px advance
-// (7 px between boxes), the dash an 8 px box; pins ~4.6 px wide, so they touch along a stroke
-function cardDotCode(p, text, right, baseline, k, rnd) {
-  const chars = [...text];
-  const capH = 41.6 * k, unitX = 4 * k, unitY = capH / 10, gap = 7 * k;
-  const narrow = (ch) => /[-.:]/.test(ch);
-  const widths = chars.map((ch) => (ch === " " ? 12 * k : narrow(ch) ? 2 * unitX : 4 * unitX));
-  let x = right - widths.reduce((a, b) => a + b, 0) - gap * (chars.length - 1);
-  const top = baseline - capH;
-  const dots = [];
-  const add = (X, Y) => {
-    for (const q of dots) if ((q[0] - X) ** 2 + (q[1] - Y) ** 2 < (2 * k) ** 2) return;
-    dots.push([X, Y]);
-  };
-  chars.forEach((ch, i) => {
-    for (const line of CARD_DOT_GLYPHS[ch] || []) {
-      for (let j = 0; j < line.length; j++) {
-        const [ax, ay] = line[j];
-        const [bx, by] = line[Math.min(j + 1, line.length - 1)];
-        // one pin per lattice step (a 45 degree corner step leaves the reference's small gap)
-        const n = Math.max(1, Math.round(Math.max(Math.abs(bx - ax), Math.abs(by - ay))));
-        for (let t = 0; t <= n; t++) add(x + (ax + ((bx - ax) * t) / n) * unitX, top + (ay + ((by - ay) * t) / n) * unitY);
-      }
-    }
-    x += widths[i] + gap;
-  });
+// A real (scannable) Code 39 of `text`, filling x0..x1
+function cardBarcode(p, text, x0, x1, y0, y1) {
+  const data = String(text || "").toUpperCase().replace(/[^0-9A-Z. -]/g, "");
+  if (!data) return;
+  const chars = ["*", ...data, "*"];
+  const R = 2.5; // wide : narrow
+  const units = chars.length * (6 + 3 * R) + (chars.length - 1);
+  const u = (x1 - x0) / units;
+  let x = x0;
   p.save();
   p.fillStyle = "#000";
-  // Round pins, a touch uneven like a worn print head; they just touch along a vertical stroke
-  for (const [dx, dy] of dots) {
-    p.beginPath();
-    p.ellipse(dx + (rnd() - 0.5) * 0.5 * k, dy + (rnd() - 0.5) * 0.5 * k, 2.4 * k * (0.93 + rnd() * 0.14), 2.2 * k * (0.93 + rnd() * 0.14), 0, 0, Math.PI * 2);
-    p.fill();
-  }
-  p.restore();
-}
-
-// Handwritten marker value: per-letter wobble in size, angle and baseline. A long value first
-// starts closer to its label (down to minLeft), then shrinks to fit before maxRight.
-function cardHand(h, text, left, baseline, cap, maxRight, minLeft, rnd) {
-  let size = cardFontSizeForCap(h, 400, CARD_STACK.hand, cap);
-  const spacing = 0.035;
-  const widthAt = (s) => {
-    h.font = `400 ${s}px ${CARD_STACK.hand}`;
-    let w = 0;
-    for (const ch of text) w += h.measureText(ch).width + spacing * s;
-    return w;
-  };
-  const w0 = widthAt(size);
-  if (left + w0 > maxRight) left = Math.max(minLeft, maxRight - w0);
-  if (left + w0 > maxRight) size *= (maxRight - left) / w0;
-  h.font = `400 ${size}px ${CARD_STACK.hand}`;
-  h.fillStyle = "#000";
-  h.strokeStyle = "#000";
-  h.lineJoin = "round";
-  h.lineCap = "round";
-  // felt-tip weight: the web font alone is a fine pen; system fallbacks are already heavy
-  let webFont = false;
-  try { webFont = document.fonts.check('400 20px "Shadows Into Light"'); } catch { webFont = false; }
-  h.lineWidth = webFont ? size * 0.034 : 0;
-  const tilt = (rnd() - 0.5) * 0.012;
-  let cx = left;
-  for (const ch of text) {
-    const adv = h.measureText(ch).width;
-    if (ch !== " ") {
-      const sc = 1 + (rnd() - 0.5) * 0.07;
-      h.save();
-      h.translate(cx, baseline + (rnd() - 0.5) * size * 0.035 + (cx - left) * tilt);
-      h.rotate((rnd() - 0.5) * 0.07);
-      h.scale(sc, sc);
-      h.fillText(ch, 0, 0);
-      if (webFont) h.strokeText(ch, 0, 0);
-      h.restore();
+  chars.forEach((ch) => {
+    const pat = CARD_CODE39[ch];
+    for (let i = 0; i < 9; i++) {
+      const w = (pat[i] === "1" ? R : 1) * u;
+      if (i % 2 === 0) p.fillRect(x, y0, w, y1 - y0);
+      x += w;
     }
-    cx += adv + spacing * size;
-  }
+    x += u; // gap between characters
+  });
+  p.restore();
 }
 
 // ---------------------------------------------------------------------------------------------

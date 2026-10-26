@@ -67,6 +67,8 @@ function createBadge(THREE, opts = {}) {
     // carries the plastic's haze, so callers pass less for those)
     uCardFilm: { value: opts.cardFilm ?? 0.55 },
     uRefract: { value: opts.refraction ?? 1.0 },
+    // Matte (frosted) finish of the sheets, 0 = clear PVC
+    uFrost: { value: opts.frost ?? 0.95 },
   };
   const defines = badgeShaderDefines(low);
   const premultiplied = {
@@ -529,6 +531,7 @@ uniform float uBackSRGB;
 uniform float uWaveMax;
 uniform float uCardFilm;
 uniform float uRefract;
+uniform float uFrost;
 
 varying vec3 vLocal;
 varying vec3 vCamLocal;
@@ -955,6 +958,13 @@ void main() {
   a = mix(a, 1.0, onEdge);
   rgb = mix(rgb, overCard, onFace);
   a = mix(a, 1.0, onFace);
+  // matte finish: the sheets scatter most of the page behind into a soft milky white, so text
+  // under the plastic reads as a faint shadow instead of a sharp, warped image (the card's
+  // window stays nearly clear)
+  float fr = uFrost * c0 * mix(1.0, 0.06, max(onFace, onEdge));
+  vec3 milk = vec3(0.925, 0.93, 0.935) * (0.985 + 0.03 * nzN.a);
+  rgb = rgb * (1.0 - fr) + fr * milk;
+  a = 1.0 - (1.0 - a) * (1.0 - fr);
   // the welded structure lies on top
   rgb = LP + TP * rgb;
   a = 1.0 - TP * (1.0 - a);
@@ -1723,8 +1733,10 @@ function createBadgeRig(THREE, opts = {}) {
   const GRAB_MAX_F = M * G * 6;
   const GRAB_LIFT = 0.9; // share of the weight the grab carries (lifted badges sat 2.8 cm under the pointer)
   const MAX_V = 420; // cm/s, keeps a wild throw on screen
+  const HOOK_V = 300; // cm/s: a carried badge trails a very fast pointer instead of being yanked
+  const RELEASE_V = 160; // cm/s: let go mid-carry, it swings out but never loops over its hook
   const MAX_W = 26; // rad/s
-  const SPIN_MIN = 12; // cm/s of sideways flick before it starts spinning the badge
+  const SPIN_MIN = 40; // cm/s of sideways flick before it starts spinning the badge
   const SPIN_R = 2.4; // cm, effective radius the flick acts on
   const SPIN_MAX = (reduced ? 0.6 : 1) * 22; // rad/s
   // Hover tilt toward the pointer; a host can soften it (a badge pinned at its top tilts the
@@ -1746,6 +1758,10 @@ function createBadgeRig(THREE, opts = {}) {
     .multiplyScalar(M);
   const invI = new V3(1 / inertia.x, 1 / inertia.y, 1 / inertia.z);
   const K_PITCH = M * G * ringLocal.y; // torque per radian gravity opposes: hover pitch ≈ target
+  // A tap flips the badge: a stiffer, slightly underdamped torsion turns it over in ~0.5 s
+  const K_FLIP = 260;
+  const C_FLIP = 2 * 0.72 * Math.sqrt(K_FLIP * inertia.y);
+  const FLIP_MAX_T = 2; // s, then the normal torsion takes over whatever is left
 
   // --- Hook: where the ring top hangs (slides to a moved anchor across a frame's substeps) ---
   const anchor = (opts.anchor ? opts.anchor.clone() : new V3(0, 0, 0));
@@ -1765,11 +1781,15 @@ function createBadgeRig(THREE, opts = {}) {
   let sleeping = false;
   let quiet = 0;
   let twist = 0; // accumulated rotation about the hanging axis (radians, not wrapped)
+  let facing = 0; // twist the torsion pulls toward: a multiple of π (odd = back to the viewer)
+  let flipT = -1; // s since the last flip, -1 when none is running
+  let bounds = null; // { minX, maxX, minY, maxY }: where a drag may put the hook
   let swayEnv = 0;
   const hoverTarget = { yaw: 0, pitch: 0 };
   const hoverCur = { yaw: 0, pitch: 0 };
 
   const anchorFrom = new V3(); // hook at the start of a frame
+  const hookTo = new V3(); // and where it gets to by the end of it
 
   // Grab
   let grab = null; // { local, planeN, planeP, start, end, cur, vT, samples, t0, travel }
@@ -1824,6 +1844,8 @@ function createBadgeRig(THREE, opts = {}) {
     v.set(0, 0, 0);
     w.set(0, 0, 0);
     twist = 0;
+    facing = 0;
+    flipT = -1;
     acc = 0;
     writeOutput(1);
   }
@@ -1908,10 +1930,19 @@ function createBadgeRig(THREE, opts = {}) {
     }
 
     // Torsion about the hanging axis (badge +Y), a bit stiffer when wound up
-    const rel = twist - hoverCur.yaw - swayYaw;
-    const stiff = 1 + 0.3 * (rel / Math.PI) * (rel / Math.PI);
+    const rel = twist - facing - hoverCur.yaw - swayYaw;
     t1.set(0, 1, 0).applyQuaternion(q);
-    T.addScaledVector(t1, -K_TWIST * stiff * rel - C_TWIST * w.dot(t1));
+    const wY = w.dot(t1);
+    if (flipT >= 0) {
+      flipT += h;
+      if (flipT > FLIP_MAX_T || (Math.abs(rel) < 0.05 && Math.abs(wY) < 0.5)) flipT = -1;
+    }
+    if (flipT >= 0) {
+      T.addScaledVector(t1, -K_FLIP * rel - C_FLIP * wY);
+    } else {
+      const stiff = 1 + 0.3 * (rel / Math.PI) * (rel / Math.PI);
+      T.addScaledVector(t1, -K_TWIST * stiff * rel - C_TWIST * wY);
+    }
 
     // Hover pitch acts around the badge's own X axis
     if (hoverCur.pitch) T.add(t1.set(K_PITCH * hoverCur.pitch, 0, 0).applyQuaternion(q));
@@ -2002,10 +2033,15 @@ function createBadgeRig(THREE, opts = {}) {
       if (grab.vT.length() > MAX_V) grab.vT.setLength(MAX_V);
     }
     anchorFrom.copy(hook);
+    // This frame's hook target: the anchor, reached at no more than HOOK_V
+    hookTo.subVectors(anchor, hook);
+    const maxStep = HOOK_V * Math.max(n * STEP, 1e-6);
+    if (hookTo.length() > maxStep) hookTo.setLength(maxStep);
+    hookTo.add(hook);
     for (let k = 0; k < n; k++) {
       xl.copy(x);
       ql.copy(q);
-      hook.lerpVectors(anchorFrom, anchor, (k + 1) / n);
+      hook.lerpVectors(anchorFrom, hookTo, (k + 1) / n);
       substep(STEP, k, n);
     }
     acc -= n * STEP;
@@ -2086,9 +2122,10 @@ function createBadgeRig(THREE, opts = {}) {
       const u = Math.max(-1, Math.min(1, (lastHitLocal.x - holderX) / (bw / 2)));
       const c = pivotFromTop - bh / 2;
       const vv = Math.max(-1, Math.min(1, (lastHitLocal.y - c) / (bh / 2)));
-      // The face turns toward the pointer
-      yaw = HOVER_YAW * u;
-      pitch = -HOVER_PITCH * vv;
+      // The face turns toward the pointer (the body axes are mirrored when the back is shown)
+      const sgn = Math.cos(facing) >= 0 ? 1 : -1;
+      yaw = HOVER_YAW * u * sgn;
+      pitch = -HOVER_PITCH * vv * sgn;
     }
     if (Math.abs(yaw - hoverTarget.yaw) + Math.abs(pitch - hoverTarget.pitch) > 1e-4) {
       hoverTarget.yaw = yaw;
@@ -2115,6 +2152,8 @@ function createBadgeRig(THREE, opts = {}) {
       samples: [{ t: now, x: lastHit.x, y: lastHit.y, z: lastHit.z }],
       t0: now,
       travel: 0,
+      // the hook slides along its rail (the bounds) with the pointer, at this offset
+      hookOff: new V3(anchor.x - lastHit.x, anchor.y - lastHit.y, 0),
       reach: lastHit.distanceTo(t1.copy(ringLocal).applyQuaternion(q).add(x)) + 2.5,
     };
     hoverTarget.yaw = hoverTarget.pitch = 0;
@@ -2129,7 +2168,12 @@ function createBadgeRig(THREE, opts = {}) {
     const t = t1.subVectors(grab.planeP, ray.origin).dot(grab.planeN) / denom;
     if (!(t > 0)) return;
     t2.copy(ray.direction).multiplyScalar(t).add(ray.origin);
-    // Out of reach: the target stops at the circle the badge can reach about its hook
+    // The hook follows the pointer as far as its bounds let it (with equal min and max y it
+    // slides on a horizontal rail); it gets there across the next frame's substeps
+    anchor.set(t2.x + grab.hookOff.x, t2.y + grab.hookOff.y, anchor.z);
+    clampHook(anchor);
+    // The hand pulls the badge around its hook: out of reach, the target stops at the circle
+    // the badge can reach about it, and never above it
     t3.subVectors(t2, anchor);
     if (t3.length() > grab.reach) t2.copy(anchor).addScaledVector(t3, grab.reach / t3.length());
     if (t2.y > anchor.y - 1) t2.y = anchor.y - 1;
@@ -2149,7 +2193,7 @@ function createBadgeRig(THREE, opts = {}) {
     grab = null;
     const now = stamp(opts?.time);
     if (opts?.cancel) {
-      if (v.length() > MAX_V) v.setLength(MAX_V);
+      if (v.length() > RELEASE_V) v.setLength(RELEASE_V);
       wake();
       return;
     }
@@ -2160,13 +2204,8 @@ function createBadgeRig(THREE, opts = {}) {
     if (s.length > 1 && now - b.t < 60 && b.t - a.t > 4) vx = (b.x - a.x) / ((b.t - a.t) / 1000);
 
     if (g.travel < 0.35 && now - g.t0 < 350) {
-      // A tap: push the badge where it was touched, it rocks back
-      rW.copy(g.local).applyQuaternion(q);
-      t1.copy(g.planeN).multiplyScalar(-M * 32);
-      t2.crossVectors(rW, t1);
-      invInertiaWorld(t2);
-      v.addScaledVector(t1, 1 / M);
-      w.add(t2);
+      // A tap flips the badge over, turning away from the side that was touched
+      flip(g.local.x - holderX >= 0 ? 1 : -1);
     } else if (Math.abs(vx) > SPIN_MIN) {
       // A sideways flick spins it like a globe: the face follows the finger
       const spin = Math.min(SPIN_MAX, (Math.abs(vx) - SPIN_MIN) / SPIN_R);
@@ -2174,9 +2213,34 @@ function createBadgeRig(THREE, opts = {}) {
       // Part of the sideways throw went into the spin
       v.x *= 0.55;
     }
-    if (v.length() > MAX_V) v.setLength(MAX_V);
+    if (v.length() > RELEASE_V) v.setLength(RELEASE_V);
     if (w.length() > MAX_W) w.setLength(MAX_W);
     wake();
+  }
+
+  // Turn the badge over (dir +1: the right edge goes away from the viewer, as if pushed)
+  function flip(dir = 1) {
+    const sgn = Math.cos(facing) >= 0 ? 1 : -1;
+    facing += Math.PI * (dir >= 0 ? 1 : -1) * sgn;
+    flipT = 0;
+    wake();
+  }
+
+  function clampHook(p) {
+    if (!bounds) return p;
+    p.x = Math.min(bounds.maxX, Math.max(bounds.minX, p.x));
+    p.y = Math.min(bounds.maxY, Math.max(bounds.minY, p.y));
+    return p;
+  }
+
+  // Where a drag may carry the hook. A hook already outside them slides back in.
+  function setBounds(b) {
+    bounds = b && [b.minX, b.maxX, b.minY, b.maxY].every(Number.isFinite) ? { ...b } : null;
+    if (!bounds) return;
+    if (bounds.maxX < bounds.minX) bounds.minX = bounds.maxX = (bounds.minX + bounds.maxX) / 2;
+    if (bounds.maxY < bounds.minY) bounds.minY = bounds.maxY;
+    const p = clampHook(anchor.clone());
+    if (p.distanceToSquared(anchor) > 1e-10) setAnchor(p, true);
   }
 
   // keepMotion false moves the whole rig rigidly (resize); true moves only the hook
@@ -2225,6 +2289,8 @@ function createBadgeRig(THREE, opts = {}) {
     isDragging: () => !!grab,
     wake,
     setAnchor,
+    setBounds,
+    flip,
     impulse,
     reset() {
       grab = null;
@@ -2238,8 +2304,15 @@ function createBadgeRig(THREE, opts = {}) {
     get twist() {
       return twist;
     },
+    get facing() {
+      return facing;
+    },
     get anchor() {
       return anchor;
+    },
+    // where the ring top hangs right now (trails the anchor while it moves)
+    get hook() {
+      return hook;
     },
     // Rest pose numbers the host needs for framing
     rest: {
@@ -2274,6 +2347,7 @@ function bindBadgeInput(THREE, { canvas, camera, rig, onWake = () => {}, touchMa
   let touchId = -1;
   let overBadge = false;
   let lastX = 0, lastY = 0; // last client position of the dragging mouse (for page scrolls)
+  let swallowClick = false; // a press on the badge: the click it ends in is not for a link under it
 
   // Event time in the performance.now() timebase (old engines used epoch time: ignore those)
   const stampOf = (e) => {
@@ -2336,7 +2410,9 @@ function bindBadgeInput(THREE, { canvas, camera, rig, onWake = () => {}, touchMa
   el.addEventListener("pointerdown", (e) => {
     if (e.pointerType === "touch" || mode || e.button !== 0) return;
     const ray = rayAt(e.clientX, e.clientY);
+    swallowClick = false;
     if (!rig.pointerDown(ray, undefined, stampOf(e))) return;
+    swallowClick = true;
     e.preventDefault(); // no text selection while dragging
     mode = "mouse";
     pointerId = e.pointerId;
@@ -2357,6 +2433,12 @@ function bindBadgeInput(THREE, { canvas, camera, rig, onWake = () => {}, touchMa
     if (mode === "mouse" && e.pointerId === pointerId) end(stampOf(e), true);
   };
   el.addEventListener("pointerup", onPointerUp, { signal });
+  el.addEventListener("click", (e) => {
+    if (!swallowClick) return;
+    swallowClick = false;
+    e.preventDefault();
+    e.stopPropagation();
+  }, { signal, capture: true });
   el.addEventListener("pointercancel", onPointerLost, { signal });
   el.addEventListener("lostpointercapture", onPointerLost, { signal });
   // Fallback if capture was refused: a release anywhere ends the drag
@@ -2600,8 +2682,9 @@ async function createAboutBadge(THREE, opts = {}) {
     canvas = renderer.domElement;
     canvas.setAttribute("aria-hidden", "true");
     // Input is bound on the section: the canvas never takes the pointer, so the section's links
-    // and text stay clickable everywhere except on the badge
-    Object.assign(canvas.style, { position: "absolute", inset: "0", width: "100%", height: "100%", display: "block", pointerEvents: "none" });
+    // and text stay clickable everywhere except on the badge. It lies above the section's text:
+    // the badge can be carried over any of it.
+    Object.assign(canvas.style, { position: "absolute", inset: "0", width: "100%", height: "100%", display: "block", pointerEvents: "none", zIndex: "3" });
     if (getComputedStyle(host).position === "static") {
       hostPosition = host.style.position;
       host.style.position = "relative";
@@ -2747,6 +2830,22 @@ async function createAboutBadge(THREE, opts = {}) {
     // Before the intro the badge waits fully above the section's top edge
     dropH = holder.height + ABOUT_BADGE_FRAME.top * f.visH + 1;
     if (introState === "holding") rig.setAnchor(anchorNow.copy(restAnchor).add(tmp.set(ABOUT_BADGE_INTRO.dx, dropH, 0)), false);
+    applyBounds();
+  }
+
+  // The hook slides on a rail along the section's top edge (ring tucked under it): a drag moves
+  // the badge sideways, the whole holder staying inside the section
+  function applyBounds() {
+    if (introState !== "done" && introState !== "off") return;
+    const m = 0.04 * frame.visH;
+    const halfW = (frame.visH * frame.w) / frame.h / 2;
+    const hx = holder.x - ring.x;
+    rig.setBounds({
+      minX: -halfW + holder.width / 2 + m - hx,
+      maxX: halfW - holder.width / 2 - m - hx,
+      minY: restAnchor.y,
+      maxY: restAnchor.y,
+    });
   }
 
   function introOffset(t) {
@@ -2766,11 +2865,18 @@ async function createAboutBadge(THREE, opts = {}) {
   }
 
   function stepIntro(dt) {
+    // Grabbed while it drops in: the hand takes over from here
+    if (rig.isDragging()) {
+      introState = "done";
+      applyBounds();
+      return;
+    }
     introT += dt;
     const off = introOffset(introT);
     if (introT > ABOUT_BADGE_INTRO.maxTime || (introT > 1 && off.length() < 0.004)) {
       introState = "done";
       rig.setAnchor(anchorNow.copy(restAnchor), true);
+      applyBounds();
       return;
     }
     rig.setAnchor(anchorNow.copy(restAnchor).add(off), true);
@@ -2837,10 +2943,11 @@ async function createAboutBadge(THREE, opts = {}) {
   function pose() {
     const q = rig.badge.quaternion;
     badge.group.quaternion.copy(q);
-    // The ring top is drawn exactly on the hook: under a hard flick the solver's joint stretches
-    // a few millimetres, enough to pull the ring's top into view under the section's edge
+    // The ring top is drawn exactly on the hook (it rides along while the badge is carried):
+    // under a hard flick the solver's joint stretches a few millimetres, enough to pull the
+    // ring's top into view under the section's edge
     tmp.set(0, ring.y, 0).applyQuaternion(q);
-    badge.group.position.copy(anchorNow).sub(tmp);
+    badge.group.position.copy(rig.hook).sub(tmp);
     tmp.set(-ring.x, 0, -ring.z).applyQuaternion(q);
     badge.group.position.add(tmp);
   }

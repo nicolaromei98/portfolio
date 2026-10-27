@@ -2553,14 +2553,14 @@ const ABOUT_BADGE_HOLDER_FALLBACK = { top: 0.809, bottom: 0.809 - 11.355, left: 
 // Top of the split ring (plastic.js ringAnchor) if the badge does not expose it
 const ABOUT_BADGE_RING_FALLBACK = [0.265, 1.395, 0.063];
 const ABOUT_BADGE_FOV = 20; // vertical, across the section: narrow, so the badge reads flat like the photo
-// Framing measured on ref/mockup-frame.png (1011 x 568): holder top 6 px under the top edge,
-// holder 374 px tall, centred. Portrait screens are width-limited and keep the holder bottom
-// above the text (≤ 62 % of the height).
+// Framing for the white stage box ([data-badge]) of the boxed layout (mockup slide 44): holder
+// top just under the box's top edge, holder ~80 % of the box height, centred. Portrait boxes
+// (phones) are width-limited: the holder takes ~52 % of the box width, the text runs below it.
 const ABOUT_BADGE_FRAME = {
-  top: 0.011, // holder top below the section's top edge (share of the height)
-  fillH: 0.658, // holder height / section height, landscape
-  fillPortrait: 0.609, // same on portrait: bottom at 1.1 % + 60.9 % = 62 %
-  fillW: 0.62, // holder width / section width at most (phones)
+  top: 0.02, // holder top below the box's top edge (share of the height)
+  fillH: 0.8, // holder height / box height, landscape
+  fillPortrait: 0.609, // same on portrait (phones end up width-limited before this)
+  fillW: 0.52, // holder width / box width at most (phones)
   portraitAt: 0.9, // aspect ratios between these blend the two heights (no jump at 1:1)
   landscapeAt: 1.2,
 };

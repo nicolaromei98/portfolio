@@ -2326,8 +2326,9 @@ function createBadgeRig(THREE, opts = {}) {
 // ---------------------------------------------------------------------
 // Pointer + touch plumbing for a rig drawn on `canvas` with `camera`.
 // Mouse/pen: hover tilt, drag, grab/grabbing cursor over the badge.
-// Touch: only a touch that starts on the badge drags it; every other touch
-// scrolls the page (touch-action pan-y, no preventDefault).
+// Touch: a touch that starts on the badge holds it, but the first move decides: a vertical
+// swipe is the browser's (it scrolls the page, touch-action pan-y), anything else drags the
+// badge. A tap still flips it. Every touch off the badge scrolls the page.
 // `target` (default: the canvas) is the element that listens. Pass the section
 // under the canvas and give the canvas `pointer-events: none` so links and text
 // in that section stay clickable/selectable everywhere except on the badge.
@@ -2345,6 +2346,8 @@ function bindBadgeInput(THREE, { canvas, camera, rig, onWake = () => {}, touchMa
   let mode = null; // 'mouse' | 'touch' while dragging
   let pointerId = -1;
   let touchId = -1;
+  let touchX = 0, touchY = 0; // where the touch started, until its first move decides
+  let touchLocked = false; // the touch is a drag (not a scroll)
   let overBadge = false;
   let lastX = 0, lastY = 0; // last client position of the dragging mouse (for page scrolls)
   let swallowClick = false; // a press on the badge: the click it ends in is not for a link under it
@@ -2474,9 +2477,12 @@ function bindBadgeInput(THREE, { canvas, camera, rig, onWake = () => {}, touchMa
     const t = e.changedTouches[0];
     const ray = rayAt(t.clientX, t.clientY);
     if (!rig.pointerDown(ray, touchMargin, stampOf(e))) return; // not on the badge: the page scrolls
-    if (e.cancelable) e.preventDefault();
+    // No preventDefault here: the page must still be able to scroll if this turns out to be a swipe
     mode = "touch";
     touchId = t.identifier;
+    touchX = t.clientX;
+    touchY = t.clientY;
+    touchLocked = false;
     kick();
   }, { signal, passive: false });
 
@@ -2488,7 +2494,17 @@ function bindBadgeInput(THREE, { canvas, camera, rig, onWake = () => {}, touchMa
     }
     const t = findTouch(e.changedTouches);
     if (!t) return;
-    if (e.cancelable) e.preventDefault();
+    if (!touchLocked) {
+      const dx = Math.abs(t.clientX - touchX), dy = Math.abs(t.clientY - touchY);
+      // Not cancelable: the browser is already scrolling. Mostly vertical: let it scroll.
+      if (!e.cancelable || (dy > dx && dy > 4)) {
+        end(stampOf(e), true);
+        return;
+      }
+      if (dx <= 4) return; // too small to tell yet
+      touchLocked = true;
+    }
+    e.preventDefault();
     rig.pointerMove(rayAt(t.clientX, t.clientY), stampOf(e));
     kick();
   }, { signal, passive: false });
@@ -2582,7 +2598,8 @@ const ABOUT_BADGE_SWING = { pitch: 0.79, roll: 1.4 }; // 45°, 80°
  * opts: { section (size source + input target, required), host (canvas parent, default section),
  *   photo (URL or loaded image), photoFocus, fields (card overrides), quality ('auto'|'high'|'low'),
  *   reducedMotion (default: the media query), ticker ({ add, remove }, e.g. gsap.ticker; default
- *   own requestAnimationFrame), intro (default true), onError(err), modules (lab only) }
+ *   own requestAnimationFrame), intro (default true), avoid (element or list: text the holder
+ *   moves sideways to clear, e.g. the stage's top links on phones), onError(err), modules (lab only) }
  * Resolves as soon as the scene objects exist; `ready` resolves after the first frame with the
  * card has been drawn (or right away if dispose() comes first). dispose() is safe at any time.
  */
@@ -2595,6 +2612,7 @@ async function createAboutBadge(THREE, opts = {}) {
   const low = quality === "low";
   const ticker = opts.ticker && typeof opts.ticker.add === "function" && typeof opts.ticker.remove === "function" ? opts.ticker : null;
   const mods = aboutBadgeModules(opts.modules);
+  const avoid = [].concat(opts.avoid || []).filter((el) => el && el.nodeType === 1);
   const V3 = THREE.Vector3;
 
   // --- Lifecycle ---
@@ -2624,7 +2642,9 @@ async function createAboutBadge(THREE, opts = {}) {
   const stats = { ticks: 0, renders: 0, resizes: 0 };
 
   // --- Framing + intro state ---
-  const restAnchor = new V3(); // the hook, world space
+  const restBase = new V3(); // the hook with the holder centred, world space
+  const restAnchor = new V3(); // the hook at rest: restBase moved sideways by shiftX
+  let shiftX = 0;
   const anchorNow = new V3();
   const tmp = new V3();
   let frame = { w: 1, h: 1, visH: 1, centre: 0.5, holderPx: 0, edgeY: 0 };
@@ -2714,7 +2734,8 @@ async function createAboutBadge(THREE, opts = {}) {
     // about it, and the hook never moves into view. The rig's badge space has the ring at x = 0,
     // so the holder sits beside it by the ring's offset.
     // (z: the ring's top sits a bit off the sheet; the holder itself stays on the framed plane)
-    restAnchor.set(ring.x - holder.x, ring.y - holder.top + holder.height / 2, ring.z);
+    restBase.set(ring.x - holder.x, ring.y - holder.top + holder.height / 2, ring.z);
+    restAnchor.copy(restBase);
     anchorNow.copy(restAnchor);
     rig = mods.createBadgeRig(THREE, {
       anchor: restAnchor,
@@ -2829,15 +2850,24 @@ async function createAboutBadge(THREE, opts = {}) {
     aboutBadgeAimCamera(THREE, camera, w, h, f);
     // Before the intro the badge waits fully above the section's top edge
     dropH = holder.height + ABOUT_BADGE_FRAME.top * f.visH + 1;
+    const shift = (aboutBadgeClearance(canvas, avoid, w, h, f, holder) * f.visH) / h;
+    const moved = Math.abs(shift - shiftX) > 1e-6;
+    shiftX = shift;
+    restAnchor.copy(restBase).x += shift;
     if (introState === "holding") rig.setAnchor(anchorNow.copy(restAnchor).add(tmp.set(ABOUT_BADGE_INTRO.dx, dropH, 0)), false);
     applyBounds();
+    // At rest when the shift changes (rotation, a resize across a breakpoint): the hook follows
+    if (moved && (introState === "done" || introState === "off") && !rig.isDragging()) {
+      rig.setAnchor(anchorNow.copy(restAnchor), introState === "done");
+    }
   }
 
   // The hook slides on a rail along the section's top edge (ring tucked under it): a drag moves
   // the badge sideways, the whole holder staying inside the section
   function applyBounds() {
     if (introState !== "done" && introState !== "off") return;
-    const m = 0.04 * frame.visH;
+    // 4 % of the box's shorter side (on a tall phone box the height would eat the room)
+    const m = 0.04 * frame.visH * Math.min(1, frame.w / frame.h);
     const halfW = (frame.visH * frame.w) / frame.h / 2;
     const hx = holder.x - ring.x;
     rig.setBounds({
@@ -3043,6 +3073,40 @@ function aboutBadgeRingTop(THREE, badge) {
 // Holder size and place for a w x h px section (see ABOUT_BADGE_FRAME). Returns the world height
 // the section spans (visH, cm), the holder's centre as a share of the height from the top
 // (centre) and the holder's height in px.
+// Sideways shift (px, + = right) that keeps the holder at rest clear of the `avoid` text, measured
+// glyph-tight (text nodes, not their block boxes) in the canvas's pixels. Text on the left pushes
+// it right and vice versa; text on both sides, or no room in the box: as much as fits.
+function aboutBadgeClearance(canvas, avoid, w, h, f, holder) {
+  if (!avoid.length) return 0;
+  const cr = canvas.getBoundingClientRect();
+  if (!cr.width || !cr.height) return 0;
+  const sx = w / cr.width, sy = h / cr.height;
+  const half = (f.holderPx * holder.width) / holder.height / 2;
+  const top = ABOUT_BADGE_FRAME.top * h, bottom = top + f.holderPx;
+  const gap = 12;
+  let right = 0, left = 0;
+  const range = document.createRange();
+  for (const el of avoid) {
+    const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      if (!n.nodeValue.trim()) continue;
+      range.selectNodeContents(n);
+      for (const r of range.getClientRects()) {
+        if (!r.width) continue;
+        const l = (r.left - cr.left) * sx, rr = (r.right - cr.left) * sx;
+        const t = (r.top - cr.top) * sy, b = (r.bottom - cr.top) * sy;
+        if (b <= top || t >= bottom) continue;
+        if (l + rr < w) right = Math.max(right, rr + gap - (w / 2 - half));
+        else left = Math.max(left, w / 2 + half - (l - gap));
+      }
+    }
+  }
+  range.detach?.();
+  const room = Math.max(0, w / 2 - half - 0.04 * Math.min(w, h)); // the margin applyBounds keeps
+  if (right > 0 && left > 0) return 0;
+  return right > 0 ? Math.min(right, room) : -Math.min(left, room);
+}
+
 function aboutBadgeFraming(w, h, holder) {
   const F = ABOUT_BADGE_FRAME;
   const k = Math.min(1, Math.max(0, (w / h - F.portraitAt) / (F.landscapeAt - F.portraitAt)));

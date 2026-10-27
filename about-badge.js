@@ -1034,8 +1034,8 @@ const CARD_FIELDS = {
   backTitle: "NR-26 · CLEARED FOR HIRE",
   backRows: [
     ["(clearance)", "CONCEPT → CODE"],
-    ["(field.record)", "SALESFORCE · GEOTAB · EVOLVE"],
-    ["(jury)", "AWWWARDS MAIN JURY, 2025–"],
+    ["(instagram)", "@NICOLAROMEIDESIGNER"],
+    ["(other.role)", "AWWWARDS MAIN JURY, 2025–"],
     ["(awards)", "SOTD ×3 · FWA · CSSDA ×3 · GSAP ×2"],
     ["(status)", "FULL-TIME · AVAILABLE NOW"],
   ],

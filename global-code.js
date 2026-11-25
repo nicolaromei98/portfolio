@@ -10143,6 +10143,7 @@ function labCore(THREE, o) {
       });
     inst.floatOn = 0;
     inst.ride = 0;
+    inst.hold = { yaw: 0, pitch: 0, orbitYaw: 0 };
     placeFloaters(inst, true);
     gpuDirty = true;
   }
@@ -10219,10 +10220,24 @@ function labCore(THREE, o) {
   const qRide = new THREE.Quaternion(),
     eulR = new THREE.Euler(0, 0, 0, "YXZ");
 
+  // The turn the windows follow: the live view's while their experiment rests in front, else the
+  // one they had when a flight took the view (inst.hold, set in flyTo), so they stay where they
+  // are instead of snapping back to the straight view. inst.ride blends between the two
+  const turnR = { yaw: 0, pitch: 0, orbitYaw: 0 };
+
+  function rideTurn(inst, out = turnR) {
+    const r = inst.ride || 0,
+      h = inst.hold;
+    out.yaw = h.yaw + (orbit.yaw + lean.yaw - h.yaw) * r;
+    out.pitch = h.pitch + (orbit.pitch + lean.pitch - h.pitch) * r;
+    out.orbitYaw = h.orbitYaw + (orbit.yaw - h.orbitYaw) * r;
+    return out;
+  }
+
   function rideFloaters(inst, kk) {
     if (!inst.floaters || !inst.restT) return;
-    const r = LAB.floatRide * (inst.ride || 0);
-    eulR.set(-(orbit.pitch + lean.pitch) * r, (orbit.yaw + lean.yaw) * r, 0);
+    const t = rideTurn(inst);
+    eulR.set(-t.pitch * LAB.floatRide, t.yaw * LAB.floatRide, 0);
     qRide.setFromEuler(eulR);
     for (const fl of inst.floaters) {
       if (kk > 0) {
@@ -10622,6 +10637,12 @@ function labCore(THREE, o) {
 
   function flyTo(k1) {
     if (!started || (k1 === K && !flight)) return;
+    // The windows in front stay where the view left them: they stop riding with it
+    const was = insts.get(K);
+    if (was && was.floaters) {
+      rideTurn(was, was.hold);
+      was.ride = 0;
+    }
     // Fold the current orbit into the start pose, so nothing jumps
     orbitOffset(tmpO, orbit.yaw, orbit.pitch);
     const p0 = base.tgt.clone().add(tmpO),
@@ -11070,7 +11091,7 @@ function labCore(THREE, o) {
           // Over the copy, the hint or the nav: nearly gone (and not clickable)
           fl.clear += ((overHud(fl) ? LAB.floatClear : 1) - fl.clear) * k(0.08);
           fl.mesh.material.opacity = inst.floatOn * smooth(1.2, 4.5, zv) * (1 - 0.85 * smooth(0.3,
-            0.6, Math.abs(orbit.yaw))) * fl.clear;
+            0.6, Math.abs(rideTurn(inst).orbitYaw))) * fl.clear;
           fl.mesh.visible = fl.mesh.material.opacity > 0.003;
           addSig(fl.mesh.material.opacity);
           addSig(fl.g.position.x);
@@ -11229,6 +11250,20 @@ function labCore(THREE, o) {
       const r = sceneEl.getBoundingClientRect();
       return { x: r.left + (tmpV.x + 1) / 2 * r.width, y: r.top + (1 - tmpV.y) / 2 * r.height,
         z: tmpV.z };
+    },
+    // Where the foreground windows sit on screen (client px) and how visible they are
+    floatsAt() {
+      const r = sceneEl.getBoundingClientRect(),
+        out = [];
+      for (const inst of insts.values()) {
+        for (const fl of inst.floaters || []) {
+          fl.g.getWorldPosition(tmpV).project(camera);
+          out.push({ idx: inst.idx, kind: fl.f.kind, x: Math.round(r.left + (tmpV.x + 1) / 2 * r
+            .width), y: Math.round(r.top + (1 - tmpV.y) / 2 * r.height), opacity: +fl.mesh.material
+            .opacity.toFixed(2) });
+        }
+      }
+      return out;
     },
     pick: (x, y) => pickAt(x, y),
     go,

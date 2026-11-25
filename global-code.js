@@ -1,11 +1,11 @@
 // =====================================================================
 // NICOLA ROMEI — PORTFOLIO
 // Barba.js page transitions (dither band) + every site animation, in one
-// Slater file. Slater runs this as an ES module once the page has loaded:
-// nothing here waits for a page load event, and barba.init()
-// runs last (see START at the bottom of the file).
+// file, served by Cloudflare Pages and loaded with <script type="module"> once
+// the page has been parsed: nothing here waits for a page load event, and
+// barba.init() runs last (see START at the bottom of the file).
 //
-// Needs, in Webflow Site settings > Footer code, BEFORE the Slater script:
+// Needs, in Webflow Site settings > Footer code, BEFORE this script:
 // GSAP 3.15 with ScrollTrigger, SplitText and ScrambleText (Webflow GSAP integration),
 // Lenis 1.3.15, @barba/core 2.10.3, Howler 2.2.4 and the Webflow-hosted three.min (r109).
 // =====================================================================
@@ -6991,9 +6991,9 @@ function ppThumbs(nav, figures, goTo, signal) {
 }
 
 // Osmo Supply's Button 077: the arrow is redrawn (DrawSVG) and the label nudged on hover.
-// Their snippet started on page ready, which Slater flags: here the page's init calls it, on
-// every visit of the page. DrawSVG isn't in the site's GSAP set: it is loaded once, from the
-// same Webflow GSAP build
+// Their snippet started on page ready: here the page's init calls it instead, on every visit
+// of the page (Barba never fires page ready again). DrawSVG isn't in the site's GSAP set: it
+// is loaded once, from the same Webflow GSAP build
 const DRAW_SVG_URL = "https://cdn.prod.website-files.com/gsap/3.15.0/DrawSVGPlugin.min.js";
 let drawSvgLoading = null;
 
@@ -11314,7 +11314,7 @@ function initLab() {
 function startSite() {
   if (!window.gsap || !window.barba) {
     console.warn(
-      "[portfolio] GSAP or Barba missing: load them in Webflow before the Slater script");
+      "[portfolio] GSAP or Barba missing: load them in Webflow before global-code.js");
     return;
   }
 

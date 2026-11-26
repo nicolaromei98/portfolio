@@ -220,7 +220,8 @@ function initBeforeEnterFunctions(next) {
   if (has('[data-lab]')) run(initLab); // /lab: WebGL, the sheet waits for its first cluster
   if (has('.pm[data-decor]')) run(initPrintMarks); // after the works preview: it sets data-active
   if (has('[data-plate]')) run(initHomePlates); // after the marks: they size the statement
-  if (has('[data-portrait]')) run(
+  if (has('[data-pf-dither]')) run(initProfileDither); // the Profile's face, a dither point cloud
+  else if (has('[data-portrait]')) run(
   initProfilePortrait); // WebGL: the sheet waits for its first frame
   if (has('[data-tv]')) run(
   initProfileTv); // the dark screen at once, the channels when the Works page is read
@@ -933,10 +934,17 @@ const Dither = (() => {
     pctx.fillRect(left, gridTop, cols * cssCell, rows * cssCell);
     updateTone(pctx);
 
-    sources.forEach(({ url, rect }) => {
+    sources.forEach(({ url, rect, clip }) => {
       loadPreviewImage(url).then((img) => {
         if (!img || token !== previewToken) return; // a newer sweep or resize took over
+        if (clip) {
+          pctx.save();
+          pctx.beginPath();
+          pctx.rect(clip.left, clip.top, clip.width, clip.height);
+          pctx.clip();
+        }
         drawCover(pctx, img, rect);
+        if (clip) pctx.restore();
         updateTone(pctx);
       });
     });
@@ -984,7 +992,12 @@ const Dither = (() => {
       const rect = img.getBoundingClientRect();
       if (!inView(rect) || getComputedStyle(img).visibility === "hidden") return;
       const url = smallSrc(img, rect.width);
-      if (url) out.push({ url, rect });
+      // A picture zoomed inside a clipping box (the Profile portrait) shows only the box
+      const box = img.parentElement;
+      const bs = box && getComputedStyle(box);
+      const clip = bs && (bs.overflowX !== "visible" || bs.overflowY !== "visible") ? box
+        .getBoundingClientRect() : null;
+      if (url) out.push({ url, rect, clip });
     });
 
     return out
@@ -11340,6 +11353,636 @@ function initLab() {
   });
 }
 // ==== LAB end
+
+// ==== PROFILE DITHER
+// The Profile's face as a dither point cloud: one point per 2px cell of the photo, each at its
+// depth (the depth map), turning towards the mouse like a 3D scan. The points carry only a
+// tone; the 1-bit Bayer grid stays fixed on the screen like the site's other dithers, so a
+// turn moves the tone through the grid. The face flies in from the depth (a dither cloud
+// passes over it), then boils a little, and more where the mouse moves fast.
+// Markup (Webflow): .pf__card > .pf__win.is--photo > .pf__photo[data-pf-dither]
+// [data-pf-dither-depth] > img, optional data-pf-dither-head="x y h" (the head in the photo, uv:
+// centre and height, for another photo). The canvas covers the card on desktop (the face is
+// centred on it, at the card's height) and the photo window's box below 992px. .is-dither
+// hides the window's frame and photo while the dots stand in for them; without WebGL2, or
+// when an image fails, the window shows the photo as before.
+
+const PFD = {
+  deskQuery: "(min-width: 992px)",
+  cell: 2, // CSS px per dither cell, the site's dither dot
+  ink: [0x1c / 255, 0x1c / 255, 0x1a / 255], // HOME_DITHER.ink
+  head: [0.5, 0.335, 0.435], // the head in the photo (uv): centre x, centre y, height
+  fill: { desk: 0.555, small: 0.6 }, // head height, share of the frame (desk: the card's content box)
+  centre: 0.45, // the head's centre, share of the frame's height from its top
+  fade: [0.84, 1], // the bottom dissolves between these shares of the frame
+  sides: [0.27, 0.47], // the shoulders dissolve between these distances from the photo's centre (uv)
+  cut: [0.2, 0.34], // depth that cuts the wall away from the person
+  tone: { lift: 0.16, gamma: 1.1, sharp: 1 }, // paper kept for the skin; contrast; unsharp mask
+  yaw: 0.26, // rad, turn towards a mouse at the card's edge
+  pitch: 0.16,
+  sway: [0.4, 0.35], // idle sway, share of yaw and pitch
+  ease: 3.2, // per second, how fast the turn follows
+  depth: 0.6, // depth range in CSS px, of the head's height
+  plane: 0.62, // depth that holds still while turning (the face)
+  persp: 2.4, // camera distance, in frame heights
+  lens: { radius: 110, speed: 1600, decay: 2.6 }, // CSS px; px/s for a full lens; per second
+  boil: { base: 0.1, lens: 0.7, fps: 9 }, // threshold jitter, still and under the lens; frames/s
+  introS: 1.7,
+  idleMs: 3500, // after the last mouse move, the sway takes over
+  bleed: 0.12, // below 992px: canvas margin around the window, share of its height
+  photoW: 1000, // smallest srcset width read for the dots
+  bufferPx: 7e6, // device px, cap on the drawing buffer
+  leaveMs: 1500, // the last frame stays while the page leaves, then the context goes
+};
+
+const PFD_VERT = `#version 300 es
+precision highp float;
+uniform sampler2D uImg;
+uniform sampler2D uDepth;
+uniform vec2 uView;     // stage, CSS px
+uniform float uDpr;
+uniform float uCell;
+uniform int uCols;
+uniform vec2 uCell0;    // first cell of the lattice (the photo's box on the stage)
+uniform vec2 uAnchor;   // the head's centre on the stage
+uniform vec2 uImgSize;  // the photo's size on the stage
+uniform vec2 uHead;     // the head's centre in the photo (uv)
+uniform vec2 uFrame;    // top and height of the frame the face fills
+uniform vec4 uCut;      // depth cut (x, y), sides (z, w)
+uniform vec2 uFade;
+uniform vec3 uTone;     // lift, gamma, sharp
+uniform vec2 uRot;      // yaw, pitch
+uniform float uDepthPx;
+uniform float uPlane;
+uniform float uPersp;
+uniform float uTime;
+uniform float uIntro;
+uniform float uMotion;  // 0 with reduced motion
+uniform vec4 uMouse;    // x, y, strength, radius
+uniform vec2 uBoil;     // still, under the lens
+uniform float uFps;
+uniform float uLod;
+uniform float uMaxSize;
+out float vTone;
+out float vBoil;
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+    mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+
+void main() {
+  vTone = 0.0;
+  vBoil = 0.0;
+  gl_PointSize = 0.0;
+  gl_Position = vec4(2.0, 2.0, 2.0, 1.0); // culled unless placed below
+
+  vec2 cell = uCell0 + vec2(float(gl_VertexID % uCols), float(gl_VertexID / uCols));
+  vec2 p0 = (cell + 0.5) * uCell;
+  vec2 uv = (p0 - uAnchor) / uImgSize + uHead;
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return;
+
+  // Tone: luma with a little unsharp mask, so eyes and brows hold at this size
+  float l = luma(textureLod(uImg, uv, uLod).rgb);
+  float lb = luma(textureLod(uImg, uv, uLod + 2.0).rgb);
+  l = clamp(l + (l - lb) * uTone.z, 0.0, 1.0);
+  float t = pow(clamp((1.0 - l - uTone.x) / (0.9 - uTone.x), 0.0, 1.0), uTone.y);
+
+  // Only the person: the depth map cuts the wall; the shoulders and the bottom dissolve
+  float d = textureLod(uDepth, uv, 0.0).r;
+  float m = smoothstep(uCut.x, uCut.y, d);
+  m *= 1.0 - smoothstep(uFade.x, uFade.y, (p0.y - uFrame.x) / uFrame.y);
+  m *= 1.0 - smoothstep(uCut.z, uCut.w, abs(uv.x - 0.5));
+  if (m < 0.003) return;
+
+  // Intro: a dither cloud passes over the face while its points fly in from the depth
+  float f = noise(uv * 5.0) * 0.6 + hash(cell) * 0.4;
+  float r = clamp((uIntro * 1.5 - f - 0.05) / 0.4, 0.0, 1.0);
+  if (r <= 0.0) return;
+  float fly = (1.0 - r) * (1.0 - r) * uMotion;
+
+  // Lens: the points part and boil where the mouse moves fast
+  vec2 dm = p0 - uMouse.xy;
+  float k = (1.0 - smoothstep(0.0, uMouse.w, length(dm))) * uMouse.z * uMotion;
+  vec2 shove = normalize(dm + 1e-4) * k * 10.0;
+
+  // The point in 3D, turned (yaw, then pitch) about the face's plane, with perspective
+  float x = p0.x - uAnchor.x + shove.x;
+  float y = p0.y - uAnchor.y + shove.y;
+  float z = (d - uPlane) * uDepthPx + (hash(cell.yx + 3.1) - 0.5) * uDepthPx * 4.0 * fly + k * 30.0;
+  float cy = cos(uRot.x), sy = sin(uRot.x), cp = cos(uRot.y), sp = sin(uRot.y);
+  float x1 = x * cy + z * sy;
+  float z1 = -x * sy + z * cy;
+  float y1 = y * cp + z1 * sp;
+  float z2 = -y * sp + z1 * cp;
+  float F = uFrame.y * uPersp;
+  float s = F / max(F - z2, 1.0);
+  vec2 P = uAnchor + vec2(x1, y1) * s;
+
+  float tone = t * m * r;
+  if (tone < 0.004) return;
+  vTone = tone;
+  vBoil = (uBoil.x + k * uBoil.y) * uMotion;
+  // Points overlap (1.6 cells), so the turned cloud has no gaps; the grid decides the dots
+  gl_PointSize = min(ceil(uCell * uDpr * s * 1.6), uMaxSize);
+  gl_Position = vec4(P.x / uView.x * 2.0 - 1.0, 1.0 - P.y / uView.y * 2.0, 0.0, 1.0);
+}`;
+
+const PFD_FRAG = `#version 300 es
+precision highp float;
+uniform vec3 uColor;
+uniform float uCellPx;
+uniform float uTime;
+uniform float uFps;
+in float vTone;
+in float vBoil;
+out vec4 o;
+${DITHER_BAYER_GLSL}
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+void main() {
+  // 1-bit ordered dither in screen cells; the boil is per cell, so overlapping points agree
+  vec2 sc = floor(gl_FragCoord.xy / uCellPx);
+  float n = hash(sc + floor(uTime * uFps) * vec2(7.13, 3.71)) - 0.5;
+  if (bayer8(sc) + n * vBoil > vTone) discard;
+  o = vec4(uColor, 1.0);
+}`;
+
+// The srcset candidate of at least minW px (the largest when none is), else the src
+function pfdSource(img, minW) {
+  const list = (img.getAttribute("srcset") || "")
+    .split(",")
+    .map((s) => s.trim().split(/\s+/))
+    .filter((p) => p[0] && /^\d+w$/.test(p[1] || ""))
+    .map((p) => ({ url: p[0], w: parseInt(p[1], 10) }))
+    .sort((a, b) => a.w - b.w);
+  const hit = list.find((c) => c.w >= minW) || list[list.length - 1];
+  return (hit && hit.url) || img.currentSrc || img.getAttribute("src");
+}
+
+function initProfileDither() {
+  const page = nextPage;
+  const box = page.querySelector("[data-pf-dither]");
+  const win = box && box.closest(".pf__win");
+  const card = box && box.closest(".pf__card");
+  const img = box && box.querySelector("img");
+  const depthUrl = box && box.getAttribute("data-pf-dither-depth");
+  if (!box || !win || !card || !img || !depthUrl) return;
+  const head = (() => {
+    const v = (box.getAttribute("data-pf-dither-head") || "").trim().split(/[\s,]+/).map(Number);
+    return v.length === 3 && v.every((n) => Number.isFinite(n) && n > 0) ? v : PFD.head;
+  })();
+  const desk = window.matchMedia(PFD.deskQuery);
+  const controller = new AbortController();
+  const { signal } = controller;
+
+  const canvas = document.createElement("canvas");
+  canvas.className = "pfd__gl";
+  canvas.setAttribute("aria-hidden", "true");
+  canvas.setAttribute("data-intro-skip", ""); // the face has its own entry
+  const gl = canvas.getContext("webgl2", { alpha: true, premultipliedAlpha: true, antialias: false,
+    depth: false, stencil: false });
+  if (!gl) return; // the window keeps the photo
+  card.append(canvas);
+
+  // While the dots stand in for the photo, the window's content hides: the window takes the
+  // photo's name (the canvas is decoration). Hidden from the start, so the frame never flashes
+  // before the dots, and the page transition's preview skips the photo the dots replace
+  const alt = img.getAttribute("alt") || "";
+  function setDither(on) {
+    win.classList.toggle("is-dither", on);
+    if (on && alt) {
+      win.setAttribute("role", "img");
+      win.setAttribute("aria-label", alt);
+    } else {
+      win.removeAttribute("role");
+      win.removeAttribute("aria-label");
+    }
+  }
+  setDither(true);
+
+  let left = false;
+  let down = false; // the context is lost
+  let G = null; // the program, its uniforms and textures, once built
+  let photo = null,
+    depth = null;
+
+  function fail(err) {
+    if (left) return;
+    console.warn("[profile dither] the portrait stays a photo:", err && (err.message || err));
+    debugLog(`✗ profile dither: ${err && err.message}`, true);
+    G = null;
+    stopLoop();
+    controller.abort(); // final: a later context restore must not hide the photo again
+    setDither(false);
+    canvas.remove();
+  }
+
+  function texture(image) {
+    const tx = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tx);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return tx;
+  }
+
+  function shader(type, src) {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS) && !gl.isContextLost()) {
+      throw new Error(gl.getShaderInfoLog(sh) || "shader");
+    }
+    return sh;
+  }
+
+  // Program, uniforms and both textures: again after a context restore
+  function build() {
+    const prog = gl.createProgram();
+    const vs = shader(gl.VERTEX_SHADER, PFD_VERT);
+    const fs = shader(gl.FRAGMENT_SHADER, PFD_FRAG);
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS) && !gl.isContextLost()) {
+      throw new Error(gl.getProgramInfoLog(prog) || "link");
+    }
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+    gl.useProgram(prog);
+    const U = {};
+    const n = gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS) || 0;
+    for (let i = 0; i < n; i++) {
+      const name = gl.getActiveUniform(prog, i).name;
+      U[name] = gl.getUniformLocation(prog, name);
+    }
+    const vao = gl.createVertexArray(); // the points come from gl_VertexID: no attributes
+    gl.bindVertexArray(vao);
+    gl.activeTexture(gl.TEXTURE0);
+    const tImg = texture(photo);
+    gl.activeTexture(gl.TEXTURE1);
+    const tDepth = texture(depth);
+    gl.uniform1i(U.uImg, 0);
+    gl.uniform1i(U.uDepth, 1);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.BLEND); // ink is opaque, the rest is discarded
+    G = { prog, vao, tImg, tDepth, U, maxSize: gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1] || 64 };
+  }
+
+  function free() {
+    if (!G || gl.isContextLost()) return;
+    gl.deleteTexture(G.tImg);
+    gl.deleteTexture(G.tDepth);
+    gl.deleteVertexArray(G.vao);
+    gl.deleteProgram(G.prog);
+  }
+
+  // -- Layout. Desktop: the stage is the card and the face fills its content box, centred.
+  // Below: the stage is the photo window plus a margin, and the face fills the window
+  const L = { x: 0, y: 0, w: 1, h: 1, cardW: 1, cardH: 1, dpr: 1, cols: 1, rows: 1, cell0: [0, 0], anchor: [0, 0],
+    frame: [0, 1], imgW: 1, imgH: 1, lod: 0 };
+
+  function cardOrigin() {
+    const r = card.getBoundingClientRect();
+    return { x: r.left + card.clientLeft, y: r.top + card.clientTop };
+  }
+
+  function layout() {
+    if (left || !photo) return;
+    const o = cardOrigin();
+    const W = card.clientWidth;
+    const H = card.clientHeight;
+    let sx = 0,
+      sy = 0,
+      sw = W,
+      sh = H,
+      top,
+      fh,
+      cx;
+    if (desk.matches) {
+      const cs = getComputedStyle(card);
+      top = parseFloat(cs.paddingTop) || 0;
+      fh = H - top - (parseFloat(cs.paddingBottom) || 0);
+      cx = W / 2;
+    } else {
+      const wr = win.getBoundingClientRect();
+      const wl = wr.left - o.x;
+      const wt = wr.top - o.y;
+      const bleed = wr.height * PFD.bleed;
+      sx = Math.max(0, Math.floor(wl - bleed));
+      sy = Math.max(0, Math.floor(wt - bleed));
+      sw = Math.min(W, Math.ceil(wl + wr.width + bleed)) - sx;
+      sh = Math.min(H, Math.ceil(wt + wr.height + bleed)) - sy;
+      top = wt;
+      fh = wr.height;
+      cx = wl + wr.width / 2;
+    }
+    if (sw < 4 || sh < 4 || fh < 4) return;
+    // Whole device px per cell, so the squares stay even; fewer when the buffer would be huge
+    const want = Math.min(2, Math.max(1, Math.round((window.devicePixelRatio || 1) * PFD.cell) / PFD.cell));
+    const room = Math.sqrt(PFD.bufferPx / (sw * sh));
+    const dpr = Math.max(1 / PFD.cell, Math.min(want, Math.floor(room * PFD.cell) / PFD.cell));
+    Object.assign(L, { x: sx, y: sy, w: sw, h: sh, cardW: W, cardH: H, dpr });
+    canvas.style.left = sx + "px";
+    canvas.style.top = sy + "px";
+    canvas.style.width = sw + "px";
+    canvas.style.height = sh + "px";
+    const bw = Math.round(sw * dpr);
+    const bh = Math.round(sh * dpr);
+    if (canvas.width !== bw) canvas.width = bw;
+    if (canvas.height !== bh) canvas.height = bh;
+    const fill = desk.matches ? PFD.fill.desk : PFD.fill.small;
+    L.frame = [top - sy, fh];
+    L.imgH = (fh * fill) / head[2];
+    L.imgW = (L.imgH * photo.naturalWidth) / photo.naturalHeight;
+    L.anchor = [cx - sx, top - sy + fh * PFD.centre];
+    // Points only where the face can be: the photo's box, inside the shoulders' fade, above the
+    // frame's bottom, on the stage (the lattice is the photo at rest; turning moves its points)
+    const c = PFD.cell;
+    const x0 = L.anchor[0] + (0.5 - PFD.sides[1] - head[0]) * L.imgW;
+    const x1 = L.anchor[0] + (0.5 + PFD.sides[1] - head[0]) * L.imgW;
+    const y0 = L.anchor[1] - head[1] * L.imgH;
+    const y1 = Math.min(L.anchor[1] + (1 - head[1]) * L.imgH, L.frame[0] + L.frame[1]);
+    const cx0 = Math.max(0, Math.floor(x0 / c));
+    const cy0 = Math.max(0, Math.floor(y0 / c));
+    const cx1 = Math.min(Math.ceil(sw / c), Math.ceil(x1 / c));
+    const cy1 = Math.min(Math.ceil(sh / c), Math.ceil(y1 / c));
+    L.cell0 = [cx0, cy0];
+    L.cols = Math.max(0, cx1 - cx0 + 1);
+    L.rows = Math.max(0, cy1 - cy0 + 1);
+    L.lod = Math.max(0, Math.log2((photo.naturalWidth / L.imgW) * PFD.cell));
+  }
+
+  // -- Motion state
+  // The mouse is kept in client px and mapped to the stage every frame, so a scroll under a
+  // still cursor neither counts as movement nor leaves the lens where the cursor was
+  const P = { cx: null, cy: null, x: -1e4, y: -1e4, moved: 0, at: -1e9, lens: 0 }; // x/y: stage px
+  const rot = [0, 0];
+  let introAt = null; // when the face started to fly in
+  let lastNow = performance.now();
+  const t0 = lastNow;
+
+  window.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "touch") return; // fingers scroll; the face sways on its own
+    // Speed only counts while the loop runs: moves made while it slept are not a burst
+    if (P.cx != null && raf) P.moved += Math.hypot(e.clientX - P.cx, e.clientY - P.cy);
+    P.cx = e.clientX;
+    P.cy = e.clientY;
+    P.at = performance.now();
+    wake();
+  }, { signal, passive: true });
+  // When the pointer stream breaks (out of the page, another app or tab), the next move only
+  // seeds the position: the jump back is not speed
+  const forgetPointer = () => {
+    P.cx = P.cy = null;
+    P.at = -1e9;
+  };
+  document.documentElement.addEventListener("pointerleave", forgetPointer, { signal });
+  window.addEventListener("blur", forgetPointer, { signal });
+
+  function step(now) {
+    const dt = Math.min(0.05, Math.max(0, (now - lastNow) / 1000));
+    lastNow = now;
+    const time = (now - t0) / 1000;
+    const motion = reducedMotion ? 0 : 1;
+    if (P.cx != null) {
+      const o = cardOrigin();
+      P.x = P.cx - o.x - L.x;
+      P.y = P.cy - o.y - L.y;
+    }
+    let tx = 0,
+      ty = 0;
+    if (motion && now - P.at < PFD.idleMs) {
+      // Towards the mouse, full turn at the card's edge
+      const ax = L.anchor[0],
+        ay = L.anchor[1];
+      tx = labClamp((P.x - ax) / (L.cardW * 0.5), -1, 1) * PFD.yaw;
+      ty = labClamp((P.y - ay) / (L.cardH * 0.5), -1, 1) * PFD.pitch;
+    } else if (motion) {
+      tx = Math.sin(time * 0.31) * PFD.sway[0] * PFD.yaw;
+      ty = Math.sin(time * 0.23 + 1.2) * PFD.sway[1] * PFD.pitch;
+    }
+    const k = 1 - Math.exp(-dt * PFD.ease);
+    rot[0] += (tx - rot[0]) * k;
+    rot[1] += (ty - rot[1]) * k;
+    const speed = dt > 0 ? P.moved / dt : 0;
+    P.moved = 0;
+    P.lens = Math.max(P.lens * Math.exp(-dt * PFD.lens.decay), Math.min(1, speed / PFD.lens.speed));
+    draw(time);
+  }
+
+  function introNow(now) {
+    if (introAt == null) return 0;
+    if (reducedMotion) return 1;
+    const x = labClamp((now - introAt) / (PFD.introS * 1000), 0, 1);
+    return 1 - Math.pow(1 - x, 2.2);
+  }
+
+  function draw(time = (performance.now() - t0) / 1000) {
+    if (!G || down || left) return;
+    const U = G.U;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    const intro = introNow(performance.now());
+    if (intro <= 0 || !L.cols || !L.rows) return;
+    const motion = reducedMotion ? 0 : 1;
+    gl.useProgram(G.prog);
+    gl.bindVertexArray(G.vao);
+    gl.uniform2f(U.uView, L.w, L.h);
+    gl.uniform1f(U.uDpr, L.dpr);
+    gl.uniform1f(U.uCell, PFD.cell);
+    gl.uniform1i(U.uCols, Math.max(1, L.cols));
+    gl.uniform2f(U.uCell0, L.cell0[0], L.cell0[1]);
+    gl.uniform2f(U.uAnchor, L.anchor[0], L.anchor[1]);
+    gl.uniform2f(U.uImgSize, L.imgW, L.imgH);
+    gl.uniform2f(U.uHead, head[0], head[1]);
+    gl.uniform2f(U.uFrame, L.frame[0], L.frame[1]);
+    gl.uniform4f(U.uCut, PFD.cut[0], PFD.cut[1], PFD.sides[0], PFD.sides[1]);
+    gl.uniform2f(U.uFade, PFD.fade[0], PFD.fade[1]);
+    gl.uniform3f(U.uTone, PFD.tone.lift, PFD.tone.gamma, PFD.tone.sharp);
+    gl.uniform2f(U.uRot, rot[0], rot[1]);
+    gl.uniform1f(U.uDepthPx, L.frame[1] * (desk.matches ? PFD.fill.desk : PFD.fill.small) * PFD.depth);
+    gl.uniform1f(U.uPlane, PFD.plane);
+    gl.uniform1f(U.uPersp, PFD.persp);
+    gl.uniform1f(U.uTime, time);
+    gl.uniform1f(U.uIntro, intro);
+    gl.uniform1f(U.uMotion, motion);
+    gl.uniform4f(U.uMouse, P.x, P.y, P.lens, PFD.lens.radius);
+    gl.uniform2f(U.uBoil, PFD.boil.base, PFD.boil.lens);
+    gl.uniform1f(U.uFps, PFD.boil.fps);
+    gl.uniform1f(U.uLod, L.lod);
+    gl.uniform1f(U.uMaxSize, G.maxSize);
+    gl.uniform1f(U.uCellPx, PFD.cell * L.dpr);
+    gl.uniform3f(U.uColor, PFD.ink[0], PFD.ink[1], PFD.ink[2]);
+    gl.drawArrays(gl.POINTS, 0, L.cols * L.rows);
+  }
+
+  // -- Loop: only while the face is on screen and the tab visible. With reduced motion it
+  // draws once per change instead
+  let raf = 0,
+    onScreen = false,
+    layoutQueued = false;
+
+  function wake() {
+    if (raf || left || down || !G || !onScreen || document.hidden) return;
+    lastNow = performance.now();
+    P.moved = 0;
+    raf = requestAnimationFrame(loop);
+  }
+
+  function stopLoop() {
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+  }
+
+  function loop(now) {
+    raf = 0;
+    if (left || down || !G || !onScreen || document.hidden) return;
+    step(now);
+    const entering = introAt != null && now - introAt < PFD.introS * 1000;
+    if (!reducedMotion || entering) raf = requestAnimationFrame(loop);
+  }
+
+  const queueLayout = () => {
+    if (layoutQueued || left) return;
+    layoutQueued = true;
+    requestAnimationFrame(() => {
+      layoutQueued = false;
+      layout();
+      draw();
+      wake();
+    });
+  };
+  const ro = new ResizeObserver(queueLayout);
+  [card, win].forEach((el) => ro.observe(el));
+  desk.addEventListener("change", queueLayout, { signal });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopLoop();
+      forgetPointer();
+    } else wake();
+  }, { signal });
+
+  // -- Entry: once the page shows, the images are in and the face is on screen (on phones it
+  // sits below the statement), the points fly in
+  let revealed = false,
+    ready = false;
+  // Only with a live build: an entry started while the context is down would run unseen
+  const tryEnter = () => {
+    if (introAt != null || left || down || !G || !revealed || !ready || !onScreen) return;
+    introAt = performance.now();
+    draw();
+    wake();
+  };
+  const io = new IntersectionObserver((entries) => {
+    onScreen = entries[entries.length - 1].isIntersecting;
+    if (onScreen) {
+      tryEnter();
+      wake();
+    } else stopLoop();
+  });
+  io.observe(canvas);
+  revealOnEntry(win, () => {
+    revealed = true;
+    tryEnter();
+  }, page);
+
+  canvas.addEventListener("webglcontextlost", (e) => {
+    e.preventDefault();
+    down = true;
+    stopLoop();
+    setDither(false); // the photo while the dots are away
+  }, { signal });
+  // A restore before the images arrive only clears `down`: the load builds. After them, it
+  // rebuilds and still runs the entry if the loss came before it
+  canvas.addEventListener("webglcontextrestored", () => {
+    if (left) return;
+    down = false;
+    if (!photo) return;
+    try {
+      build();
+      layout();
+      setDither(true);
+      draw();
+      tryEnter();
+      wake();
+    } catch (err) {
+      fail(err);
+    }
+  }, { signal });
+
+  // The sheet of a hard load waits for the images and the first build (capped by the intro).
+  // `ready` means the images are in, so a restore after a loss here can enter
+  const load = Promise.all([profileImage(pfdSource(img, PFD.photoW)), profileImage(depthUrl)])
+    .then(([p, d]) => {
+      if (left) return;
+      photo = p;
+      depth = d;
+      ready = true;
+      if (gl.isContextLost()) {
+        down = true;
+        setDither(false);
+        return;
+      }
+      down = false;
+      build();
+      layout();
+      setDither(true);
+      tryEnter();
+      wake();
+    })
+    .catch(fail);
+  holdIntro(load);
+
+  if (DEBUG) {
+    window.__pfd = {
+      state: () => ({
+        gl: !!G,
+        down,
+        lost: gl.isContextLost(),
+        dither: win.classList.contains("is-dither"),
+        onScreen,
+        looping: !!raf,
+        intro: introNow(performance.now()),
+        rot: [...rot],
+        lens: P.lens,
+        stage: [L.x, L.y, L.w, L.h],
+        buffer: [canvas.width, canvas.height],
+        dpr: L.dpr,
+        points: L.cols * L.rows,
+        anchor: [...L.anchor],
+        frame: [...L.frame],
+        img: [L.imgW, L.imgH],
+      }),
+    };
+  }
+
+  onPageLeave(() => {
+    left = true;
+    controller.abort();
+    stopLoop();
+    ro.disconnect();
+    io.disconnect();
+    if (window.__pfd) window.__pfd = undefined;
+    // The last frame stays while the band covers the page, then the context goes
+    setTimeout(() => {
+      free();
+      G = null;
+      const lose = !gl.isContextLost() && gl.getExtension("WEBGL_lose_context");
+      if (lose) lose.loseContext();
+    }, PFD.leaveMs);
+  });
+}
+// ==== PROFILE DITHER end
 
 // -----------------------------------------
 // START

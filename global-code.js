@@ -6579,7 +6579,10 @@ function ppMediaWin(title, src, video) {
   } else {
     node = new Image();
     node.crossOrigin = "anonymous"; // the dither reads its pixels
-    node.decoding = "async";
+    // "sync": Chrome may otherwise paint an async image blank for a frame or two while it
+    // decodes it (at the hand-off from the dither print, and again when it re-decodes it during
+    // a scroll). That blank frame was the flicker in the column
+    node.decoding = "sync";
     node.alt = "";
     node.src = src;
   }
@@ -7292,7 +7295,7 @@ function initProjectPage() {
   // -- The next project: closes the column (desktop) or the page (phones). A black rule and
   // "(Next project)" set it apart, then its name and its cover in a window whose status strip
   // fills while the reader keeps scrolling past the end (a click opens it too)
-  let next = null; // { link, meter, fill, pct, label }
+  let next = null; // { link, meter, fill, pct, opening(on) }
   const buildNext = (info, number, of) => {
     if (next || !info?.href || signal.aborted) return;
     const link = ppEl("a", "pp__next");
@@ -7302,7 +7305,19 @@ function initProjectPage() {
       `${pad(number)}/${pad(of)}` : ""));
     const win = ppMediaWin(`Next — ${info.name}`, info.cover, "");
     const status = ppEl("span", "pp__status");
-    const label = ppEl("span", "pp__status-label", "Scroll to open");
+    // Both labels share one grid cell, so the label keeps the width of the longer one and the
+    // meter beside it doesn't jump when "Scroll to open" turns into "Opening"
+    const label = ppEl("span", "pp__status-label");
+    const idle = ppEl("span", null, "Scroll to open");
+    const going = ppEl("span", null, "Opening");
+    label.style.display = "inline-grid";
+    idle.style.gridArea = going.style.gridArea = "1 / 1";
+    going.style.visibility = "hidden";
+    label.append(idle, going);
+    const opening = (on) => {
+      idle.style.visibility = on ? "hidden" : "";
+      going.style.visibility = on ? "" : "hidden";
+    };
     const meter = ppEl("span", "pp__meter");
     const fill = ppEl("i", "pp__meter-fill");
     const pct = ppEl("span", "pp__meter-pct", "000%");
@@ -7310,7 +7325,7 @@ function initProjectPage() {
     status.append(label, meter, pct);
     win.win.append(status);
     link.append(head, ppEl("span", "pp__next-name", info.name), win.win);
-    next = { link, meter, fill, pct, label };
+    next = { link, meter, fill, pct, opening };
     ppNaturalSize(win.node).then((size) => {
       if (size && !signal.aborted) win.win.style.setProperty("--ratio",
         `${size[0]} / ${size[1]}`);
@@ -7358,11 +7373,12 @@ function initProjectPage() {
 
     const render = (v) => {
       if (!next) return;
-      // Whole blocks only, like an old progress bar
+      // Whole blocks only, like an old progress bar, full included (a "100%" width would add a
+      // cut block at the end)
       const inside = next.meter.clientWidth - 2;
       const blocks = Math.max(1, Math.floor((inside + 2) / PP.pitch));
       const filled = Math.round(v * blocks);
-      next.fill.style.width = filled >= blocks ? "100%" : `${filled * PP.pitch}px`;
+      next.fill.style.width = `${filled * PP.pitch}px`;
       next.pct.textContent = `${String(Math.round(v * 100)).padStart(3, "0")}%`;
     };
 
@@ -7399,7 +7415,7 @@ function initProjectPage() {
       if (p >= 1) {
         done = true;
         next.link.classList.add("is-going");
-        next.label.textContent = "Opening";
+        next.opening(true);
         setTimeout(() => {
           if (!signal.aborted) open();
         }, 320);
@@ -7434,7 +7450,7 @@ function initProjectPage() {
       done = false;
       p = shown = 0;
       next.link.classList.remove("is-going");
-      next.label.textContent = "Scroll to open";
+      next.opening(false);
       render(0);
     }, { signal });
 
